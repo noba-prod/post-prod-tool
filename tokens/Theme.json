@@ -1,0 +1,704 @@
+{
+"colors": {
+    "primary-light": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "primary-dark": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "accent-light": {
+      "value": "{tailwind colors.zinc.100}",
+      "type": "color"
+    },
+    "accent-foreground-dark": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "background-light": {
+      "value": "{tailwind colors.base.white}",
+      "type": "color"
+    },
+    "background-dark": {
+      "value": "{tailwind colors.zinc.950}",
+      "type": "color"
+    },
+    "border-light": {
+      "value": "{tailwind colors.zinc.200}",
+      "type": "color"
+    },
+    "border-dark": {
+      "value": "{tailwind colors.zinc.800}",
+      "type": "color"
+    },
+    "card-light": {
+      "value": "{tailwind colors.base.white}",
+      "type": "color"
+    },
+    "card-dark": {
+      "value": "{tailwind colors.zinc.950}",
+      "type": "color"
+    },
+    "accent-dark": {
+      "value": "{tailwind colors.zinc.800}",
+      "type": "color"
+    },
+    "card-foreground-light": {
+      "value": "{tailwind colors.zinc.950}",
+      "type": "color"
+    },
+    "card-foreground-dark": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "destructive-light": {
+      "value": "{tailwind colors.red.600}",
+      "type": "color"
+    },
+    "destructive-dark": {
+      "value": "{tailwind colors.red.900}",
+      "type": "color"
+    },
+    "destructive-foreground-light": {
+      "value": "{tailwind colors.red.50}",
+      "type": "color"
+    },
+    "destructive-foreground-dark": {
+      "value": "{tailwind colors.red.50}",
+      "type": "color"
+    },
+    "accent-foreground-light": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "foreground-light": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "foreground-dark": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "input-light": {
+      "value": "{tailwind colors.zinc.200}",
+      "type": "color"
+    },
+    "input-dark": {
+      "value": "{tailwind colors.zinc.800}",
+      "type": "color"
+    },
+    "muted-light": {
+      "value": "{tailwind colors.zinc.100}",
+      "type": "color"
+    },
+    "muted-dark": {
+      "value": "{tailwind colors.zinc.800}",
+      "type": "color"
+    },
+    "popover-light": {
+      "value": "{tailwind colors.base.white}",
+      "type": "color"
+    },
+    "popover-dark": {
+      "value": "{tailwind colors.zinc.950}",
+      "type": "color"
+    },
+    "popover-foreground-light": {
+      "value": "{tailwind colors.zinc.950}",
+      "type": "color"
+    },
+    "popover-foreground-dark": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "primary-foreground-light": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "primary-foreground-dark": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "ring-light": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "ring-dark": {
+      "value": "{tailwind colors.zinc.300}",
+      "type": "color"
+    },
+    "secondary-light": {
+      "value": "{tailwind colors.zinc.100}",
+      "type": "color"
+    },
+    "secondary-dark": {
+      "value": "{tailwind colors.zinc.800}",
+      "type": "color"
+    },
+    "secondary-foreground-light": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "secondary-foreground-dark": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "muted-foreground-light": {
+      "value": "{tailwind colors.zinc.500}",
+      "type": "color"
+    },
+    "muted-foreground-dark": {
+      "value": "{tailwind colors.zinc.400}",
+      "type": "color"
+    },
+    "chart-1-light": {
+      "value": "#2a9d90",
+      "type": "color"
+    },
+    "chart-1-dark": {
+      "value": "#2662d9",
+      "type": "color"
+    },
+    "chart-2-light": {
+      "value": "#e76e50",
+      "type": "color"
+    },
+    "chart-2-dark": {
+      "value": "#e23670",
+      "type": "color"
+    },
+    "chart-3-light": {
+      "value": "#274754",
+      "type": "color"
+    },
+    "chart-3-dark": {
+      "value": "#e88c30",
+      "type": "color"
+    },
+    "chart-4-light": {
+      "value": "#e8c468",
+      "type": "color"
+    },
+    "chart-4-dark": {
+      "value": "#af57db",
+      "type": "color"
+    },
+    "chart-5-light": {
+      "value": "#f4a462",
+      "type": "color"
+    },
+    "chart-5-dark": {
+      "value": "#2eb88a",
+      "type": "color"
+    },
+    "sidebar-background-light": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "sidebar-background-dark": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "sidebar-foreground-light": {
+      "value": "{tailwind colors.zinc.700}",
+      "type": "color"
+    },
+    "sidebar-foreground-dark": {
+      "value": "{tailwind colors.zinc.100}",
+      "type": "color"
+    },
+    "sidebar-primary-light": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "sidebar-primary-dark": {
+      "value": "{tailwind colors.blue.700}",
+      "type": "color"
+    },
+    "sidebar-primary-foreground-light": {
+      "value": "{tailwind colors.zinc.50}",
+      "type": "color"
+    },
+    "sidebar-primary-foreground-dark": {
+      "value": "{tailwind colors.base.white}",
+      "type": "color"
+    },
+    "sidebar-accent-light": {
+      "value": "{tailwind colors.zinc.100}",
+      "type": "color"
+    },
+    "sidebar-accent-dark": {
+      "value": "{tailwind colors.zinc.800}",
+      "type": "color"
+    },
+    "sidebar-accent-foreground-light": {
+      "value": "{tailwind colors.zinc.900}",
+      "type": "color"
+    },
+    "sidebar-accent-foreground-dark": {
+      "value": "{tailwind colors.zinc.100}",
+      "type": "color"
+    },
+    "sidebar-border-light": {
+      "value": "{tailwind colors.gray.200}",
+      "type": "color"
+    },
+    "sidebar-border-dark": {
+      "value": "{tailwind colors.zinc.800}",
+      "type": "color"
+    },
+    "sidebar-ring-light": {
+      "value": "{tailwind colors.zinc.400}",
+      "type": "color"
+    },
+    "sidebar-ring-dark": {
+      "value": "{tailwind colors.zinc.300}",
+      "type": "color"
+    },
+    "success-primary": {
+      "value": "{tailwind colors.teal.500}",
+      "type": "color"
+    },
+    "success-secondary": {
+      "value": "{tailwind colors.teal.100}",
+      "type": "color"
+    },
+    "success-tertiary": {
+      "value": "{tailwind colors.teal.50}",
+      "type": "color"
+    },
+    "warning-primary": {
+      "value": "{tailwind colors.amber.500}",
+      "type": "color"
+    },
+    "warning-secondary": {
+      "value": "{tailwind colors.amber.100}",
+      "type": "color"
+    },
+    "warning-tertiary": {
+      "value": "{tailwind colors.amber.50}",
+      "type": "color"
+    },
+    "in-progress-primary": {
+      "value": "{tailwind colors.blue.500}",
+      "type": "color"
+    },
+    "in-progress-secondary": {
+      "value": "{tailwind colors.blue.100}",
+      "type": "color"
+    },
+    "in-progress-tertiary": {
+      "value": "{tailwind colors.blue.50}",
+      "type": "color"
+    }
+  },
+  "typography": {
+    "font family": {
+      "font-sans": {
+        "value": "Inter",
+        "type": "text"
+      },
+      "font-serif": {
+        "value": "Georgia",
+        "type": "text"
+      },
+      "font-mono": {
+        "value": "Menlo",
+        "type": "text"
+      }
+    },
+    "typography components": {
+      "h1": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-4xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-10}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.extrabold}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.tight}",
+          "type": "number"
+        },
+        "font-size-lg": {
+          "value": "{font.size.text-5xl}",
+          "type": "number"
+        }
+      },
+      "h2": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-3xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-9}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.semibold}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.tight}",
+          "type": "number"
+        }
+      },
+      "h3": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-2xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-8}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.semibold}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.tight}",
+          "type": "number"
+        }
+      },
+      "h4": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-7}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.semibold}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.tight}",
+          "type": "number"
+        }
+      },
+      "p": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-base}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-7}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.normal}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.normal}",
+          "type": "number"
+        }
+      },
+      "blockquote": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-style": {
+          "value": "{font.style.italic}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-base}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-6}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.normal}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.normal}",
+          "type": "number"
+        }
+      },
+      "list": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-base}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-7}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.normal}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.normal}",
+          "type": "number"
+        }
+      },
+      "inline code": {
+        "font-family": {
+          "value": "{typography.font family.font-mono}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-sm}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-5}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.semibold}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.normal}",
+          "type": "number"
+        }
+      },
+      "lead": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-7}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.normal}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.normal}",
+          "type": "number"
+        }
+      },
+      "large": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-lg}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-7}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.semibold}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.normal}",
+          "type": "number"
+        }
+      },
+      "small": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-sm}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.size.text-sm}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.medium}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.line-height.leading-4}",
+          "type": "number"
+        }
+      },
+      "table": {
+        "font-family": {
+          "value": "{typography.font family.font-sans}",
+          "type": "text"
+        },
+        "font-size": {
+          "value": "{font.size.text-base}",
+          "type": "number"
+        },
+        "font-weight": {
+          "value": "{font.weight.normal}",
+          "type": "number"
+        },
+        "letter-spacing": {
+          "value": "{font.letter-spacing.normal}",
+          "type": "number"
+        },
+        "font-weight-bold": {
+          "value": "{font.weight.bold}",
+          "type": "number"
+        }
+      }
+    },
+    "base sizes": {
+      "base": {
+        "font-size": {
+          "value": "{font.size.text-base}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-6}",
+          "type": "number"
+        }
+      },
+      "small": {
+        "font-size": {
+          "value": "{font.size.text-sm}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-5}",
+          "type": "number"
+        }
+      },
+      "large": {
+        "font-size": {
+          "value": "{font.size.text-lg}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-7}",
+          "type": "number"
+        }
+      },
+      "extra small": {
+        "font-size": {
+          "value": "{font.size.text-xs}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-4}",
+          "type": "number"
+        }
+      },
+      "xlarge": {
+        "font-size": {
+          "value": "{font.size.text-xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-7}",
+          "type": "number"
+        }
+      },
+      "2x large": {
+        "font-size": {
+          "value": "{font.size.text-2xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-8}",
+          "type": "number"
+        }
+      },
+      "4x large": {
+        "font-size": {
+          "value": "{font.size.text-4xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-10}",
+          "type": "number"
+        }
+      },
+      "3x large": {
+        "font-size": {
+          "value": "{font.size.text-3xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.line-height.leading-9}",
+          "type": "number"
+        }
+      },
+      "5x large": {
+        "font-size": {
+          "value": "{font.size.text-5xl}",
+          "type": "number"
+        },
+        "line-height": {
+          "value": "{font.size.text-5xl}",
+          "type": "number"
+        }
+      }
+    }
+  },
+  "border radius": {
+    "default": {
+      "value": "{radius.rounded-md}",
+      "type": "number"
+    },
+    "sm": {
+      "value": "{radius.rounded-sm}",
+      "type": "number"
+    },
+    "lg": {
+      "value": "{radius.rounded-lg}",
+      "type": "number"
+    },
+    "full": {
+      "value": "{radius.rounded-full}",
+      "type": "number"
+    },
+    "xl": {
+      "value": "{radius.rounded-xl}",
+      "type": "number"
+    },
+    "md": {
+      "value": "{radius.rounded-md}",
+      "type": "number"
+    }
+  }
+}

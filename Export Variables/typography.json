@@ -1,0 +1,88 @@
+{
+  "fontFamilies": {
+    "sans": "Inter",
+    "serif": "Georgia, serif",
+    "mono": "Menlo"
+  },
+  "fontSizes": {
+    "xs": {
+      "value": "0.75rem",
+      "px": 12
+    },
+    "sm": {
+      "value": "0.875rem",
+      "px": 14
+    },
+    "base": {
+      "value": "1rem",
+      "px": 16
+    },
+    "lg": {
+      "value": "1.125rem",
+      "px": 18
+    },
+    "xl": {
+      "value": "1.25rem",
+      "px": 20
+    },
+    "2xl": {
+      "value": "1.5rem",
+      "px": 24
+    },
+    "3xl": {
+      "value": "1.875rem",
+      "px": 30
+    },
+    "4xl": {
+      "value": "2.25rem",
+      "px": 36
+    },
+    "5xl": {
+      "value": "3rem",
+      "px": 48
+    }
+  },
+  "fontWeights": {
+    "normal": 400,
+    "medium": 500,
+    "semibold": 600,
+    "bold": 700,
+    "extrabold": 800
+  },
+  "lineHeights": {
+    "4": {
+      "value": "1rem",
+      "px": 16
+    },
+    "5": {
+      "value": "1.25rem",
+      "px": 20
+    },
+    "6": {
+      "value": "1.5rem",
+      "px": 24
+    },
+    "7": {
+      "value": "1.75rem",
+      "px": 28
+    },
+    "8": {
+      "value": "2rem",
+      "px": 32
+    },
+    "9": {
+      "value": "2.25rem",
+      "px": 36
+    },
+    "10": {
+      "value": "2.5rem",
+      "px": 40
+    }
+  },
+  "letterSpacing": {
+    "tight": "-0.025em",
+    "normal": "0"
+  }
+}
+
+

@@ -1,0 +1,31 @@
+{
+  "radius": {
+    "base": "0.625rem",
+    "sm": "calc(0.625rem - 4px)",
+    "md": "calc(0.625rem - 2px)",
+    "lg": "0.625rem",
+    "xl": "calc(0.625rem + 4px)",
+    "2xl": "calc(0.625rem + 8px)",
+    "3xl": "calc(0.625rem + 12px)",
+    "4xl": "calc(0.625rem + 16px)",
+    "none": "0px",
+    "rounded-sm": "2px",
+    "rounded": "4px",
+    "rounded-md": "6px",
+    "rounded-lg": "8px",
+    "rounded-xl": "12px",
+    "rounded-2xl": "16px",
+    "rounded-3xl": "24px",
+    "rounded-4xl": "32px",
+    "rounded-full": "9999px"
+  },
+  "width": {
+    "0": "0px",
+    "1": "1px",
+    "2": "2px",
+    "4": "4px",
+    "8": "8px"
+  }
+}
+
+
