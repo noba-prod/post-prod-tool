@@ -78,7 +78,7 @@ export default function OTPPage() {
 
       if (result.ok && result.session) {
         toast.success("Successfully signed in!")
-        router.push("/app")
+        router.push("/collections")
       } else {
         toast.error(result.error || "Invalid or expired OTP")
       }

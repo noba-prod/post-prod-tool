@@ -89,3 +89,5 @@ noba-poc/
 - **Backend**: Supabase (Auth, Database, Storage)
 - **TypeScript**: Configurado con paths aliases (`@/*`)
 
+
+
