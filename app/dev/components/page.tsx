@@ -1,12 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { Search, RefreshCw } from "lucide-react"
+import { Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { NobaIsotype } from "@/components/previewer/noba-isotype"
+import { Logo } from "@/components/custom/logo"
 import { shadcnRegistry, type ComponentEntry } from "@/components/previewer/registry/shadcn"
 import { customRegistry } from "@/components/previewer/registry/custom"
 
@@ -74,7 +73,7 @@ export default function DevComponentsPage() {
       {/* Top Bar - fixed */}
       <header className="fixed top-0 left-0 right-0 z-50 w-full border-b backdrop-blur" style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e4e4e7' }}>
         <div className="flex h-14 items-center px-6 gap-6">
-          <NobaIsotype className="h-6 w-auto" />
+          <Logo variant="isotype" size="md" />
           
           <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-none">
             <TabsList className="h-9">
@@ -83,23 +82,18 @@ export default function DevComponentsPage() {
             </TabsList>
           </Tabs>
 
-          <div className="flex-1 flex items-center justify-center max-w-md mx-auto">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search component"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-full"
-              />
-            </div>
-          </div>
+          <div className="flex-1" />
 
-          <Button className="bg-zinc-900 hover:bg-zinc-800 text-white">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Update
-          </Button>
+          <div className="relative w-full max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search component"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-full"
+            />
+          </div>
         </div>
       </header>
 

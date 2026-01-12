@@ -2,11 +2,12 @@
 
 import * as React from "react"
 import { useState } from "react"
-import { NavBar } from "@/components/custom/nav-bar"
-import { Titles } from "@/components/custom/titles"
+import { MainTemplate } from "@/components/custom/templates/main-template"
+import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
-import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
+import { Grid } from "@/components/custom/grid"
 import { Tables, type Collection } from "@/components/custom/tables"
+import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
 
 // ============================================================================
 // MOCK DATA
@@ -252,70 +253,49 @@ export default function CollectionsPreviewPage() {
   }))
 
   return (
-    <div className="flex flex-col h-screen w-full bg-background">
-      {/* Fixed NavBar */}
-      <NavBar
-        variant="noba"
-        userName="Martin Becerra"
-        organization="noba"
-        role="admin"
-        isAdmin
-        hasNotifications={false}
-        className="sticky top-0 z-50"
-      />
-
-      {/* Scrollable Content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-6 px-6 py-8">
-          {/* Title */}
-          <Titles type="main-section" title="Collections" />
-
-          {/* Filter Bar + Content */}
-          <div className="flex flex-col gap-5">
-            {/* Filter Bar */}
-            <FilterBar
+    <MainTemplate
+      title="Collections"
+      navBarProps={{
+        variant: "noba",
+        userName: "Martin Becerra",
+        organization: "noba",
+        role: "admin",
+        isAdmin: true,
+      }}
+    >
+      <Layout padding="none" showSeparators={false}>
+        <LayoutSection>
+          <FilterBar
+            variant="collections"
+            activeView={activeView}
+            onViewChange={setActiveView}
+            onFilterChange={handleFilterChange}
+            onSortChange={handleSortChange}
+            showAction={false}
+          />
+        </LayoutSection>
+        <LayoutSection>
+          {activeView === "Gallery" ? (
+            <Grid items={gridItems} />
+          ) : (
+            <Tables
               variant="collections"
-              activeView={activeView}
-              onViewChange={setActiveView}
-              onFilterChange={handleFilterChange}
-              onSortChange={handleSortChange}
-              showAction={false}
+              collectionsData={tableItems}
+              onSettings={(id) => console.log("Settings for collection:", id)}
             />
-
-            {/* Content: Grid or Table */}
-            {activeView === "Gallery" ? (
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {gridItems.map((item, index) => (
-                  <CollectionCard
-                    key={index}
-                    {...item}
-                    className="!w-full h-[192px]"
-                  />
-                ))}
-              </div>
-            ) : (
-              <Tables
-                variant="collections"
-                collectionsData={tableItems}
-                onSettings={(id) => console.log("Settings for collection:", id)}
-              />
-            )}
-
-            {/* Empty State */}
-            {filteredCollections.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-lg font-medium text-muted-foreground">
-                  No collections found
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Try adjusting your filters
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
-    </div>
+          )}
+          {filteredCollections.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <p className="text-lg font-medium text-muted-foreground">
+                No collections found
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Try adjusting your filters
+              </p>
+            </div>
+          )}
+        </LayoutSection>
+      </Layout>
+    </MainTemplate>
   )
 }
-

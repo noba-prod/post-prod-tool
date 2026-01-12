@@ -17,7 +17,7 @@ import { CollectionCard, CollectionCardProps } from "./collection-card"
  * 
  * ## Spacing (from Figma)
  * - Gap between items: 16px
- * - Container padding: 40px
+ * - No container padding (fills layout width, spacing handled by Layout)
  * 
  * ## Usage
  * The grid automatically adjusts columns based on container width.
@@ -110,8 +110,8 @@ export function Grid({ items = defaultItems, className }: GridProps) {
     >
       <div
         className={cn(
-          // Base grid styles with gap-4 (16px) and p-10 (40px)
-          "grid gap-4 p-10",
+          // Base grid styles with gap-4 (16px) - no padding, fills layout width
+          "grid gap-4",
           // Responsive columns based on container width
           // Default: 1 column (320px - 559px)
           "grid-cols-1",

@@ -1,13 +1,17 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { Plus, Search, Menu } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandList, CommandItem } from "@/components/ui/command"
 import { Logo } from "./logo"
 import { Notifications } from "./notifications"
 import { UserInformation } from "./user-information"
+import { ModalWindow } from "./modal-window"
 
 type NavBarVariant = "noba" | "collaborator" | "photographer"
 
@@ -75,11 +79,55 @@ export function NavBar({
   onLogout,
   className,
 }: NavBarProps) {
+  const router = useRouter()
   const tabs = variantTabs[variant]
   const initials = userName.charAt(0).toUpperCase()
+  const [createMenuOpen, setCreateMenuOpen] = React.useState(false)
+  const [selfPhotographerModalOpen, setSelfPhotographerModalOpen] = React.useState(false)
 
   // Valores por defecto para organization según variante
   const displayOrganization = organization ?? (variant === "noba" ? "noba" : variant === "collaborator" ? "company" : undefined)
+
+  // Command options for "Create new" menu
+  const createOptions = [
+    { id: "collection", label: "Collection" },
+    { id: "client", label: "Client" },
+    { id: "self-photographer", label: "Self-photographer" },
+    { id: "agency", label: "Agency" },
+    { id: "photo-lab", label: "Photo lab" },
+    { id: "edition-studio", label: "Edition studio" },
+    { id: "hand-print-lab", label: "Hand print lab" },
+  ]
+
+  const handleCreateOption = (optionId: string) => {
+    setCreateMenuOpen(false)
+    
+    switch (optionId) {
+      case "collection":
+        router.push("/create/collection")
+        break
+      case "client":
+        router.push("/create/client")
+        break
+      case "self-photographer":
+        setSelfPhotographerModalOpen(true)
+        break
+      case "agency":
+        router.push("/create/agency")
+        break
+      case "photo-lab":
+        router.push("/create/photo-lab")
+        break
+      case "edition-studio":
+        router.push("/create/edition-studio")
+        break
+      case "hand-print-lab":
+        router.push("/create/hand-print-lab")
+        break
+    }
+    
+    onCreateNew?.()
+  }
 
   return (
     <nav className={cn("w-full bg-background", className)}>
@@ -91,16 +139,31 @@ export function NavBar({
           
           <div className="flex items-center gap-4">
             {/* Navigation Tabs */}
-            {tabs.map((tab) => (
-              <Button
-                key={tab}
-                variant="ghost"
-                size="lg"
-                className="rounded-xl px-4 text-sm font-medium text-foreground"
-              >
-                {tab}
-              </Button>
-            ))}
+            {tabs.map((tab) => {
+              const handleTabClick = () => {
+                const routeMap: Record<string, string> = {
+                  "Collections": "/collections",
+                  "Entities": "/entities",
+                  "Team": "/team",
+                }
+                const route = routeMap[tab]
+                if (route) {
+                  router.push(route)
+                }
+              }
+              
+              return (
+                <Button
+                  key={tab}
+                  variant="ghost"
+                  size="lg"
+                  className="rounded-xl px-4 text-sm font-medium text-foreground"
+                  onClick={handleTabClick}
+                >
+                  {tab}
+                </Button>
+              )
+            })}
 
             {/* Search Button */}
             <button
@@ -118,10 +181,34 @@ export function NavBar({
         <div className="flex items-center gap-4">
           {/* Create new button - solo para variante noba */}
           {variant === "noba" && (
-            <Button onClick={onCreateNew} size="lg" className="rounded-xl gap-2">
-              <Plus className="size-4" />
-              Create new
-            </Button>
+            <Popover open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
+              <PopoverTrigger asChild>
+                <Button size="lg" className="rounded-xl gap-2 px-4">
+                  <Plus className="size-4" />
+                  Create new
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent 
+                className="w-[200px] p-1" 
+                align="end"
+                sideOffset={8}
+              >
+                <Command shouldFilter={false}>
+                  <CommandList>
+                    {createOptions.map((option) => (
+                      <CommandItem
+                        key={option.id}
+                        value={option.label}
+                        onSelect={() => handleCreateOption(option.id)}
+                        className="cursor-pointer"
+                      >
+                        {option.label}
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           )}
 
           <Notifications
@@ -177,6 +264,24 @@ export function NavBar({
           </div>
         </div>
       </div>
+
+      {/* Self-photographer Modal */}
+      {variant === "noba" && (
+        <ModalWindow
+          open={selfPhotographerModalOpen}
+          onOpenChange={setSelfPhotographerModalOpen}
+          title="New photographer"
+          primaryLabel="Create"
+          secondaryLabel="Cancel"
+          onSecondaryClick={() => setSelfPhotographerModalOpen(false)}
+        >
+          <div className="p-5">
+            <p className="text-sm text-muted-foreground">
+              Self-photographer creation form will be implemented here.
+            </p>
+          </div>
+        </ModalWindow>
+      )}
     </nav>
   )
 }

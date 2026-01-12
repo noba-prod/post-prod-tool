@@ -22,7 +22,55 @@ export { Titles } from "./titles"
 export { FilterBar } from "./filter-bar"
 export { Tables } from "./tables"
 export { Grid } from "./grid"
+export { Check } from "./check"
+export { CheckSelection } from "./check-selection"
+export { StepIndicator } from "./step-indicator"
+export { StepConnector } from "./step-connector"
+export { ProgressItem } from "./progress-item"
+export { MenuItem } from "./menu-item"
+export { ContextualMenu } from "./contextual-menu"
+export { EntitySummaryCard } from "./entity-summary-card"
+export { CollectionSummaryCard } from "./collection-summary-card"
+export { SideBar } from "./side-bar"
+
+// Form item components
+export { PhoneInput } from "./phone-input"
+export { DatePicker } from "./date-picker"
+export { TimePicker } from "./time-picker"
+export { OptionPicker } from "./option-picker"
+export { EntitySelected } from "./entity-selected"
+export { SwitchList } from "./switch-list"
+export { InformativeToast } from "./informative-toast"
+export { RowVariants, SlotPlaceholder } from "./row-variants"
+export { Forms, FormBasic, FormCapsule, FormShippingModule, FormHorizontalFlow } from "./forms"
+export { ParticipantSummary } from "./participant-summary"
+export { ParticipantSetupBox } from "./participant-setup-box"
+export { ActionBar } from "./action-bar"
+export { BlockHeading } from "./block-heading"
+export { CollectionHeading } from "./collection-heading"
+export { Layout, LayoutSection, LayoutSlot } from "./layout"
+export { BlockTemplate } from "./block"
+
+// Demo components (organized in demos/ folder)
+export {
+  CheckSelectionDemo,
+  ProgressItemDemo,
+  MenuItemDemo,
+  ContextualMenuDemo,
+  SideBarDemo,
+  FormItemsDemo,
+  RowVariantsDemo,
+  FormsDemo,
+  ParticipantSummaryDemo,
+  ParticipantSetupBoxDemo,
+  ActionBarDemo,
+  BlockHeadingDemo,
+  CollectionHeadingDemo,
+  LayoutDemo,
+  BlockTemplateDemo,
+  ModalWindowDemo,
+  TemplatesDemo,
+} from "./demos"
 
 // Añade aquí tus nuevos componentes personalizados:
 // export { YourCustomComponent } from "./your-custom-component"
-
