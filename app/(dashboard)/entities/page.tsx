@@ -1,28 +1,58 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
+import { CreateEntityCommand } from "@/components/custom/create-entity-command"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import type { Entity } from "@/components/custom/tables"
 
+// Service imports
+import { createEntitiesListService } from "@/lib/services"
+
 // ============================================================================
-// MOCK DATA
+// TOAST ON NAVIGATION - Check for pending toast on page load
 // ============================================================================
 
-const MOCK_ENTITIES: Entity[] = [
-  { id: "1", name: "Zara", type: "Client", admin: "Erika Goldner (+2)", teamMembers: 8, collections: 4 },
-  { id: "2", name: "Kodak Scanner", type: "Photo Lab", admin: "Sophia Johnson", teamMembers: 3, collections: 2 },
-  { id: "3", name: "Tom Haser", type: "Photographer", admin: "Kevin Brown", teamMembers: 1, collections: 1 },
-  { id: "4", name: "Photo LUX", type: "Photo Agency", admin: "Sarah Davis (+1)", teamMembers: 2, collections: 2 },
-  { id: "5", name: "Reveal Coruña", type: "Printer Lab", admin: "James Wilson", teamMembers: 3, collections: 6 },
-  { id: "6", name: "Mango", type: "Client", admin: "Carlos García", teamMembers: 5, collections: 3 },
-  { id: "7", name: "Loewe", type: "Client", admin: "Ana López", teamMembers: 4, collections: 2 },
+const PENDING_TOAST_KEY = "noba_pending_toast"
+
+interface PendingToast {
+  type: "success" | "error"
+  title: string
+  description: string
+}
+
+function consumePendingToast(): PendingToast | null {
+  if (typeof window === "undefined") return null
+  const stored = sessionStorage.getItem(PENDING_TOAST_KEY)
+  if (stored) {
+    sessionStorage.removeItem(PENDING_TOAST_KEY)
+    try {
+      return JSON.parse(stored) as PendingToast
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+// ============================================================================
+// ENTITY OPTIONS (excludes Collection for entities page)
+// ============================================================================
+
+const ENTITIES_PAGE_OPTIONS: Array<"client" | "self-photographer" | "agency" | "photo-lab" | "edition-studio" | "hand-print-lab"> = [
+  "client",
+  "self-photographer",
+  "agency",
+  "photo-lab",
+  "edition-studio",
+  "hand-print-lab",
 ]
 
 // ============================================================================
@@ -44,13 +74,42 @@ export default function EntitiesPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   
+  // Entities data from repository
+  const [entities, setEntities] = useState<Entity[]>([])
+  const [loadingEntities, setLoadingEntities] = useState(false)
+  
   // Filters state
   const [filters, setFilters] = useState<Filters>({
     type: null,
     search: "",
   })
 
-  // Auth check
+  // Load entities from repository
+  const loadEntities = useCallback(async () => {
+    setLoadingEntities(true)
+    try {
+      const service = createEntitiesListService()
+      const items = await service.listEntities()
+      
+      // Map EntityListItem to Entity type expected by Tables component
+      const mappedEntities: Entity[] = items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type as Entity["type"],
+        admin: item.admin,
+        teamMembers: item.teamMembers,
+        collections: item.collections,
+      }))
+      
+      setEntities(mappedEntities)
+    } catch (error) {
+      console.error("Failed to load entities:", error)
+    } finally {
+      setLoadingEntities(false)
+    }
+  }, [])
+
+  // Auth check and initial load
   useEffect(() => {
     const checkSession = async () => {
       const currentSession = await authAdapter.getSession()
@@ -60,9 +119,26 @@ export default function EntitiesPage() {
       }
       setSession(currentSession)
       setLoading(false)
+      
+      // Load entities after auth
+      loadEntities()
+      
+      // Check for pending toast (from navbar creation flow)
+      const pendingToast = consumePendingToast()
+      if (pendingToast) {
+        if (pendingToast.type === "success") {
+          toast.success(pendingToast.title, {
+            description: pendingToast.description,
+          })
+        } else {
+          toast.error(pendingToast.title, {
+            description: pendingToast.description,
+          })
+        }
+      }
     }
     checkSession()
-  }, [router, authAdapter])
+  }, [router, authAdapter, loadEntities])
 
   // Handle filter changes
   const handleFilterChange = (filterId: string, value: string) => {
@@ -79,19 +155,19 @@ export default function EntitiesPage() {
     setFilters(prev => ({ ...prev, search: value }))
   }
 
-  // Handle action click (New entity)
-  const handleActionClick = () => {
-    router.push("/create/client")
-  }
-
   // Handle view details
   const handleViewDetails = (id: string) => {
     router.push(`/entities/${id}`)
   }
 
+  // Handle entity created - refresh the list
+  const handleEntityCreated = useCallback(() => {
+    loadEntities()
+  }, [loadEntities])
+
   // Filter entities
   const filteredEntities = React.useMemo(() => {
-    let result = [...MOCK_ENTITIES]
+    let result = [...entities]
 
     // Apply type filter
     if (filters.type) {
@@ -109,7 +185,7 @@ export default function EntitiesPage() {
     }
 
     return result
-  }, [filters])
+  }, [entities, filters])
 
   if (loading) {
     return (
@@ -136,29 +212,55 @@ export default function EntitiesPage() {
     >
       <Layout padding="none" showSeparators={false}>
         <LayoutSection>
-          <FilterBar
-            variant="entities"
-            onSearchChange={handleSearchChange}
-            onActionClick={handleActionClick}
-            onFilterChange={handleFilterChange}
-            searchPlaceholder="Search entities..."
-          />
+          {/* Custom filter bar with CreateEntityCommand */}
+          <div className="flex items-center justify-between w-full h-10">
+            {/* Left side: FilterBar without action button */}
+            <div className="flex-1">
+              <FilterBar
+                variant="entities"
+                onSearchChange={handleSearchChange}
+                onFilterChange={handleFilterChange}
+                searchPlaceholder="Search entities..."
+                showAction={false}
+              />
+            </div>
+            
+            {/* Right side: CreateEntityCommand (excludes Collection) */}
+            <CreateEntityCommand
+              allowedOptions={ENTITIES_PAGE_OPTIONS}
+              buttonLabel="New entity"
+              popoverAlign="end"
+              redirectAfterCreate={false}
+              onCreated={handleEntityCreated}
+            />
+          </div>
         </LayoutSection>
         <LayoutSection>
-          <Tables
-            variant="entities"
-            entitiesData={filteredEntities}
-            onViewDetails={handleViewDetails}
-          />
-          {filteredEntities.length === 0 && (
+          {loadingEntities ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-lg font-medium text-muted-foreground">
-                No entities found
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Try adjusting your filters
-              </p>
+              <p className="text-sm text-muted-foreground">Loading entities...</p>
             </div>
+          ) : (
+            <>
+              <Tables
+                variant="entities"
+                entitiesData={filteredEntities}
+                onViewDetails={handleViewDetails}
+              />
+              {filteredEntities.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="text-lg font-medium text-muted-foreground">
+                    No entities found
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {entities.length === 0 
+                      ? "Create your first entity to get started"
+                      : "Try adjusting your filters"
+                    }
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </LayoutSection>
       </Layout>

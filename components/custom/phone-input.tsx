@@ -98,16 +98,18 @@ export function PhoneInput({
   }
 
   return (
-    <div className={cn("flex flex-col gap-2 w-full", className)}>
+    <div className={cn("flex flex-col gap-3 w-full", className)}>
       {/* Label */}
-      <Label
-        className={cn(
-          "text-sm font-medium leading-none",
-          disabled ? "text-muted-foreground" : "text-foreground"
-        )}
-      >
-        {label}
-      </Label>
+      {label && (
+        <Label
+          className={cn(
+            "text-sm font-medium leading-snug w-fit",
+            disabled ? "text-muted-foreground" : "text-foreground"
+          )}
+        >
+          {label}
+        </Label>
+      )}
 
       {/* Inputs row - 8px gap (gap-2) */}
       <div className="flex gap-2 items-center">
@@ -120,12 +122,12 @@ export function PhoneInput({
               aria-expanded={open}
               disabled={disabled}
               className={cn(
-                "w-16 h-10 justify-between px-3 font-medium text-sm shrink-0",
+                "h-9 justify-between pl-3 pr-1.5 font-medium text-sm shrink-0 min-w-fit",
                 disabled && "opacity-50"
               )}
             >
               {countryCode}
-              <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
+              <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0 ml-1.5" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[220px] p-0" align="start">
@@ -159,7 +161,7 @@ export function PhoneInput({
           placeholder={placeholder}
           disabled={disabled}
           className={cn(
-            "h-10 flex-1 rounded-md px-3",
+            "h-9 flex-1 rounded-md px-3",
             disabled && "opacity-50"
           )}
         />

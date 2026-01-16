@@ -22,6 +22,11 @@ interface CreationBlock {
   subtitle?: string
   variant?: "active" | "completed" | "disabled"
   content?: React.ReactNode
+  primaryLabel?: string
+  onPrimaryClick?: () => void
+  primaryDisabled?: boolean
+  /** Callback when Edit button is clicked (for completed blocks) */
+  onEdit?: () => void
 }
 
 interface CreationTemplateProps {
@@ -35,6 +40,8 @@ interface CreationTemplateProps {
   activeSidebarItem?: string
   /** Blocks to display */
   blocks?: CreationBlock[]
+  /** Callback when a sidebar item is clicked */
+  onSidebarItemClick?: (id: string) => void
   /** NavBar props */
   navBarProps?: {
     variant?: "noba" | "collaborator" | "photographer"
@@ -66,13 +73,14 @@ export function CreationTemplate({
   ],
   activeSidebarItem,
   blocks = [],
+  onSidebarItemClick,
   navBarProps,
   className,
 }: CreationTemplateProps) {
   const router = useRouter()
 
   return (
-    <div className={cn("flex flex-col min-h-screen w-full bg-background", className)}>
+    <div className={cn("flex flex-col h-screen w-full bg-background overflow-hidden", className)}>
       {/* NavBar */}
       <NavBar
         variant={navBarProps?.variant || "noba"}
@@ -83,7 +91,7 @@ export function CreationTemplate({
       />
 
       {/* Content Container with background pattern */}
-      <div className="flex-1 flex flex-col bg-sidebar relative">
+      <div className="flex-1 flex flex-col bg-sidebar relative min-h-0 overflow-hidden">
         {/* Background pattern overlay */}
         <div
           className="absolute inset-0 pointer-events-none"
@@ -95,7 +103,7 @@ export function CreationTemplate({
         />
         
         {/* Breadcrumb */}
-        <div className="border-border px-6 py-8 relative z-10">
+        <div className="border-border px-6 py-8 relative z-10 shrink-0">
           <Breadcrumb>
             <BreadcrumbList>
               {breadcrumbs.map((crumb, index) => (
@@ -123,36 +131,57 @@ export function CreationTemplate({
         </div>
 
         {/* Main Layout: Sidebar + Content */}
-        <div className="flex-1 flex overflow-hidden relative">
+        <div className="flex-1 flex overflow-visible relative min-h-0">
           {/* Sidebar Container with padding */}
-          <aside className="w-[320px] shrink-0 px-4 pb-4 relative z-10 flex flex-col">
-            <div className="h-full rounded-xl overflow-hidden">
+          <aside className="w-[320px] shrink-0 px-4 pb-4 relative z-10 flex flex-col min-h-0">
+            <div className="h-full max-h-full rounded-xl overflow-hidden flex flex-col">
               <SideBar
                 type="create-entity"
                 title={title}
                 items={sidebarItems}
                 activeId={activeSidebarItem || sidebarItems[0]?.id}
+                completedItems={blocks
+                  .map((block, index) => {
+                    // Match block to sidebar item by index
+                    const sidebarItem = sidebarItems[index]
+                    // If block is completed, mark corresponding sidebar item as completed
+                    if (block.variant === "completed" && sidebarItem) {
+                      return sidebarItem.id
+                    }
+                    return null
+                  })
+                  .filter((id): id is string => id !== null)}
+                onItemClick={onSidebarItemClick}
                 deleteLabel="Delete"
               />
             </div>
           </aside>
 
           {/* Content */}
-          <main className="flex-1 overflow-y-auto relative z-10">
-            <div className="px-6 space-y-0">
+          <main className="flex-1 overflow-y-auto relative z-10 min-w-0">
+            <div className="px-6 space-y-0 pb-[45px]">
               {blocks.map((block, index) => (
                 <React.Fragment key={block.id}>
                   <BlockTemplate
                     mode="creation"
                     variant={block.variant || "active"}
+                    currentVariant={block.variant || "active"}
                     title={block.title}
                     subtitle={block.subtitle}
+                    primaryLabel={block.primaryLabel}
+                    onPrimaryClick={block.onPrimaryClick}
+                    primaryDisabled={block.primaryDisabled}
+                    onEdit={block.onEdit}
                   >
                     {block.content}
                   </BlockTemplate>
                   {index < blocks.length - 1 && (
                     <div className="flex justify-center">
-                      <StepConnector status="uncompleted" orientation="vertical" className="h-5" />
+                      <StepConnector 
+                        status={block.variant === "completed" ? "completed" : "uncompleted"} 
+                        orientation="vertical" 
+                        className="h-5" 
+                      />
                     </div>
                   )}
                 </React.Fragment>

@@ -68,6 +68,8 @@ interface SideBarCreateEntityProps extends SideBarBaseProps {
   type: "create-entity"
   /** Stepper items (no icons) */
   items: SideBarMenuItem[]
+  /** Array of completed item ids */
+  completedItems?: string[]
   /** Delete button label */
   deleteLabel?: string
 }
@@ -144,7 +146,7 @@ export function SideBar(props: SideBarProps) {
   }
 
   if (type === "create-entity") {
-    const { items, deleteLabel = "Delete [entity:type]", onDelete } = props
+    const { items, completedItems = [], deleteLabel = "Delete [entity:type]", onDelete } = props
     return (
       <div className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}>
         {/* Content - scrollable area */}
@@ -160,6 +162,7 @@ export function SideBar(props: SideBarProps) {
               type="stepper"
               items={items}
               activeId={activeId}
+              completedItems={completedItems}
               onItemClick={onItemClick}
             />
           </div>

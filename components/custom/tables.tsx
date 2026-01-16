@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -81,6 +82,8 @@ interface TablesProps {
   onSettings?: (id: string) => void
   /** Callback al cambiar permiso de edición */
   onEditPermissionChange?: (id: string, value: boolean) => void
+  /** Whether delete actions should be shown (for team members table) */
+  canDelete?: boolean
   className?: string
 }
 
@@ -139,9 +142,11 @@ function TableWrapper({ children, className }: { children: React.ReactNode; clas
 function TeamMembersTable({
   data = sampleTeamMembers,
   onDelete,
+  canDelete = true,
 }: {
   data?: TeamMember[]
   onDelete?: (id: string) => void
+  canDelete?: boolean
 }) {
   return (
     <TableWrapper>
@@ -153,7 +158,7 @@ function TeamMembersTable({
             <TableHead className="bg-sidebar h-12">Phone</TableHead>
             <TableHead className="bg-sidebar h-12">Role</TableHead>
             <TableHead className="bg-sidebar h-12">Collections</TableHead>
-            <TableHead className="bg-sidebar h-12 w-[85px]"></TableHead>
+            {canDelete && <TableHead className="bg-sidebar h-12 w-[85px]"></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -164,16 +169,18 @@ function TeamMembersTable({
               <TableCell>{member.phone}</TableCell>
               <TableCell>{member.role}</TableCell>
               <TableCell>{member.collections}</TableCell>
-              <TableCell className="text-center">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => onDelete?.(member.id)}
-                  className="h-10 w-10"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </TableCell>
+              {canDelete && (
+                <TableCell className="text-center">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onDelete?.(member.id)}
+                    className="h-10 w-10"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>
@@ -208,8 +215,28 @@ function EntitiesTable({
         </TableHeader>
         <TableBody>
           {data.map((entity) => (
-            <TableRow key={entity.id} className="h-[52px]">
-              <TableCell className="font-medium">{entity.name}</TableCell>
+            <TableRow
+              key={entity.id}
+              className="h-[52px] cursor-pointer hover:bg-muted/50 transition-colors"
+              onClick={() => onViewDetails?.(entity.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  onViewDetails?.(entity.id)
+                }
+              }}
+            >
+              <TableCell className="font-medium">
+                <Link
+                  href={`/entities/${entity.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="hover:underline focus:outline-none focus:underline"
+                >
+                  {entity.name}
+                </Link>
+              </TableCell>
               <TableCell>{entity.type}</TableCell>
               <TableCell>{entity.admin}</TableCell>
               <TableCell>{entity.teamMembers}</TableCell>
@@ -218,8 +245,12 @@ function EntitiesTable({
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => onViewDetails?.(entity.id)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onViewDetails?.(entity.id)
+                  }}
                   className="h-10 w-10"
+                  aria-label={`View details for ${entity.name}`}
                 >
                   <ChevronRight className="size-4" />
                 </Button>
@@ -357,13 +388,14 @@ export function Tables({
   onViewDetails,
   onSettings,
   onEditPermissionChange,
+  canDelete = true,
   className,
 }: TablesProps) {
   switch (variant) {
     case "team-members":
       return (
         <div className={className}>
-          <TeamMembersTable data={teamMembersData} onDelete={onDelete} />
+          <TeamMembersTable data={teamMembersData} onDelete={onDelete} canDelete={canDelete} />
         </div>
       )
     case "entities":

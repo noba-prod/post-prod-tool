@@ -21,6 +21,8 @@ interface ContextualMenuBaseProps {
   items: ContextualMenuItemData[]
   /** Currently active item id */
   activeId?: string
+  /** Array of completed item ids (for stepper type) */
+  completedItems?: string[]
   /** Callback when an item is clicked */
   onItemClick?: (id: string) => void
   className?: string
@@ -47,6 +49,7 @@ export function ContextualMenu({
   type,
   items,
   activeId,
+  completedItems = [],
   onItemClick,
   className,
 }: ContextualMenuProps) {
@@ -55,19 +58,30 @@ export function ContextualMenu({
       <div className={cn("flex flex-col", className)}>
         {items.map((item, index) => {
           const isActive = item.id === activeId
+          const isCompleted = completedItems.includes(item.id)
           const isLast = index === items.length - 1
+          const nextItem = items[index + 1]
+          const isNextCompleted = nextItem ? completedItems.includes(nextItem.id) : false
+          
+          // Determine status: completed > active > disabled
+          let status: "active" | "disabled" | "completed" = "disabled"
+          if (isCompleted) {
+            status = "completed"
+          } else if (isActive) {
+            status = "active"
+          }
           
           return (
             <React.Fragment key={item.id}>
               <ProgressItem
                 label={item.label}
-                status={isActive ? "active" : "disabled"}
+                status={status}
                 onClick={() => onItemClick?.(item.id)}
               />
               {!isLast && (
                 <div className="flex justify-start pl-5 py-0">
                   <StepConnector 
-                    status="uncompleted" 
+                    status={isCompleted || isNextCompleted ? "completed" : "uncompleted"} 
                     orientation="vertical"
                     className="h-5"
                   />

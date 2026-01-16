@@ -35,6 +35,8 @@ import {
   BlockTemplateDemo,
   ModalWindowDemo,
   TemplatesDemo,
+  UserCreationFormDemo,
+  EntityBasicInformationFormDemo,
 } from "@/components/custom/demos"
 import { PhoneInput } from "@/components/custom/phone-input"
 import { DatePicker } from "@/components/custom/date-picker"
@@ -695,6 +697,20 @@ Gap: 16px | Padding: 40px`,
     title: "Modal Window",
     description: "Right-aligned slide-in modal panel with overlay (#000 at 36% opacity). Structure: Header (Titles + Close button, fixed), Content (scrollable), Footer (ActionBar, fixed). Slides in from right with animation. Click outside or press Escape to close.",
     demo: <ModalWindowDemo />,
+  },
+  {
+    id: "user-creation-form",
+    name: "user-creation-form",
+    title: "User Creation Form",
+    description: "Reusable form for creating users with two variants: 'Create User' (all fields editable) and 'New Admin User' (Entity prefilled/disabled, Role fixed to Admin). Uses ModalWindow structure with Layout and RowVariants (2 columns). Fields: First Name, Last Name, Email, Phone Number (PhoneInput), Entity (disabled select showing EntityType as label and EntityName as value), Role (Admin/Editor/Viewer).",
+    demo: <UserCreationFormDemo />,
+  },
+  {
+    id: "entity-basic-information-form",
+    name: "entity-basic-information-form",
+    title: "Entity Basic Information Form",
+    description: "Step 1 form for creating standard entities (Client, Agency, Photo Lab, Edition Studio, Hand Print Lab). Uses BlockTemplate in creation mode. Three blocks: Entity Details (Entity Type + Name), Location (Street Address, ZIP Code, City, Country - optional for Client), Additional Information (Email, Phone, Profile Picture, Notes). Location block uses 1-column for Street Address and 3-columns for ZIP/City/Country. Additional Information uses 3-columns for Email/Phone/Upload and 1-column for Notes.",
+    demo: <EntityBasicInformationFormDemo />,
   },
   {
     id: "templates",

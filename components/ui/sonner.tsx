@@ -10,7 +10,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
-      position="bottom-center"
+      position="top-right"
       duration={5000}
       gap={8}
       className="toaster group"

@@ -122,6 +122,16 @@ function ModalWindow({
           )}
           style={{ width }}
         >
+          {/* Accessible title and description (visually hidden, required by Radix for a11y) */}
+          <DialogPrimitive.Title className="sr-only">
+            {title}
+          </DialogPrimitive.Title>
+          {showSubtitle && subtitle && (
+            <DialogPrimitive.Description className="sr-only">
+              {subtitle}
+            </DialogPrimitive.Description>
+          )}
+          
           {/* Header: Fixed at top (no border, per Figma design) */}
           <div className="flex items-start justify-between gap-7 p-5 shrink-0">
             <Titles

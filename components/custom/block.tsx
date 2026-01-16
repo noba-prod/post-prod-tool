@@ -49,6 +49,8 @@ interface BlockTemplateCreationProps {
   primaryLabel?: string
   /** Callback when primary button is clicked */
   onPrimaryClick?: () => void
+  /** Whether primary button is disabled */
+  primaryDisabled?: boolean
   /** Callback when Edit button is clicked */
   onEdit?: () => void
   className?: string
@@ -78,6 +80,8 @@ interface BlockTemplateViewProps {
   primaryLabel?: string
   /** Callback when primary button is clicked */
   onPrimaryClick?: () => void
+  /** Whether primary button is disabled */
+  primaryDisabled?: boolean
   /** Callback when expand/collapse is clicked */
   onExpand?: () => void
   onCollapse?: () => void
@@ -148,6 +152,7 @@ export function BlockTemplate(props: BlockTemplateProps) {
       participants = [],
       primaryLabel = "Primary",
       onPrimaryClick,
+      primaryDisabled = false,
       onEdit,
     } = props as BlockTemplateCreationProps
 
@@ -155,7 +160,16 @@ export function BlockTemplate(props: BlockTemplateProps) {
     const [internalVariant, setInternalVariant] = React.useState<CreationVariant>(initialVariant)
     
     // Use controlled or uncontrolled variant
-    const activeVariant = currentVariant ?? internalVariant
+    // If currentVariant is provided, use it (controlled mode)
+    // Otherwise, use internal state (uncontrolled mode)
+    const activeVariant = currentVariant !== undefined ? currentVariant : internalVariant
+    
+    // Update internal state when initialVariant changes (for uncontrolled mode)
+    React.useEffect(() => {
+      if (currentVariant === undefined) {
+        setInternalVariant(initialVariant)
+      }
+    }, [initialVariant, currentVariant])
     
     // Handle variant change
     const handleVariantChange = (newVariant: CreationVariant) => {
@@ -240,17 +254,20 @@ export function BlockTemplate(props: BlockTemplateProps) {
           {children || <SlotPlaceholder />}
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-3 w-full">
-          <Button
-            variant="default"
-            size="lg"
-            onClick={handlePrimaryClick}
-            className="rounded-xl"
-          >
-            {primaryLabel}
-          </Button>
-        </div>
+        {/* Actions - only show if onPrimaryClick is provided */}
+        {onPrimaryClick && (
+          <div className="flex items-center justify-end gap-3 w-full">
+            <Button
+              variant="default"
+              size="lg"
+              onClick={handlePrimaryClick}
+              disabled={primaryDisabled}
+              className="rounded-xl"
+            >
+              {primaryLabel}
+            </Button>
+          </div>
+        )}
       </div>
     )
   }
@@ -269,6 +286,7 @@ export function BlockTemplate(props: BlockTemplateProps) {
     participants = [],
     primaryLabel = "Primary",
     onPrimaryClick,
+    primaryDisabled = false,
     onExpand,
     onCollapse,
   } = props as BlockTemplateViewProps
@@ -329,7 +347,7 @@ export function BlockTemplate(props: BlockTemplateProps) {
     )
   }
 
-  // View - Active: Block title + subtitle + content + Primary button
+  // View - Active: Block title + subtitle + content + Primary button (optional)
   return (
     <div
       className={cn(
@@ -355,17 +373,20 @@ export function BlockTemplate(props: BlockTemplateProps) {
         {children || <SlotPlaceholder />}
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-3 w-full">
-        <Button
-          variant="default"
-          size="lg"
-          onClick={onPrimaryClick}
-          className="rounded-xl"
-        >
-          {primaryLabel}
-        </Button>
-      </div>
+      {/* Actions - only show if onPrimaryClick is provided */}
+      {onPrimaryClick && (
+        <div className="flex items-center justify-end gap-3 w-full">
+          <Button
+            variant="default"
+            size="lg"
+            onClick={onPrimaryClick}
+            disabled={primaryDisabled}
+            className="rounded-xl"
+          >
+            {primaryLabel}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

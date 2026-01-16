@@ -39,6 +39,10 @@ interface FilterBarProps {
   viewLabels?: [string, string]
   filters?: FilterOption[]
   className?: string
+  /** Whether the action button should be disabled */
+  actionDisabled?: boolean
+  /** Whether to hide the Client filter (useful in entity view context) */
+  hideClientFilter?: boolean
 }
 
 // Mock data
@@ -219,6 +223,8 @@ export function FilterBar({
   viewLabels = ["View 01", "View 02"],
   filters,
   className,
+  actionDisabled = false,
+  hideClientFilter = false,
 }: FilterBarProps) {
   // State for popover open/close
   const [clientOpen, setClientOpen] = React.useState(false)
@@ -358,31 +364,33 @@ export function FilterBar({
       case "collections":
         return (
           <>
-            {/* Client Filter */}
-            <FilterButtonWithPopover
-              label={getClientLabel()}
-              open={clientOpen}
-              onOpenChange={setClientOpen}
-            >
-              <Command>
-                <CommandInput placeholder="Search client..." />
-                <CommandList>
-                  <CommandEmpty>No client found.</CommandEmpty>
-                  <CommandGroup>
-                    {MOCK_CLIENTS.map((client) => (
-                      <CommandItem
-                        key={client.id}
-                        value={client.name}
-                        onSelect={() => handleClientSelect(client.id, client.name)}
-                        data-checked={selectedClient === client.id}
-                      >
-                        {client.name}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </FilterButtonWithPopover>
+            {/* Client Filter - hidden if hideClientFilter is true */}
+            {!hideClientFilter && (
+              <FilterButtonWithPopover
+                label={getClientLabel()}
+                open={clientOpen}
+                onOpenChange={setClientOpen}
+              >
+                <Command>
+                  <CommandInput placeholder="Search client..." />
+                  <CommandList>
+                    <CommandEmpty>No client found.</CommandEmpty>
+                    <CommandGroup>
+                      {MOCK_CLIENTS.map((client) => (
+                        <CommandItem
+                          key={client.id}
+                          value={client.name}
+                          onSelect={() => handleClientSelect(client.id, client.name)}
+                          data-checked={selectedClient === client.id}
+                        >
+                          {client.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </FilterButtonWithPopover>
+            )}
 
             {/* Status Filter */}
             <FilterButtonWithPopover
@@ -532,6 +540,7 @@ export function FilterBar({
         {effectiveShowAction && (
           <Button
             onClick={onActionClick}
+            disabled={actionDisabled}
             className="h-10 px-4 rounded-xl gap-2"
           >
             {effectiveActionIcon}

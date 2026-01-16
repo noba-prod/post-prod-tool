@@ -15,8 +15,18 @@ import { ChevronDownIcon, XIcon, CheckIcon } from "lucide-react"
 
 const Combobox = ComboboxPrimitive.Root
 
-function ComboboxValue({ ...props }: ComboboxPrimitive.Value.Props) {
-  return <ComboboxPrimitive.Value data-slot="combobox-value" {...props} />
+function ComboboxValue({ className, ...props }: ComboboxPrimitive.Value.Props) {
+  return (
+    <ComboboxPrimitive.Value
+      data-slot="combobox-value"
+      className={cn(
+        "absolute w-px h-px p-0 m-0 overflow-hidden whitespace-nowrap border-0",
+        "clip-[rect(0,0,0,0)]",
+        className
+      )}
+      {...props}
+    />
+  )
 }
 
 function ComboboxTrigger({

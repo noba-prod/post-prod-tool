@@ -85,6 +85,7 @@ interface LayoutProps {
   children: React.ReactNode
   /** Padding around the layout (default: 40px / p-10) */
   padding?: "none" | "sm" | "md" | "lg"
+  /** md = 20px, sm = 16px, lg = 40px */
   /** Gap between sections (default: 20px) */
   sectionGap?: "sm" | "md" | "lg"
   /** Show separators between sections */
@@ -95,7 +96,7 @@ interface LayoutProps {
 const paddingStyles = {
   none: "p-0",
   sm: "p-4",    // 16px
-  md: "p-6",    // 24px
+  md: "p-5",    // 20px
   lg: "p-10",   // 40px (default)
 }
 
