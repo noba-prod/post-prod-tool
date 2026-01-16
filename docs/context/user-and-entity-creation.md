@@ -21,7 +21,7 @@ A **User** represents an individual person interacting with the system.
   - First Name + Last Name
 - **Email** (mandatory)
 - **Phone Number** (mandatory)
-- **Entity** (mandatory)
+- **Entity** (mandatory) -> since the flow of user creation always start from the entity detail, the Entity field is always selected and disabled. But it has to be shown to highlight and re-enphasize the entity connected.
 - **Role** (mandatory):
   - Admin
   - Editor
