@@ -17,6 +17,7 @@ export type Role = "admin" | "editor" | "viewer"
  * Supported entity types in the noba* ecosystem.
  */
 export type EntityType =
+  | "noba"
   | "client"
   | "agency"
   | "photo-lab"
@@ -95,6 +96,20 @@ export interface CreateUserPayload {
  */
 export interface CreateAdminUserPayload extends Omit<CreateUserPayload, "role"> {
   role: "admin"
+}
+
+/**
+ * Payload for updating an existing user.
+ * All fields are optional except those that cannot be changed (id, entityId).
+ */
+export interface UpdateUserPayload {
+  firstName?: string
+  lastName?: string
+  email?: string
+  phoneNumber?: string
+  countryCode?: string
+  role?: Role
+  notes?: string
 }
 
 /**
@@ -178,11 +193,13 @@ export type EntityTypeWithLocation =
 /**
  * Entity types that do NOT require a physical location.
  */
-export type EntityTypeWithoutLocation = "client" | "self-photographer"
+export type EntityTypeWithoutLocation = "noba" | "client" | "self-photographer"
 
 /**
  * Check if an entity type requires location.
- * Based on domain rules from user-and-entity-creation.md
+ * Based on domain rules from users-roles-access-model.md:
+ * - Requires location: agency, photo-lab, edition-studio, hand-print-lab
+ * - Does NOT require location: noba, client, self-photographer
  */
 export function entityRequiresLocation(type: EntityType): type is EntityTypeWithLocation {
   const typesRequiringLocation: EntityType[] = [
@@ -205,6 +222,7 @@ export function isStandardEntityType(type: EntityType): type is StandardEntityTy
  * Display name mapping for entity types.
  */
 export const ENTITY_TYPE_DISPLAY_NAMES: Record<EntityType, string> = {
+  "noba": "noba*",
   "client": "Client",
   "agency": "Agency",
   "photo-lab": "Photo Lab",
@@ -247,6 +265,7 @@ export function roleToLabel(role: Role): string {
  * Useful for rendering entity type options.
  */
 export const STANDARD_ENTITY_TYPES: StandardEntityType[] = [
+  "noba",
   "client",
   "agency",
   "photo-lab",

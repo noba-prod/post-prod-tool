@@ -10,8 +10,9 @@ import { PhoneInput } from "./phone-input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Import domain types and helpers
-import type { Role, EntityType } from "@/lib/types"
+import type { Role, EntityType, User } from "@/lib/types"
 import { roleToLabel, entityTypeToLabel, ALL_ROLES } from "@/lib/types"
+import { parsePhoneNumber } from "@/lib/utils/form-mappers"
 
 // ============================================================================
 // TYPES
@@ -50,8 +51,14 @@ interface UserCreationFormProps {
   entity?: Entity | null
   /** Whether this is the "New Admin User" variant */
   isAdminUser?: boolean
+  /** Form mode: 'create' for new users, 'edit' for editing existing users */
+  mode?: "create" | "edit"
+  /** Initial user data (for edit mode) */
+  initialUserData?: User
   /** Initial form data */
   initialData?: Partial<UserFormData>
+  /** Whether all fields should be disabled (for view-only mode) */
+  disabled?: boolean
   /** Callback when form is submitted */
   onSubmit?: (data: UserFormData) => void
   /** Callback when form is cancelled */
@@ -92,21 +99,46 @@ export function UserCreationForm({
   onOpenChange,
   entity = null,
   isAdminUser = false,
+  mode = "create",
+  initialUserData,
   initialData,
+  disabled = false,
   onSubmit,
   onCancel,
-  primaryLabel = "Register member",
+  primaryLabel,
   secondaryLabel = "Cancel",
 }: UserCreationFormProps) {
+  // Determine title and primary label based on mode
+  const title = mode === "edit" ? "Edit user" : (isAdminUser ? "New Admin User" : "Create User")
+  const defaultPrimaryLabel = mode === "edit" ? "Save changes" : (isAdminUser ? "Create admin user" : "Register member")
+  const finalPrimaryLabel = primaryLabel || defaultPrimaryLabel
+
+  // Parse initialUserData if provided (for edit mode)
+  const parsedInitialData = React.useMemo(() => {
+    if (initialUserData && entity) {
+      const { countryCode, phoneNumber } = parsePhoneNumber(initialUserData.phoneNumber)
+      return {
+        firstName: initialUserData.firstName,
+        lastName: initialUserData.lastName || "",
+        email: initialUserData.email,
+        phoneNumber: phoneNumber,
+        countryCode: countryCode,
+        entity: { type: entity.type, name: entity.name },
+        role: initialUserData.role,
+      }
+    }
+    return initialData
+  }, [initialUserData, entity, initialData])
+
   // Form state - uses domain Role values
   const [formData, setFormData] = React.useState<UserFormData>({
-    firstName: initialData?.firstName || "",
-    lastName: initialData?.lastName || "",
-    email: initialData?.email || "",
-    phoneNumber: initialData?.phoneNumber || "",
-    countryCode: initialData?.countryCode || "+34",
-    entity: entity || initialData?.entity || null,
-    role: isAdminUser ? "admin" : (initialData?.role || "viewer"),
+    firstName: parsedInitialData?.firstName || "",
+    lastName: parsedInitialData?.lastName || "",
+    email: parsedInitialData?.email || "",
+    phoneNumber: parsedInitialData?.phoneNumber || "",
+    countryCode: parsedInitialData?.countryCode || "+34",
+    entity: entity || parsedInitialData?.entity || null,
+    role: isAdminUser ? "admin" : (parsedInitialData?.role || "viewer"),
   })
 
   // Update form data when entity prop changes
@@ -116,20 +148,49 @@ export function UserCreationForm({
     }
   }, [entity])
 
+  // Update form data when initialUserData changes (for edit mode)
+  React.useEffect(() => {
+    if (mode === "edit" && initialUserData && entity) {
+      const { countryCode, phoneNumber } = parsePhoneNumber(initialUserData.phoneNumber)
+      setFormData({
+        firstName: initialUserData.firstName,
+        lastName: initialUserData.lastName || "",
+        email: initialUserData.email,
+        phoneNumber: phoneNumber,
+        countryCode: countryCode,
+        entity: { type: entity.type, name: entity.name },
+        role: initialUserData.role,
+      })
+    }
+  }, [mode, initialUserData, entity])
+
   // Reset form when modal closes
   React.useEffect(() => {
     if (!open) {
-      setFormData({
-        firstName: initialData?.firstName || "",
-        lastName: initialData?.lastName || "",
-        email: initialData?.email || "",
-        phoneNumber: initialData?.phoneNumber || "",
-        countryCode: initialData?.countryCode || "+34",
-        entity: entity || initialData?.entity || null,
-        role: isAdminUser ? "admin" : (initialData?.role || "viewer"),
-      })
+      if (mode === "edit" && initialUserData && entity) {
+        const { countryCode, phoneNumber } = parsePhoneNumber(initialUserData.phoneNumber)
+        setFormData({
+          firstName: initialUserData.firstName,
+          lastName: initialUserData.lastName || "",
+          email: initialUserData.email,
+          phoneNumber: phoneNumber,
+          countryCode: countryCode,
+          entity: { type: entity.type, name: entity.name },
+          role: initialUserData.role,
+        })
+      } else {
+        setFormData({
+          firstName: parsedInitialData?.firstName || "",
+          lastName: parsedInitialData?.lastName || "",
+          email: parsedInitialData?.email || "",
+          phoneNumber: parsedInitialData?.phoneNumber || "",
+          countryCode: parsedInitialData?.countryCode || "+34",
+          entity: entity || parsedInitialData?.entity || null,
+          role: isAdminUser ? "admin" : (parsedInitialData?.role || "viewer"),
+        })
+      }
     }
-  }, [open, entity, isAdminUser, initialData])
+  }, [open, entity, isAdminUser, parsedInitialData, mode, initialUserData])
 
   // Validation
   const isFormValid = React.useMemo(() => {
@@ -161,16 +222,18 @@ export function UserCreationForm({
     <ModalWindow
       open={open}
       onOpenChange={onOpenChange}
-      title={isAdminUser ? "New Admin User" : "Create User"}
+      title={title}
       subtitle={
-        isAdminUser
+        mode === "edit"
+          ? "Update user information"
+          : isAdminUser
           ? "Create the admin user for this entity"
           : "Add a new member to the entity"
       }
-      primaryLabel={isAdminUser ? "Create admin user" : primaryLabel}
+      primaryLabel={finalPrimaryLabel}
       secondaryLabel={secondaryLabel}
       showSecondary={false}
-      primaryDisabled={!isFormValid}
+      primaryDisabled={!isFormValid || disabled}
       onPrimaryClick={handleSubmit}
       onSecondaryClick={handleCancel}
       width="644px"
@@ -198,6 +261,7 @@ export function UserCreationForm({
                     }
                     placeholder="Write name"
                     required
+                    disabled={disabled}
                   />
                 </FieldContent>
               </Field>
@@ -217,6 +281,7 @@ export function UserCreationForm({
                       }))
                     }
                     placeholder="Write last name"
+                    disabled={disabled}
                   />
                 </FieldContent>
               </Field>
@@ -242,6 +307,7 @@ export function UserCreationForm({
                     }
                     placeholder="Write email address"
                     required
+                    disabled={disabled || mode === "edit"}
                   />
                 </FieldContent>
               </Field>
@@ -260,6 +326,7 @@ export function UserCreationForm({
                       setFormData((prev) => ({ ...prev, phoneNumber: number }))
                     }
                     placeholder="649 393 291"
+                    disabled={disabled}
                   />
                 </FieldContent>
               </Field>
@@ -275,7 +342,7 @@ export function UserCreationForm({
                 <FieldContent>
                   <Select
                     value={formData.entity ? "selected" : ""}
-                    disabled={true}
+                    disabled={true || disabled}
                   >
                     <SelectTrigger id="user-entity" className="w-full">
                       <SelectValue
@@ -308,7 +375,7 @@ export function UserCreationForm({
                     onValueChange={(value: Role) =>
                       setFormData((prev) => ({ ...prev, role: value }))
                     }
-                    disabled={isAdminUser}
+                    disabled={isAdminUser || disabled || mode === "edit"}
                   >
                     <SelectTrigger id="user-role" className="w-full">
                       <SelectValue placeholder="Select a role">

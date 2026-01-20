@@ -204,6 +204,8 @@ interface CreateEntityCommandProps {
   buttonClassName?: string
   /** Popover alignment */
   popoverAlign?: "start" | "center" | "end"
+  /** Whether the button is disabled */
+  disabled?: boolean
 }
 
 /**
@@ -237,6 +239,7 @@ export function CreateEntityCommand({
   buttonSize = "lg",
   buttonClassName,
   popoverAlign = "end",
+  disabled = false,
 }: CreateEntityCommandProps) {
   const {
     commandOpen,
@@ -257,9 +260,9 @@ export function CreateEntityCommand({
   return (
     <>
       <Popover open={commandOpen} onOpenChange={setCommandOpen}>
-        <PopoverTrigger asChild>
+        <PopoverTrigger asChild disabled={disabled}>
           {trigger || (
-            <Button size={buttonSize} className={buttonClassName || "rounded-xl gap-2 px-4"}>
+            <Button size={buttonSize} className={buttonClassName || "rounded-xl gap-2 px-4"} disabled={disabled}>
               <Plus className="size-4" />
               {buttonLabel}
             </Button>

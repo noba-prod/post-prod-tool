@@ -4,7 +4,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 // Service imports
-import { createEntityCreationService } from "@/lib/services"
+import { createEntityCreationService, getRepositoryInstances } from "@/lib/services"
 import { 
   mapFormToEntityDraft, 
   mapFormToAdminPayload,
@@ -49,10 +49,14 @@ export interface EntityCreationHookState {
   isBasicInfoValid: boolean
   /** Admin user modal open state */
   isAdminModalOpen: boolean
+  /** New member modal open state */
+  isNewMemberModalOpen: boolean
   /** Loading state for async operations */
   isCreating: boolean
   /** Loading state for update operations */
   isUpdating: boolean
+  /** Loading state for creating team member */
+  isCreatingMember: boolean
 }
 
 /**
@@ -94,8 +98,19 @@ export interface EntityCreationActions {
     countryCode: string
     role: "admin" | "editor" | "viewer"
   }) => Promise<void>
-  /** Handle adding a new team member (placeholder for future) */
-  handleAddMember: () => void
+  /** Open the new member modal */
+  openNewMemberModal: () => void
+  /** Close the new member modal */
+  closeNewMemberModal: () => void
+  /** Handle new team member submit */
+  handleNewMemberSubmit: (userData: { 
+    firstName: string
+    lastName: string
+    email: string
+    phoneNumber: string
+    countryCode: string
+    role: "admin" | "editor" | "viewer"
+  }) => Promise<void>
   /** Navigate to a specific step */
   goToStep: (step: "basic" | "team") => void
   /** Handle edit button click on Step 1 block */
@@ -156,11 +171,17 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
   /** Admin user modal state */
   const [isAdminModalOpen, setIsAdminModalOpen] = React.useState(false)
 
+  /** New member modal state */
+  const [isNewMemberModalOpen, setIsNewMemberModalOpen] = React.useState(false)
+
   /** Loading state for async operations (create) */
   const [isCreating, setIsCreating] = React.useState(false)
 
   /** Loading state for async operations (update) */
   const [isUpdating, setIsUpdating] = React.useState(false)
+
+  /** Loading state for creating team member */
+  const [isCreatingMember, setIsCreatingMember] = React.useState(false)
 
   // ===========================================================================
   // FORM HYDRATION - Pre-fill form when entering edit mode
@@ -400,13 +421,95 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
   }, [basicDraft])
 
   /**
-   * Handle "New member" CTA click in Team Members step.
-   * Placeholder for future implementation.
+   * Open the new member modal.
    */
-  const handleAddMember = React.useCallback(() => {
-    // TODO: Open member creation modal
-    console.log("Add new member clicked")
+  const openNewMemberModal = React.useCallback(() => {
+    if (!entityId) {
+      toast.error("Cannot add member", {
+        description: "Entity must be created before adding team members.",
+      })
+      return
+    }
+    console.log("Opening new member modal, entityId:", entityId)
+    setIsNewMemberModalOpen(true)
+  }, [entityId])
+
+  /**
+   * Close the new member modal.
+   */
+  const closeNewMemberModal = React.useCallback(() => {
+    setIsNewMemberModalOpen(false)
   }, [])
+
+  /**
+   * Handle new team member submit.
+   * Creates a new team member for the existing entity.
+   */
+  const handleNewMemberSubmit = React.useCallback(async (userData: {
+    firstName: string
+    lastName: string
+    email: string
+    phoneNumber: string
+    countryCode: string
+    role: "admin" | "editor" | "viewer"
+  }) => {
+    if (!entityId || !entity) {
+      toast.error("Cannot add member", {
+        description: "Entity must be created before adding team members.",
+      })
+      return
+    }
+
+    setIsCreatingMember(true)
+    try {
+      const service = createEntityCreationService()
+      
+      // Create user payload
+      const payload: CreateUserPayload = {
+        firstName: userData.firstName.trim(),
+        lastName: userData.lastName?.trim() || undefined,
+        email: userData.email.trim(),
+        phoneNumber: `${userData.countryCode} ${userData.phoneNumber}`.trim(),
+        entityId: entityId,
+        role: userData.role,
+      }
+
+      // Create the team member using the repository directly
+      const repos = getRepositoryInstances()
+      if (!repos.userRepository) {
+        throw new Error("User repository not available")
+      }
+      
+      const newUser = await repos.userRepository.createUser(payload)
+      
+      // Refresh team members list
+      const allUsers = await repos.userRepository.listUsersByEntityId(entityId)
+      setTeamMembers(allUsers)
+      
+      // Optionally refresh entity if needed
+      if (repos.entityRepository) {
+        const updatedEntity = await repos.entityRepository.getEntityById(entityId)
+        if (updatedEntity) {
+          setEntity(updatedEntity)
+        }
+      }
+
+      // Close modal
+      setIsNewMemberModalOpen(false)
+
+      // Show success toast
+      toast.success("Team member added", {
+        description: `${newUser.firstName} ${newUser.lastName || ""}`.trim() + " has been added to the team.",
+      })
+    } catch (error) {
+      console.error("Failed to create team member:", error)
+      toast.error("Failed to add team member", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+      })
+    } finally {
+      setIsCreatingMember(false)
+    }
+  }, [entityId, entity])
 
   // ===========================================================================
   // RETURN
@@ -425,7 +528,10 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     teamMembers,
     isBasicInfoValid,
     isAdminModalOpen,
+    isNewMemberModalOpen,
     isCreating,
+    isUpdating,
+    isCreatingMember,
     isUpdating,
 
     // Derived state
@@ -442,7 +548,9 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     openAdminModal,
     closeAdminModal,
     handleAdminSubmit,
-    handleAddMember,
+    openNewMemberModal,
+    closeNewMemberModal,
+    handleNewMemberSubmit,
     goToStep,
     handleEditBasicInfo,
   }

@@ -174,13 +174,45 @@ class MockAuthAdapter implements AuthAdapter {
       return { ok: false, error: "Invalid OTP code" }
     }
 
+    // Try to find existing user by email in repository
+    let userId: string
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { getRepositoryInstances } = await import("@/lib/services")
+      const { userRepository } = getRepositoryInstances()
+      
+      if (userRepository) {
+        const allUsers = await userRepository.getAllUsers()
+        const existingUser = allUsers.find((u) => u.email.toLowerCase() === normalizedEmail)
+        
+        if (existingUser) {
+          userId = existingUser.id
+        } else {
+          // Fallback: generate userId if user doesn't exist yet
+          userId = `user_${normalizedEmail.replace(/[^a-z0-9]/g, "_")}`
+        }
+      } else {
+        // Fallback if repository not available
+        userId = `user_${normalizedEmail.replace(/[^a-z0-9]/g, "_")}`
+      }
+    } catch (error) {
+      // Fallback on error
+      console.warn("Failed to resolve user from repository, using generated userId:", error)
+      userId = `user_${normalizedEmail.replace(/[^a-z0-9]/g, "_")}`
+    }
+
     // Create session
     const session: Session = {
-      userId: `user_${normalizedEmail.replace(/[^a-z0-9]/g, "_")}`,
+      userId,
       email: normalizedEmail,
     }
 
     this.setStorageItem(STORAGE_KEYS.SESSION, session)
+    
+    // Dispatch custom event to notify UserContext of session change (same-tab)
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("session-changed"))
+    }
 
     // Clean up OTP
     delete otpStore[normalizedEmail]
@@ -191,6 +223,10 @@ class MockAuthAdapter implements AuthAdapter {
 
   async logout(): Promise<void> {
     this.setStorageItem(STORAGE_KEYS.SESSION, null)
+    // Dispatch custom event to notify UserContext of session change (same-tab)
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("session-changed"))
+    }
   }
 
   async getSession(): Promise<Session | null> {

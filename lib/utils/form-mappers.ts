@@ -130,8 +130,11 @@ import type { SelfPhotographerFormData } from "@/components/custom/self-photogra
 /**
  * Parses a combined phone number string into country code and number.
  * Handles formats like "+34 649393291" or "649393291"
+ * 
+ * @param phone - Combined phone number string (e.g., "+34 649 393 291")
+ * @returns Object with countryCode and phoneNumber separated
  */
-function parsePhoneNumber(phone: string | undefined): { countryCode: string; phoneNumber: string } {
+export function parsePhoneNumber(phone: string | undefined): { countryCode: string; phoneNumber: string } {
   if (!phone) {
     return { countryCode: "+34", phoneNumber: "" }
   }
@@ -253,5 +256,55 @@ export function mapSelfPhotographerFormToEntityDraft(
     notes: formData.notes.trim() || undefined,
     // Self-photographer doesn't require location
     location: undefined,
+  }
+}
+
+// =============================================================================
+// USER MAPPERS (for edit mode)
+// =============================================================================
+
+import type { UpdateUserPayload, EntityType } from "@/lib/types"
+
+/**
+ * Converts a User to UserFormData.
+ * Used when editing an existing user to hydrate the form.
+ * 
+ * @param user - The user to convert
+ * @param entity - The entity context (type and name)
+ * @returns Form data suitable for UserCreationForm
+ */
+export function mapUserToFormData(
+  user: User,
+  entity: { type: EntityType; name: string }
+): UserFormData {
+  const { countryCode, phoneNumber } = parsePhoneNumber(user.phoneNumber)
+
+  return {
+    firstName: user.firstName,
+    lastName: user.lastName || "",
+    email: user.email,
+    phoneNumber: phoneNumber,
+    countryCode: countryCode,
+    entity: { type: entity.type as StandardEntityType, name: entity.name },
+    role: user.role,
+  }
+}
+
+/**
+ * Converts UserFormData to UpdateUserPayload.
+ * Used when updating an existing user.
+ * 
+ * @param formData - Form data from UserCreationForm
+ * @returns Update payload suitable for updateUser service method
+ */
+export function mapFormToUpdateUserPayload(formData: UserFormData): UpdateUserPayload {
+  return {
+    firstName: formData.firstName.trim(),
+    lastName: formData.lastName?.trim() || undefined,
+    email: formData.email.trim(),
+    phoneNumber: formData.phoneNumber.trim(),
+    countryCode: formData.countryCode,
+    role: formData.role,
+    notes: undefined, // Notes field not in UserFormData yet, can be added later
   }
 }

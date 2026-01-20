@@ -6,9 +6,11 @@ import type {
   CreateUserPayload,
   CreateEntityWithAdminPayload,
   CreateEntityWithAdminResult,
+  UpdateUserPayload,
   Location,
 } from "@/lib/types"
 import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
+import { parsePhoneNumber } from "@/lib/utils/form-mappers"
 
 // =============================================================================
 // VALIDATION TYPES
@@ -417,5 +419,91 @@ export class EntityCreationService {
     const teamMembers = await this.userRepository.listUsersByEntityId(entityId)
 
     return { user, teamMembers }
+  }
+
+  /**
+   * Updates an existing user.
+   * 
+   * @param userId The user to update
+   * @param payload Updated user data
+   * @returns The updated user
+   * @throws EntityCreationError if user doesn't exist or validation fails
+   */
+  async updateUser(
+    userId: string,
+    payload: UpdateUserPayload
+  ): Promise<{ user: import("@/lib/types").User }> {
+    // Verify user exists
+    const existing = await this.userRepository.getUserById(userId)
+    if (!existing) {
+      throw new EntityCreationError(
+        "User not found",
+        "USER_NOT_FOUND"
+      )
+    }
+
+    // Build update data, combining phoneNumber if both countryCode and phoneNumber are provided
+    const updateData: Partial<import("@/lib/types").User> = {}
+
+    if (payload.firstName !== undefined) {
+      updateData.firstName = payload.firstName.trim()
+    }
+    if (payload.lastName !== undefined) {
+      updateData.lastName = payload.lastName?.trim() || undefined
+    }
+    if (payload.email !== undefined) {
+      updateData.email = payload.email.trim()
+    }
+    if (payload.role !== undefined) {
+      updateData.role = payload.role
+    }
+    if (payload.notes !== undefined) {
+      updateData.notes = payload.notes?.trim() || undefined
+    }
+
+    // Handle phone number: combine countryCode + phoneNumber if both provided
+    if (payload.countryCode !== undefined && payload.phoneNumber !== undefined) {
+      updateData.phoneNumber = `${payload.countryCode} ${payload.phoneNumber}`.trim()
+    } else if (payload.phoneNumber !== undefined) {
+      // If only phoneNumber provided, preserve existing countryCode or use default
+      const existingPhone = existing.phoneNumber || ""
+      const { countryCode } = parsePhoneNumber(existingPhone)
+      updateData.phoneNumber = `${countryCode} ${payload.phoneNumber}`.trim()
+    } else if (payload.countryCode !== undefined) {
+      // If only countryCode provided, preserve existing phoneNumber
+      const existingPhone = existing.phoneNumber || ""
+      const { phoneNumber } = parsePhoneNumber(existingPhone)
+      updateData.phoneNumber = `${payload.countryCode} ${phoneNumber}`.trim()
+    }
+
+    // Validate email if provided
+    if (updateData.email !== undefined && !updateData.email) {
+      throw new EntityCreationError(
+        "Email is required",
+        "VALIDATION_FAILED",
+        [{ field: "email", message: "Email is required" }]
+      )
+    }
+
+    // Validate firstName if provided
+    if (updateData.firstName !== undefined && !updateData.firstName) {
+      throw new EntityCreationError(
+        "First name is required",
+        "VALIDATION_FAILED",
+        [{ field: "firstName", message: "First name is required" }]
+      )
+    }
+
+    // Update user
+    const updated = await this.userRepository.updateUser(userId, updateData)
+
+    if (!updated) {
+      throw new EntityCreationError(
+        "Failed to update user",
+        "UPDATE_FAILED"
+      )
+    }
+
+    return { user: updated }
   }
 }

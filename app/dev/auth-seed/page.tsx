@@ -1,22 +1,34 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { mockAuthAdapter } from "@/lib/auth/mock-adapter"
+import { createEntityCreationService } from "@/lib/services"
+import { seedTestUser } from "@/lib/utils/test-seed"
+import type { EntityType, Role } from "@/lib/types"
+import { ENTITY_TYPE_DISPLAY_NAMES, ALL_ROLES, entityTypeToLabel, roleToLabel } from "@/lib/types"
 import { toast } from "sonner"
 import { Copy, Check, Trash2 } from "lucide-react"
 
 export default function AuthSeedPage() {
   const [internalEmail, setInternalEmail] = useState("")
+  const [selectedEntityType, setSelectedEntityType] = useState<EntityType | null>(null)
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null)
   const [inviteEmail, setInviteEmail] = useState("")
   const [collectionId, setCollectionId] = useState("collection-1")
   const [invitationUrl, setInvitationUrl] = useState("")
   const [copied, setCopied] = useState(false)
+
+  // Initialize service to ensure repositories are ready
+  useEffect(() => {
+    createEntityCreationService()
+  }, [])
 
   const handleAddInternal = async () => {
     if (!internalEmail.trim()) {
@@ -24,10 +36,39 @@ export default function AuthSeedPage() {
       return
     }
 
-    await mockAuthAdapter.addInternalEmail(internalEmail)
-    await mockAuthAdapter.markEmailVerified(internalEmail)
-    toast.success(`Added internal user: ${internalEmail}`)
-    setInternalEmail("")
+    // If EntityType and Role are selected, use seedTestUser
+    if (selectedEntityType) {
+      try {
+        const result = await seedTestUser(
+          internalEmail,
+          selectedEntityType,
+          selectedEntityType === "self-photographer" ? undefined : selectedRole || undefined
+        )
+        
+        await mockAuthAdapter.addInternalEmail(internalEmail)
+        await mockAuthAdapter.markEmailVerified(internalEmail)
+        
+        const roleDisplay = selectedEntityType === "self-photographer" 
+          ? "admin (self-photographer)" 
+          : roleToLabel(selectedRole!)
+        
+        toast.success(
+          `User created: ${internalEmail} as ${roleDisplay} in ${entityTypeToLabel(selectedEntityType)}`
+        )
+        setInternalEmail("")
+        setSelectedEntityType(null)
+        setSelectedRole(null)
+      } catch (error) {
+        toast.error("Failed to create user with entity")
+        console.error(error)
+      }
+    } else {
+      // Legacy behavior: just add as internal user
+      await mockAuthAdapter.addInternalEmail(internalEmail)
+      await mockAuthAdapter.markEmailVerified(internalEmail)
+      toast.success(`Added internal user: ${internalEmail}`)
+      setInternalEmail("")
+    }
   }
 
   const handleCreateInvitation = async () => {
@@ -97,12 +138,75 @@ export default function AuthSeedPage() {
                 }}
               />
             </div>
-            <Button onClick={handleAddInternal} className="w-full">
-              Add Internal User (Auto-verified)
+            
+            <div className="space-y-2">
+              <Label htmlFor="entity-type-seed">Tipo de Entidad (Opcional)</Label>
+              <Select
+                value={selectedEntityType || ""}
+                onValueChange={(value) => {
+                  setSelectedEntityType(value as EntityType)
+                  if (value === "self-photographer") {
+                    setSelectedRole(null)
+                  }
+                }}
+              >
+                <SelectTrigger id="entity-type-seed">
+                  <SelectValue placeholder="Selecciona un tipo (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Sin entidad (solo auth)</SelectItem>
+                  {Object.entries(ENTITY_TYPE_DISPLAY_NAMES).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedEntityType && selectedEntityType !== "self-photographer" && (
+              <div className="space-y-2">
+                <Label htmlFor="role-seed">Rol</Label>
+                <Select
+                  value={selectedRole || ""}
+                  onValueChange={(value) => setSelectedRole(value as Role)}
+                >
+                  <SelectTrigger id="role-seed">
+                    <SelectValue placeholder="Selecciona un rol" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ALL_ROLES.map((role) => (
+                      <SelectItem key={role} value={role}>
+                        {roleToLabel(role)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {selectedEntityType === "self-photographer" && (
+              <Alert>
+                <AlertDescription className="text-sm">
+                  Self-photographer no tiene roles (siempre admin)
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <Button 
+              onClick={handleAddInternal} 
+              className="w-full"
+              disabled={selectedEntityType && selectedEntityType !== "self-photographer" && !selectedRole}
+            >
+              {selectedEntityType 
+                ? `Add User with Entity (${entityTypeToLabel(selectedEntityType)})` 
+                : "Add Internal User (Auto-verified)"}
             </Button>
             <Alert>
               <AlertDescription className="text-sm">
-                Internal users are automatically marked as verified and can request OTP immediately.
+                {selectedEntityType 
+                  ? "User will be created with entity and role, then marked as verified."
+                  : "Internal users are automatically marked as verified and can request OTP immediately."}
               </AlertDescription>
             </Alert>
           </CardContent>

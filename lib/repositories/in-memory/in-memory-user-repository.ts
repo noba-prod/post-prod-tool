@@ -14,14 +14,56 @@ function generateId(): string {
 }
 
 /**
+ * Storage key for localStorage persistence.
+ */
+const STORAGE_KEY = "noba_users"
+
+/**
  * Module-level storage for users.
- * Persists across calls within the same session.
+ * Persists across calls within the same session and across page refreshes via localStorage.
  */
 const userStore = new Map<string, User>()
 
 /**
+ * Load users from localStorage into memory.
+ */
+function loadFromStorage(): void {
+  if (typeof window === "undefined") return
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const users: User[] = JSON.parse(stored)
+      users.forEach((u) => {
+        userStore.set(u.id, u)
+      })
+    }
+  } catch (error) {
+    console.warn("Failed to load users from localStorage:", error)
+  }
+}
+
+/**
+ * Save users from memory to localStorage.
+ */
+function saveToStorage(): void {
+  if (typeof window === "undefined") return
+  try {
+    const users = Array.from(userStore.values())
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(users))
+  } catch (error) {
+    console.warn("Failed to save users to localStorage:", error)
+  }
+}
+
+// Load from localStorage on module initialization
+if (typeof window !== "undefined") {
+  loadFromStorage()
+}
+
+/**
  * In-memory implementation of IUserRepository.
  * Used for development and testing without a database.
+ * Persists data to localStorage automatically.
  */
 export class InMemoryUserRepository implements IUserRepository {
   /**
@@ -33,6 +75,7 @@ export class InMemoryUserRepository implements IUserRepository {
     const id = generateId()
     const user: User = { id, ...data }
     userStore.set(id, user)
+    saveToStorage()
     return user
   }
 
@@ -60,11 +103,49 @@ export class InMemoryUserRepository implements IUserRepository {
   }
 
   /**
-   * Resets the in-memory store.
+   * Retrieves a user by ID from memory.
+   * @param id User identifier
+   * @returns The user if found, null otherwise
+   */
+  async getUserById(id: string): Promise<User | null> {
+    return userStore.get(id) || null
+  }
+
+  /**
+   * Updates an existing user in memory.
+   * Preserves id and entityId, updates other fields.
+   * @param id User identifier
+   * @param data Partial user data (id and entityId cannot be changed)
+   * @returns The updated user if found, null otherwise
+   */
+  async updateUser(id: string, data: Partial<Omit<User, "id" | "entityId">>): Promise<User | null> {
+    const existing = userStore.get(id)
+    if (!existing) {
+      return null
+    }
+
+    const updated: User = {
+      ...existing,
+      ...data,
+      // Preserve immutable fields
+      id: existing.id,
+      entityId: existing.entityId,
+    }
+
+    userStore.set(id, updated)
+    saveToStorage()
+    return updated
+  }
+
+  /**
+   * Resets the in-memory store and localStorage.
    * Useful for testing and development.
    */
   static reset(): void {
     userStore.clear()
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(STORAGE_KEY)
+    }
   }
 
   /**

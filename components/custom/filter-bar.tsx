@@ -539,7 +539,12 @@ export function FilterBar({
         )}
         {effectiveShowAction && (
           <Button
-            onClick={onActionClick}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              console.log("FilterBar action button clicked, onActionClick:", onActionClick)
+              onActionClick?.()
+            }}
             disabled={actionDisabled}
             className="h-10 px-4 rounded-xl gap-2"
           >

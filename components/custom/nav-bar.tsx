@@ -24,6 +24,8 @@ interface NavBarProps {
   role?: string
   /** Si el usuario es admin */
   isAdmin?: boolean
+  /** Si el usuario es self-photographer */
+  isSelfPhotographer?: boolean
   /** URL del avatar del usuario */
   avatarSrc?: string
   /** Si hay notificaciones nuevas */
@@ -66,6 +68,7 @@ export function NavBar({
   organization,
   role = "admin",
   isAdmin = false,
+  isSelfPhotographer = false,
   avatarSrc,
   hasNotifications = false,
   onSearch,
@@ -134,8 +137,8 @@ export function NavBar({
 
         {/* Right section: Create button + Notifications + Separator + User */}
         <div className="flex items-center gap-4">
-          {/* Create new button - solo para variante noba */}
-          {variant === "noba" && (
+          {/* Create new button - solo para variante noba y no para viewers */}
+          {variant === "noba" && role?.toLowerCase() !== "viewer" && (
             <CreateEntityCommand
               buttonLabel="Create new"
               popoverAlign="end"
@@ -152,8 +155,9 @@ export function NavBar({
           <UserInformation
             userName={userName}
             organization={displayOrganization}
-            role={variant === "photographer" ? "photographer" : role}
+            role={role}
             isAdmin={isAdmin}
+            isSelfPhotographer={isSelfPhotographer}
             avatarSrc={avatarSrc}
             onEditProfile={onEditProfile}
             onEditCompany={onEditCompany}

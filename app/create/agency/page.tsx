@@ -46,7 +46,7 @@ export default function AgencyCreationPage() {
           <FilterBar
             variant="members"
             searchPlaceholder="Search members..."
-            onActionClick={creation.handleAddMember}
+            onActionClick={creation.openNewMemberModal}
           />
         </LayoutSection>
 
@@ -75,7 +75,7 @@ export default function AgencyCreationPage() {
         </LayoutSection>
       </Layout>
     ),
-    [creation.teamMembers, creation.handleAddMember]
+    [creation.teamMembers, creation.openNewMemberModal]
   )
 
   // ==========================================================================
@@ -166,6 +166,34 @@ export default function AgencyCreationPage() {
         primaryLabel="Create admin user"
         secondaryLabel="Cancel"
       />
+
+      {/* New Team Member Modal */}
+      {creation.entity && (
+        <UserCreationForm
+          open={creation.isNewMemberModalOpen}
+          onOpenChange={(open) => {
+            if (!open) creation.closeNewMemberModal()
+          }}
+          entity={{
+            type: creation.entityType,
+            name: creation.entity.name,
+          }}
+          isAdminUser={false}
+          onSubmit={async (userData) => {
+            await creation.handleNewMemberSubmit({
+              firstName: userData.firstName,
+              lastName: userData.lastName,
+              email: userData.email,
+              phoneNumber: userData.phoneNumber,
+              countryCode: userData.countryCode,
+              role: userData.role,
+            })
+          }}
+          onCancel={creation.closeNewMemberModal}
+          primaryLabel="Register member"
+          secondaryLabel="Cancel"
+        />
+      )}
     </>
   )
 }

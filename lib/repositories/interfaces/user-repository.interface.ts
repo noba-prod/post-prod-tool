@@ -24,4 +24,19 @@ export interface IUserRepository {
    * @returns Array of all users
    */
   getAllUsers(): Promise<User[]>
+
+  /**
+   * Retrieves a user by ID.
+   * @param id User identifier
+   * @returns The user if found, null otherwise
+   */
+  getUserById(id: string): Promise<User | null>
+
+  /**
+   * Updates an existing user.
+   * @param id User identifier
+   * @param data Partial user data (id and entityId cannot be changed)
+   * @returns The updated user if found, null otherwise
+   */
+  updateUser(id: string, data: Partial<Omit<User, "id" | "entityId">>): Promise<User | null>
 }

@@ -14,14 +14,60 @@ function generateId(): string {
 }
 
 /**
+ * Storage key for localStorage persistence.
+ */
+const STORAGE_KEY = "noba_entities"
+
+/**
  * Module-level storage for entities.
- * Persists across calls within the same session.
+ * Persists across calls within the same session and across page refreshes via localStorage.
  */
 const entityStore = new Map<string, Entity>()
 
 /**
+ * Load entities from localStorage into memory.
+ */
+function loadFromStorage(): void {
+  if (typeof window === "undefined") return
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const entities: Entity[] = JSON.parse(stored)
+      entities.forEach((e) => {
+        // Convert updatedAt string back to Date if present
+        if (e.updatedAt && typeof e.updatedAt === "string") {
+          e.updatedAt = new Date(e.updatedAt)
+        }
+        entityStore.set(e.id, e)
+      })
+    }
+  } catch (error) {
+    console.warn("Failed to load entities from localStorage:", error)
+  }
+}
+
+/**
+ * Save entities from memory to localStorage.
+ */
+function saveToStorage(): void {
+  if (typeof window === "undefined") return
+  try {
+    const entities = Array.from(entityStore.values())
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entities))
+  } catch (error) {
+    console.warn("Failed to save entities to localStorage:", error)
+  }
+}
+
+// Load from localStorage on module initialization
+if (typeof window !== "undefined") {
+  loadFromStorage()
+}
+
+/**
  * In-memory implementation of IEntityRepository.
  * Used for development and testing without a database.
+ * Persists data to localStorage automatically.
  */
 export class InMemoryEntityRepository implements IEntityRepository {
   /**
@@ -38,6 +84,7 @@ export class InMemoryEntityRepository implements IEntityRepository {
       updatedAt: data.updatedAt || now, // Use provided updatedAt or current time
     }
     entityStore.set(id, entity)
+    saveToStorage()
     return entity
   }
 
@@ -76,15 +123,19 @@ export class InMemoryEntityRepository implements IEntityRepository {
     }
 
     entityStore.set(id, updated)
+    saveToStorage()
     return updated
   }
 
   /**
-   * Resets the in-memory store.
+   * Resets the in-memory store and localStorage.
    * Useful for testing and development.
    */
   static reset(): void {
     entityStore.clear()
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(STORAGE_KEY)
+    }
   }
 
   /**

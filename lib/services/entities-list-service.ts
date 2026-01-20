@@ -20,6 +20,8 @@ export interface EntityListItem {
   rawType: EntityType
   /** Admin user name (with "+N" suffix if multiple admins) */
   admin: string
+  /** Admin user ID (first admin if multiple, null if none) */
+  adminUserId: string | null
   /** Count of team members */
   teamMembers: number
   /** Count of collections (placeholder for future) */
@@ -92,6 +94,7 @@ export class EntitiesListService {
         type: typeLabel,
         rawType: entity.type,
         admin: adminDisplay,
+        adminUserId: admins.length > 0 ? admins[0].id : null,
         teamMembers: entityUsers.length,
         collections: 0, // Placeholder - collections not implemented yet
       }

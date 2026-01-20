@@ -40,6 +40,8 @@ interface Entity {
   name: string
   type: EntityType
   admin: string
+  /** Admin user ID (first admin if multiple, null if none) */
+  adminUserId?: string | null
   teamMembers: number
   collections: number
 }
@@ -82,6 +84,10 @@ interface TablesProps {
   onSettings?: (id: string) => void
   /** Callback al cambiar permiso de edición */
   onEditPermissionChange?: (id: string, value: boolean) => void
+  /** Callback al editar un usuario (team member) */
+  onEditUser?: (userId: string) => void
+  /** Callback al editar un admin user (from entities table) */
+  onEditAdminUser?: (userId: string, entityId: string) => void
   /** Whether delete actions should be shown (for team members table) */
   canDelete?: boolean
   className?: string
@@ -142,10 +148,12 @@ function TableWrapper({ children, className }: { children: React.ReactNode; clas
 function TeamMembersTable({
   data = sampleTeamMembers,
   onDelete,
+  onEditUser,
   canDelete = true,
 }: {
   data?: TeamMember[]
   onDelete?: (id: string) => void
+  onEditUser?: (userId: string) => void
   canDelete?: boolean
 }) {
   return (
@@ -163,8 +171,39 @@ function TeamMembersTable({
         </TableHeader>
         <TableBody>
           {data.map((member) => (
-            <TableRow key={member.id} className="h-[52px]">
-              <TableCell className="font-medium">{member.name}</TableCell>
+            <TableRow
+              key={member.id}
+              className="h-[52px] cursor-pointer hover:bg-muted/50 transition-colors"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                console.log("TableRow clicked, member.id:", member.id, "onEditUser:", onEditUser)
+                onEditUser?.(member.id)
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log("TableRow keyDown, member.id:", member.id, "onEditUser:", onEditUser)
+                  onEditUser?.(member.id)
+                }
+              }}
+            >
+              <TableCell className="font-medium">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    console.log("Name button clicked, member.id:", member.id, "onEditUser:", onEditUser)
+                    onEditUser?.(member.id)
+                  }}
+                  className="hover:underline cursor-pointer text-left"
+                >
+                  {member.name}
+                </button>
+              </TableCell>
               <TableCell>{member.email}</TableCell>
               <TableCell>{member.phone}</TableCell>
               <TableCell>{member.role}</TableCell>
@@ -174,7 +213,10 @@ function TeamMembersTable({
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => onDelete?.(member.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDelete?.(member.id)
+                    }}
                     className="h-10 w-10"
                   >
                     <Trash2 className="size-4" />
@@ -196,9 +238,11 @@ function TeamMembersTable({
 function EntitiesTable({
   data = sampleEntities,
   onViewDetails,
+  onEditAdminUser,
 }: {
   data?: Entity[]
   onViewDetails?: (id: string) => void
+  onEditAdminUser?: (userId: string, entityId: string) => void
 }) {
   return (
     <TableWrapper>
@@ -238,7 +282,21 @@ function EntitiesTable({
                 </Link>
               </TableCell>
               <TableCell>{entity.type}</TableCell>
-              <TableCell>{entity.admin}</TableCell>
+              <TableCell>
+                {entity.adminUserId ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onEditAdminUser?.(entity.adminUserId!, entity.id)
+                    }}
+                    className="hover:underline cursor-pointer text-left"
+                  >
+                    {entity.admin}
+                  </button>
+                ) : (
+                  <span>{entity.admin}</span>
+                )}
+              </TableCell>
               <TableCell>{entity.teamMembers}</TableCell>
               <TableCell>{entity.collections}</TableCell>
               <TableCell className="text-center">
@@ -388,6 +446,8 @@ export function Tables({
   onViewDetails,
   onSettings,
   onEditPermissionChange,
+  onEditUser,
+  onEditAdminUser,
   canDelete = true,
   className,
 }: TablesProps) {
@@ -395,13 +455,22 @@ export function Tables({
     case "team-members":
       return (
         <div className={className}>
-          <TeamMembersTable data={teamMembersData} onDelete={onDelete} canDelete={canDelete} />
+          <TeamMembersTable
+            data={teamMembersData}
+            onDelete={onDelete}
+            onEditUser={onEditUser}
+            canDelete={canDelete}
+          />
         </div>
       )
     case "entities":
       return (
         <div className={className}>
-          <EntitiesTable data={entitiesData} onViewDetails={onViewDetails} />
+          <EntitiesTable
+            data={entitiesData}
+            onViewDetails={onViewDetails}
+            onEditAdminUser={onEditAdminUser}
+          />
         </div>
       )
     case "collections":

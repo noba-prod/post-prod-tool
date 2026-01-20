@@ -14,7 +14,8 @@ import { Tables } from "@/components/custom/tables"
 import { createEntityDetailService, EntityNotFoundError, createEntityCreationService } from "@/lib/services"
 import type { EntityType, StandardEntityType, CreateEntityDraftPayload } from "@/lib/types"
 import { entityTypeToLabel, entityRequiresLocation, roleToLabel } from "@/lib/types"
-import { mapEntityToFormData, mapSelfPhotographerToFormData, mapFormToEntityDraft, mapFormToUserPayload, mapSelfPhotographerFormToEntityDraft } from "@/lib/utils/form-mappers"
+import { useUserContext } from "@/lib/contexts/user-context"
+import { mapEntityToFormData, mapSelfPhotographerToFormData, mapFormToEntityDraft, mapFormToUserPayload, mapSelfPhotographerFormToEntityDraft, mapUserToFormData, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import type { SelfPhotographerFormData } from "@/components/custom/self-photographer-creation-form"
 import { formatDistanceToNow } from "date-fns"
@@ -26,6 +27,7 @@ import { formatDistanceToNow } from "date-fns"
 export default function EntityDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const userContext = useUserContext()
   const entityId = params?.id as string | undefined
 
   // State
@@ -42,6 +44,11 @@ export default function EntityDetailPage() {
   // Modal state for creating team member
   const [isNewMemberModalOpen, setIsNewMemberModalOpen] = React.useState(false)
   const [isCreatingMember, setIsCreatingMember] = React.useState(false)
+  
+  // Modal state for editing user
+  const [isEditUserModalOpen, setIsEditUserModalOpen] = React.useState(false)
+  const [editingUserId, setEditingUserId] = React.useState<string | null>(null)
+  const [isUpdatingUser, setIsUpdatingUser] = React.useState(false)
 
   // Fetch entity data
   const fetchEntityData = React.useCallback(async () => {
@@ -74,8 +81,10 @@ export default function EntityDetailPage() {
   }, [fetchEntityData])
 
   // Permission (for form disabled state)
-  const permission = "admin" // TODO: Get from auth context
-  const canEdit = permission === "admin" || permission === "editor"
+  // Get from user context - viewers cannot create or edit
+  const userRole = userContext.user?.role || "admin"
+  const canEdit = userRole === "admin" || userRole === "editor"
+  const canCreate = userRole === "admin" || userRole === "editor" // viewers cannot create
 
   // =============================================================================
   // HANDLERS: Basic Information
@@ -148,8 +157,15 @@ export default function EntityDetailPage() {
 
   // Handle open new member modal
   const handleOpenNewMemberModal = React.useCallback(() => {
+    console.log("handleOpenNewMemberModal called, entityId:", entityId)
+    if (!entityId) {
+      toast.error("Cannot add member", {
+        description: "Entity must be loaded before adding team members.",
+      })
+      return
+    }
     setIsNewMemberModalOpen(true)
-  }, [])
+  }, [entityId])
 
   // Handle close new member modal
   const handleCloseNewMemberModal = React.useCallback(() => {
@@ -202,6 +218,76 @@ export default function EntityDetailPage() {
       setIsCreatingMember(false)
     }
   }, [entityId, fetchEntityData])
+
+  // Handle edit user (team member)
+  const handleEditUser = React.useCallback((userId: string) => {
+    console.log("handleEditUser called, userId:", userId)
+    if (!userId) {
+      console.error("handleEditUser: userId is missing")
+      return
+    }
+    setEditingUserId(userId)
+    setIsEditUserModalOpen(true)
+  }, [])
+
+  // Handle close edit user modal
+  const handleCloseEditUserModal = React.useCallback(() => {
+    setIsEditUserModalOpen(false)
+    setEditingUserId(null)
+  }, [])
+
+  // Handle update user
+  const handleUpdateUser = React.useCallback(async (userData: {
+    firstName: string
+    lastName: string
+    email: string
+    phoneNumber: string
+    countryCode: string
+    entity: { type: EntityType; name: string } | null
+    role: "admin" | "editor" | "viewer"
+  }) => {
+    if (!editingUserId || !entityId) return
+
+    setIsUpdatingUser(true)
+    try {
+      const service = createEntityCreationService()
+      // Convert to UserFormData format (entity type must be StandardEntityType for UserFormData)
+      // Since we're editing a team member, we know the entity is not self-photographer
+      const userFormData: import("@/lib/utils/form-mappers").UserFormData = {
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        phoneNumber: userData.phoneNumber,
+        countryCode: userData.countryCode,
+        entity: userData.entity && userData.entity.type !== "self-photographer"
+          ? { type: userData.entity.type as StandardEntityType, name: userData.entity.name }
+          : null,
+        role: userData.role,
+      }
+      const payload = mapFormToUpdateUserPayload(userFormData)
+      
+      await service.updateUser(editingUserId, payload)
+      
+      // Refresh entity data
+      const updatedData = await fetchEntityData()
+      setEntity(updatedData)
+      
+      // Close modal
+      setIsEditUserModalOpen(false)
+      setEditingUserId(null)
+      
+      toast.success("User updated successfully", {
+        description: `${userData.firstName} ${userData.lastName || ""}`.trim() + " has been updated.",
+      })
+    } catch (error) {
+      console.error("Failed to update user:", error)
+      toast.error("Failed to update user", {
+        description: error instanceof Error ? error.message : "An error occurred while updating the user.",
+      })
+    } finally {
+      setIsUpdatingUser(false)
+    }
+  }, [editingUserId, entityId, fetchEntityData])
 
   // Build form initial data based on entity type
   const basicFormInitialData = React.useMemo(() => {
@@ -293,7 +379,7 @@ export default function EntityDetailPage() {
             variant="members"
             searchPlaceholder="Search members..."
             onActionClick={handleOpenNewMemberModal}
-            actionDisabled={!canEdit}
+            actionDisabled={!canCreate}
           />
         </LayoutSection>
 
@@ -307,6 +393,7 @@ export default function EntityDetailPage() {
                 // TODO: Handle delete member
                 console.log("Delete member:", id)
               }}
+              onEditUser={handleEditUser}
               canDelete={canEdit}
             />
           ) : (
@@ -317,7 +404,7 @@ export default function EntityDetailPage() {
         </LayoutSection>
       </Layout>
     )
-  }, [entity, canEdit, handleOpenNewMemberModal])
+  }, [entity, canEdit, handleOpenNewMemberModal, handleEditUser])
 
   // Build sections with content
   const sections = useViewSections(
@@ -428,7 +515,7 @@ export default function EntityDetailPage() {
         ]}
         sections={sections}
         entity={viewEntityData}
-        permission={permission}
+        permission={userRole}
         defaultActiveSection="basic"
         onSectionChange={(sectionId) => {
           // Optional: handle section changes
@@ -449,25 +536,35 @@ export default function EntityDetailPage() {
 
       {/* New Member Modal */}
       {entity?.entity && (
-        <ModalWindow
+        <UserCreationForm
           open={isNewMemberModalOpen}
           onOpenChange={setIsNewMemberModalOpen}
-          title="New member"
-          subtitle="Add a new team member to this entity"
-        >
-          <UserCreationForm
-            open={isNewMemberModalOpen}
-            onOpenChange={setIsNewMemberModalOpen}
-            entity={{
-              type: entity.entity.type,
-              name: entity.entity.name,
-            }}
-            isAdminUser={false}
-            primaryLabel="Register member"
-            onSubmit={handleCreateTeamMember}
-            onCancel={handleCloseNewMemberModal}
-          />
-        </ModalWindow>
+          entity={{
+            type: entity.entity.type,
+            name: entity.entity.name,
+          }}
+          isAdminUser={false}
+          primaryLabel="Register member"
+          onSubmit={handleCreateTeamMember}
+          onCancel={handleCloseNewMemberModal}
+        />
+      )}
+
+      {/* Edit User Modal */}
+      {entity?.entity && editingUserId && (
+        <UserCreationForm
+          open={isEditUserModalOpen}
+          onOpenChange={handleCloseEditUserModal}
+          mode="edit"
+          entity={{
+            type: entity.entity.type,
+            name: entity.entity.name,
+          }}
+          initialUserData={entity.teamMembers.find((u) => u.id === editingUserId) || undefined}
+          disabled={!canEdit}
+          onSubmit={handleUpdateUser}
+          onCancel={handleCloseEditUserModal}
+        />
       )}
     </>
   )

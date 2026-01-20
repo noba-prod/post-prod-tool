@@ -9,12 +9,16 @@ import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
 import { CreateEntityCommand } from "@/components/custom/create-entity-command"
+import { UserCreationForm } from "@/components/custom/user-creation-form"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import type { Entity } from "@/components/custom/tables"
+import { useUserContext } from "@/lib/contexts/user-context"
 
 // Service imports
-import { createEntitiesListService } from "@/lib/services"
+import { createEntitiesListService, createEntityCreationService } from "@/lib/services"
+import { getRepositoryInstances } from "@/lib/services/factories/entity-creation-service.factory"
+import { mapUserToFormData, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 
 // ============================================================================
 // TOAST ON NAVIGATION - Check for pending toast on page load
@@ -71,6 +75,7 @@ interface Filters {
 export default function EntitiesPage() {
   const router = useRouter()
   const authAdapter = useAuthAdapter()
+  const userContext = useUserContext()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   
@@ -83,6 +88,21 @@ export default function EntitiesPage() {
     type: null,
     search: "",
   })
+
+  // Modal state for editing admin user
+  const [isEditAdminModalOpen, setIsEditAdminModalOpen] = useState(false)
+  const [editingAdminUserId, setEditingAdminUserId] = useState<string | null>(null)
+  const [editingEntityId, setEditingEntityId] = useState<string | null>(null)
+  const [isUpdatingAdmin, setIsUpdatingAdmin] = useState(false)
+  const [editingUserData, setEditingUserData] = useState<import("@/lib/types").User | null>(null)
+  const [editingEntityData, setEditingEntityData] = useState<import("@/lib/types").Entity | null>(null)
+  const [loadingEditData, setLoadingEditData] = useState(false)
+
+  // Permission (for form disabled state)
+  // Get from user context - viewers cannot create anything
+  const userRole = userContext.user?.role || "admin"
+  const canEdit = userRole === "admin" || userRole === "editor"
+  const canCreate = userRole === "admin" || userRole === "editor" // viewers cannot create
 
   // Load entities from repository
   const loadEntities = useCallback(async () => {
@@ -97,6 +117,7 @@ export default function EntitiesPage() {
         name: item.name,
         type: item.type as Entity["type"],
         admin: item.admin,
+        adminUserId: item.adminUserId,
         teamMembers: item.teamMembers,
         collections: item.collections,
       }))
@@ -109,6 +130,16 @@ export default function EntitiesPage() {
     }
   }, [])
 
+  // Route guard: Check if user can access Entities section
+  useEffect(() => {
+    if (!userContext.loading && !userContext.canAccessEntities) {
+      toast.error("Access Denied", {
+        description: "You don't have access to the Entities section. Only noba users can access this page.",
+      })
+      router.push("/collections")
+    }
+  }, [userContext.loading, userContext.canAccessEntities, router])
+
   // Auth check and initial load
   useEffect(() => {
     const checkSession = async () => {
@@ -120,8 +151,10 @@ export default function EntitiesPage() {
       setSession(currentSession)
       setLoading(false)
       
-      // Load entities after auth
-      loadEntities()
+      // Only load entities if user has access
+      if (userContext.canAccessEntities) {
+        loadEntities()
+      }
       
       // Check for pending toast (from navbar creation flow)
       const pendingToast = consumePendingToast()
@@ -138,7 +171,7 @@ export default function EntitiesPage() {
       }
     }
     checkSession()
-  }, [router, authAdapter, loadEntities])
+  }, [router, authAdapter, loadEntities, userContext.canAccessEntities])
 
   // Handle filter changes
   const handleFilterChange = (filterId: string, value: string) => {
@@ -159,6 +192,115 @@ export default function EntitiesPage() {
   const handleViewDetails = (id: string) => {
     router.push(`/entities/${id}`)
   }
+
+  // Handle edit admin user
+  const handleEditAdminUser = useCallback(async (userId: string, entityId: string) => {
+    setEditingAdminUserId(userId)
+    setEditingEntityId(entityId)
+    setIsEditAdminModalOpen(true)
+    setLoadingEditData(true)
+    
+    try {
+      // Fetch user and entity data
+      const { userRepository, entityRepository } = getRepositoryInstances()
+      if (!userRepository || !entityRepository) {
+        toast.error("Failed to load repositories", {
+          description: "Repository instances are not available.",
+        })
+        setIsEditAdminModalOpen(false)
+        return
+      }
+
+      const [user, entity] = await Promise.all([
+        userRepository.getUserById(userId),
+        entityRepository.getEntityById(entityId),
+      ])
+
+      if (!user || !entity) {
+        toast.error("Failed to load user data", {
+          description: "The user or entity could not be found.",
+        })
+        setIsEditAdminModalOpen(false)
+        setEditingAdminUserId(null)
+        setEditingEntityId(null)
+        return
+      }
+
+      setEditingUserData(user)
+      setEditingEntityData(entity)
+    } catch (error) {
+      console.error("Failed to fetch user/entity data:", error)
+      toast.error("Failed to load data", {
+        description: error instanceof Error ? error.message : "An error occurred while loading user data.",
+      })
+      setIsEditAdminModalOpen(false)
+      setEditingAdminUserId(null)
+      setEditingEntityId(null)
+    } finally {
+      setLoadingEditData(false)
+    }
+  }, [])
+
+  // Handle close edit admin modal
+  const handleCloseEditAdminModal = useCallback(() => {
+    setIsEditAdminModalOpen(false)
+    setEditingAdminUserId(null)
+    setEditingEntityId(null)
+    setEditingUserData(null)
+    setEditingEntityData(null)
+  }, [])
+
+  // Handle update admin user
+  const handleUpdateAdminUser = useCallback(async (userData: {
+    firstName: string
+    lastName: string
+    email: string
+    phoneNumber: string
+    countryCode: string
+    entity: { type: import("@/lib/types").EntityType; name: string } | null
+    role: "admin" | "editor" | "viewer"
+  }) => {
+    if (!editingAdminUserId) return
+
+    setIsUpdatingAdmin(true)
+    try {
+      const service = createEntityCreationService()
+      // Convert to UserFormData format (entity type must be StandardEntityType for UserFormData)
+      const userFormData: import("@/lib/utils/form-mappers").UserFormData = {
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        phoneNumber: userData.phoneNumber,
+        countryCode: userData.countryCode,
+        entity: userData.entity && userData.entity.type !== "self-photographer"
+          ? { type: userData.entity.type as import("@/lib/types").StandardEntityType, name: userData.entity.name }
+          : null,
+        role: userData.role,
+      }
+      const payload = mapFormToUpdateUserPayload(userFormData)
+      
+      await service.updateUser(editingAdminUserId, payload)
+      
+      // Refresh entities list
+      await loadEntities()
+      
+      // Close modal
+      setIsEditAdminModalOpen(false)
+      setEditingAdminUserId(null)
+      setEditingEntityId(null)
+      
+      toast.success("User updated successfully", {
+        description: `${userData.firstName} ${userData.lastName || ""}`.trim() + " has been updated.",
+      })
+    } catch (error) {
+      console.error("Failed to update admin user:", error)
+      toast.error("Failed to update user", {
+        description: error instanceof Error ? error.message : "An error occurred while updating the user.",
+      })
+    } finally {
+      setIsUpdatingAdmin(false)
+    }
+  }, [editingAdminUserId, loadEntities])
 
   // Handle entity created - refresh the list
   const handleEntityCreated = useCallback(() => {
@@ -187,10 +329,20 @@ export default function EntitiesPage() {
     return result
   }, [entities, filters])
 
-  if (loading) {
+  // Show loading state
+  if (loading || userContext.loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
+
+  // Route guard: Don't render content if user doesn't have access
+  if (!userContext.canAccessEntities) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Redirecting...</p>
       </div>
     )
   }
@@ -200,16 +352,7 @@ export default function EntitiesPage() {
   }
 
   return (
-    <MainTemplate
-      title="Entities"
-      navBarProps={{
-        variant: "noba",
-        userName: "Martin Becerra",
-        organization: "noba",
-        role: "admin",
-        isAdmin: true,
-      }}
-    >
+    <MainTemplate title="Entities">
       <Layout padding="none" showSeparators={false}>
         <LayoutSection>
           {/* Custom filter bar with CreateEntityCommand */}
@@ -232,6 +375,7 @@ export default function EntitiesPage() {
               popoverAlign="end"
               redirectAfterCreate={false}
               onCreated={handleEntityCreated}
+              disabled={!canCreate}
             />
           </div>
         </LayoutSection>
@@ -246,6 +390,7 @@ export default function EntitiesPage() {
                 variant="entities"
                 entitiesData={filteredEntities}
                 onViewDetails={handleViewDetails}
+                onEditAdminUser={handleEditAdminUser}
               />
               {filteredEntities.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -264,6 +409,23 @@ export default function EntitiesPage() {
           )}
         </LayoutSection>
       </Layout>
+
+      {/* Edit Admin User Modal */}
+      {isEditAdminModalOpen && editingAdminUserId && editingEntityId && editingUserData && editingEntityData && (
+        <UserCreationForm
+          open={isEditAdminModalOpen}
+          onOpenChange={handleCloseEditAdminModal}
+          mode="edit"
+          entity={{
+            type: editingEntityData.type,
+            name: editingEntityData.name,
+          }}
+          initialUserData={editingUserData}
+          disabled={!canEdit}
+          onSubmit={handleUpdateAdminUser}
+          onCancel={handleCloseEditAdminModal}
+        />
+      )}
     </MainTemplate>
   )
 }

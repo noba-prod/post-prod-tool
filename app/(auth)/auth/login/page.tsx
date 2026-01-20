@@ -172,7 +172,7 @@ export default function LoginPage() {
           <div className="flex items-center justify-center w-full">
             <p className="text-sm text-[#18181b] text-center leading-none">
               <span>Don't have an account? </span>
-              <Link href="#" className="underline underline-offset-2 decoration-solid">
+              <Link href="/dev/test-flow" className="underline underline-offset-2 decoration-solid">
                 Request access
               </Link>
             </p>

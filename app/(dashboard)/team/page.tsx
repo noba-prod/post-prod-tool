@@ -1,29 +1,21 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
+import { UserCreationForm, type UserFormData } from "@/components/custom/user-creation-form"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import type { TeamMember } from "@/components/custom/tables"
-
-// ============================================================================
-// MOCK DATA
-// ============================================================================
-
-const MOCK_TEAM_MEMBERS: TeamMember[] = [
-  { id: "1", name: "Erika Goldner", email: "erika.goldner@zara.com", phone: "+34 649 393 291", role: "Admin", collections: 0 },
-  { id: "2", name: "Sophia Johnson", email: "sophia.johnson@zara.com", phone: "+34 672 271 218", role: "Viewer", collections: 0 },
-  { id: "3", name: "Aiden Smith", email: "kevin.brown@zara.com", phone: "555-555-5555", role: "Editor", collections: 0 },
-  { id: "4", name: "Mia Clark", email: "sarah.davis@zara.com", phone: "666-666-6666", role: "Viewer", collections: 0 },
-  { id: "5", name: "Noah Garcia", email: "james.wilson@zara.com", phone: "777-777-7777", role: "Viewer", collections: 0 },
-  { id: "6", name: "Emma Martinez", email: "emma.martinez@zara.com", phone: "+34 611 222 333", role: "Editor", collections: 2 },
-  { id: "7", name: "Lucas Rodriguez", email: "lucas.rodriguez@zara.com", phone: "+34 644 555 666", role: "Admin", collections: 1 },
-]
+import { useUserContext } from "@/lib/contexts/user-context"
+import { getRepositoryInstances } from "@/lib/services"
+import { roleToLabel } from "@/lib/types"
+import { toast } from "sonner"
+import type { CreateUserPayload } from "@/lib/types"
 
 // ============================================================================
 // FILTER TYPES
@@ -41,14 +33,64 @@ interface Filters {
 export default function TeamPage() {
   const router = useRouter()
   const authAdapter = useAuthAdapter()
+  const userContext = useUserContext()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [loadingTeam, setLoadingTeam] = useState(false)
+  
+  // Modal state for new member
+  const [isNewMemberModalOpen, setIsNewMemberModalOpen] = useState(false)
+  const [isCreatingMember, setIsCreatingMember] = useState(false)
   
   // Filters state
   const [filters, setFilters] = useState<Filters>({
     role: null,
     search: "",
   })
+
+  // Load team members from repository
+  useEffect(() => {
+    async function loadTeamMembers() {
+      if (!userContext.user?.entityId) {
+        setTeamMembers([])
+        return
+      }
+
+      setLoadingTeam(true)
+      try {
+        const { userRepository } = getRepositoryInstances()
+        if (!userRepository) {
+          console.warn("User repository not available")
+          setTeamMembers([])
+          return
+        }
+
+        const users = await userRepository.listUsersByEntityId(userContext.user.entityId)
+        
+        // Map User[] to TeamMember[]
+        const mappedMembers: TeamMember[] = users.map((u) => ({
+          id: u.id,
+          name: `${u.firstName} ${u.lastName || ""}`.trim(),
+          email: u.email,
+          phone: u.phoneNumber,
+          role: roleToLabel(u.role),
+          collections: 0, // TODO: Calculate from collections when available
+        }))
+
+        setTeamMembers(mappedMembers)
+      } catch (error) {
+        console.error("Failed to load team members:", error)
+        setTeamMembers([])
+      } finally {
+        setLoadingTeam(false)
+      }
+    }
+
+    if (!userContext.loading && userContext.user) {
+      loadTeamMembers()
+    }
+  }, [userContext.user?.entityId, userContext.loading])
 
   // Auth check
   useEffect(() => {
@@ -80,10 +122,80 @@ export default function TeamPage() {
   }
 
   // Handle action click (New member)
-  const handleActionClick = () => {
-    // TODO: Implement new member modal or page
-    console.log("New member clicked")
-  }
+  const handleActionClick = useCallback(() => {
+    if (!userContext.user?.entityId || !userContext.entity) {
+      toast.error("Cannot add member", {
+        description: "Entity information is not available.",
+      })
+      return
+    }
+    setIsNewMemberModalOpen(true)
+  }, [userContext.user?.entityId, userContext.entity])
+
+  // Handle new member submit
+  const handleNewMemberSubmit = useCallback(async (userData: UserFormData) => {
+    if (!userContext.user?.entityId || !userContext.entity) {
+      toast.error("Cannot add member", {
+        description: "Entity information is not available.",
+      })
+      return
+    }
+
+    setIsCreatingMember(true)
+    try {
+      const repos = getRepositoryInstances()
+      if (!repos.userRepository) {
+        throw new Error("User repository not available")
+      }
+
+      // Create user payload
+      const payload: CreateUserPayload = {
+        firstName: userData.firstName.trim(),
+        lastName: userData.lastName?.trim() || undefined,
+        email: userData.email.trim(),
+        phoneNumber: `${userData.countryCode} ${userData.phoneNumber}`.trim(),
+        countryCode: userData.countryCode,
+        role: userData.role,
+      }
+
+      // Create the team member
+      const newUser = await repos.userRepository.createUser({
+        ...payload,
+        entityId: userContext.user.entityId,
+        notes: `Team member for ${userContext.entity.name}`,
+      })
+
+      // Refresh team members list
+      const allUsers = await repos.userRepository.listUsersByEntityId(userContext.user.entityId)
+      
+      // Map to TeamMember format
+      const mappedMembers: TeamMember[] = allUsers.map((u) => ({
+        id: u.id,
+        name: `${u.firstName} ${u.lastName || ""}`.trim(),
+        email: u.email,
+        phone: u.phoneNumber,
+        role: roleToLabel(u.role),
+        collections: 0,
+      }))
+
+      setTeamMembers(mappedMembers)
+
+      // Close modal
+      setIsNewMemberModalOpen(false)
+
+      // Show success toast
+      toast.success("Team member added successfully", {
+        description: `${newUser.firstName} ${newUser.lastName || ""}`.trim() + " has been added to the team.",
+      })
+    } catch (error) {
+      console.error("Failed to create team member:", error)
+      toast.error("Failed to add team member", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+      })
+    } finally {
+      setIsCreatingMember(false)
+    }
+  }, [userContext.user?.entityId, userContext.entity])
 
   // Handle delete
   const handleDelete = (id: string) => {
@@ -92,11 +204,11 @@ export default function TeamPage() {
 
   // Filter team members
   const filteredMembers = React.useMemo(() => {
-    let result = [...MOCK_TEAM_MEMBERS]
+    let result = [...teamMembers]
 
     // Apply role filter
     if (filters.role) {
-      result = result.filter(m => m.role.toLowerCase() === filters.role)
+      result = result.filter(m => m.role.toLowerCase() === filters.role?.toLowerCase())
     }
 
     // Apply search filter
@@ -110,9 +222,13 @@ export default function TeamPage() {
     }
 
     return result
-  }, [filters])
+  }, [teamMembers, filters])
 
-  if (loading) {
+  // Permissions based on user role
+  const canManageTeam = userContext.user?.role === "admin" || userContext.user?.role === "editor"
+  const canDelete = userContext.user?.role === "admin" || userContext.user?.role === "editor"
+
+  if (loading || userContext.loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <p className="text-sm text-muted-foreground">Loading...</p>
@@ -124,18 +240,37 @@ export default function TeamPage() {
     return null
   }
 
+  // Don't show Team page for self-photographer (should be handled by navigation, but defensive check)
+  if (!userContext.canAccessTeam) {
+    return (
+      <MainTemplate>
+        <LayoutSection>
+          <div className="flex items-center justify-center py-16">
+            <p className="text-muted-foreground">Team section is not available for your entity type.</p>
+          </div>
+        </LayoutSection>
+      </MainTemplate>
+    )
+  }
+
   return (
-    <MainTemplate
-      title="Team"
-      navBarProps={{
-        variant: "noba",
-        userName: "Martin Becerra",
-        organization: "noba",
-        role: "admin",
-        isAdmin: true,
-      }}
-    >
+    <MainTemplate>
       <Layout padding="none" showSeparators={false}>
+        <LayoutSection>
+          {/* Custom title with entity name */}
+          <div className="flex items-center justify-between w-full mb-5">
+            <div className="flex items-center gap-2">
+              <span className="text-4xl font-semibold text-foreground">
+                Team
+              </span>
+              {userContext.entity && (
+                <span className="text-4xl font-semibold text-lime-500">
+                  @{userContext.entity.name.toLowerCase().replace(/\s+/g, "")}
+                </span>
+              )}
+            </div>
+          </div>
+        </LayoutSection>
         <LayoutSection>
           <FilterBar
             variant="members"
@@ -143,26 +278,60 @@ export default function TeamPage() {
             onActionClick={handleActionClick}
             onFilterChange={handleFilterChange}
             searchPlaceholder="Search team members..."
+            actionDisabled={!canManageTeam}
           />
         </LayoutSection>
         <LayoutSection>
-          <Tables
-            variant="team-members"
-            teamMembersData={filteredMembers}
-            onDelete={handleDelete}
-          />
-          {filteredMembers.length === 0 && (
+          {loadingTeam ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-lg font-medium text-muted-foreground">
-                No team members found
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Try adjusting your filters
-              </p>
+              <p className="text-sm text-muted-foreground">Loading team members...</p>
             </div>
+          ) : (
+            <>
+              <Tables
+                variant="team-members"
+                teamMembersData={filteredMembers}
+                onDelete={canDelete ? handleDelete : undefined}
+              />
+              {filteredMembers.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="text-lg font-medium text-muted-foreground">
+                    {teamMembers.length === 0 
+                      ? "No team members yet"
+                      : "No team members found"
+                    }
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {teamMembers.length === 0
+                      ? "Add your first team member to get started"
+                      : "Try adjusting your filters"
+                    }
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </LayoutSection>
       </Layout>
+
+      {/* New Team Member Modal */}
+      {userContext.entity && (
+        <UserCreationForm
+          open={isNewMemberModalOpen}
+          onOpenChange={(open) => {
+            if (!open) setIsNewMemberModalOpen(false)
+          }}
+          entity={{
+            type: userContext.entity.type,
+            name: userContext.entity.name,
+          }}
+          isAdminUser={false}
+          onSubmit={handleNewMemberSubmit}
+          onCancel={() => setIsNewMemberModalOpen(false)}
+          primaryLabel="Register member"
+          secondaryLabel="Cancel"
+        />
+      )}
     </MainTemplate>
   )
 }

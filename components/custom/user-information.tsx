@@ -15,6 +15,7 @@ import {
   CommandItem,
   CommandSeparator,
 } from "@/components/ui/command"
+import { roleToLabel } from "@/lib/types"
 
 type UserInformationStatus = "default" | "hover" | "active"
 
@@ -27,6 +28,8 @@ interface UserInformationProps {
   role?: string
   /** Si el usuario es admin (puede editar company details) */
   isAdmin?: boolean
+  /** Si el usuario es self-photographer (no puede editar company details) */
+  isSelfPhotographer?: boolean
   /** URL de la imagen del avatar */
   avatarSrc?: string
   /** Estado visual del componente (para preview) */
@@ -56,7 +59,8 @@ export function UserInformation({
   userName = "Martin Becerra",
   organization = "noba",
   role = "admin",
-  isAdmin = false,
+  isAdmin: isAdminProp,
+  isSelfPhotographer = false,
   avatarSrc,
   status = "default",
   onEditProfile,
@@ -72,6 +76,16 @@ export function UserInformation({
     setOpen(status === "active")
     setIsHovered(status === "hover")
   }, [status])
+
+  // Calculate isAdmin dynamically from role if not explicitly provided
+  // Only admin role can see "Company details" option
+  const isAdmin = React.useMemo(() => {
+    if (isAdminProp !== undefined) {
+      return isAdminProp
+    }
+    // Default to checking if role is "admin" (case-insensitive)
+    return role?.toLowerCase() === "admin"
+  }, [isAdminProp, role])
 
   const initials = userName.charAt(0).toUpperCase()
 
@@ -109,7 +123,11 @@ export function UserInformation({
             </span>
             <span className="text-xs leading-none truncate w-full text-left">
               <span className="text-lime-500">{organization}</span>
-              <span className="text-sidebar-foreground"> · {role}</span>
+              <span className="text-sidebar-foreground"> · {
+                role && ["admin", "editor", "viewer"].includes(role.toLowerCase())
+                  ? roleToLabel(role.toLowerCase() as "admin" | "editor" | "viewer")
+                  : role
+              }</span>
             </span>
           </div>
 
@@ -132,7 +150,7 @@ export function UserInformation({
               <CircleUserRound className="size-4" />
               <span>Profile details</span>
             </CommandItem>
-            {isAdmin && (
+            {isAdmin && !isSelfPhotographer && (
               <CommandItem
                 onSelect={() => {
                   onEditCompany?.()
