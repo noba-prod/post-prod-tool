@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:scenarios": "npx tsx lib/domain/collections/__tests__/scenario-matrix-check.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",

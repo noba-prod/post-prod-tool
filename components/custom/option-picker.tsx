@@ -59,9 +59,17 @@ export function OptionPicker({
   className,
 }: OptionPickerProps) {
   const [open, setOpen] = React.useState(false)
+  const [triggerWidth, setTriggerWidth] = React.useState<number | null>(null)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
 
   // Find selected option label
   const selectedOption = options.find((opt) => opt.value === value)
+
+  React.useLayoutEffect(() => {
+    if (open && triggerRef.current) {
+      setTriggerWidth(triggerRef.current.offsetWidth)
+    }
+  }, [open])
 
   const handleSelect = (selectedValue: string) => {
     const option = options.find((opt) => opt.label === selectedValue || opt.value === selectedValue)
@@ -86,6 +94,7 @@ export function OptionPicker({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            ref={triggerRef}
             variant="outline"
             role="combobox"
             aria-expanded={open}
@@ -102,7 +111,11 @@ export function OptionPicker({
             <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[200px] p-0" align="start">
+        <PopoverContent
+          className="p-0"
+          align="start"
+          style={triggerWidth != null ? { width: triggerWidth } : undefined}
+        >
           <Command>
             <CommandInput placeholder="Search..." />
             <CommandList>

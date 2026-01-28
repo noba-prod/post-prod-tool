@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { Camera } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // ============================================================================
@@ -242,7 +243,7 @@ export function CollectionProgressTag({
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center gap-0.5 pl-0.5 pr-1.5 py-0.5 text-xs font-semibold rounded-md bg-sidebar-accent text-foreground whitespace-nowrap",
+        "inline-flex items-center justify-center gap-1.5 pl-1 pr-1.5 py-1 text-sm font-semibold rounded-md bg-sidebar-accent text-foreground whitespace-nowrap",
         className
       )}
     >
@@ -250,6 +251,33 @@ export function CollectionProgressTag({
         <ProgressCircle progress={clampedProgress} />
       </span>
       <span>{clampedProgress}%</span>
+    </span>
+  )
+}
+
+// ============================================================================
+// PHOTOGRAPHER NAME TAG
+// ============================================================================
+
+interface PhotographerNameTagProps {
+  /** Nombre del fotógrafo */
+  name?: string
+  className?: string
+}
+
+export function PhotographerNameTag({
+  name = "Photographer Name",
+  className,
+}: PhotographerNameTagProps) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 px-2 py-1 text-sm font-semibold rounded-lg bg-sidebar-accent text-foreground whitespace-nowrap",
+        className
+      )}
+    >
+      <Camera className="size-4 shrink-0" />
+      <span>{name}</span>
     </span>
   )
 }
@@ -264,5 +292,6 @@ export type {
   DateIndicatorTagProps,
   TimeStampTagProps,
   CollectionProgressTagProps,
+  PhotographerNameTagProps,
 }
 

@@ -45,12 +45,18 @@ interface BlockTemplateCreationProps {
   showParticipants?: boolean
   /** Participants list */
   participants?: Participant[]
+  /** Callback when Edit participants is clicked (passed to ParticipantSummary) */
+  onEditParticipants?: () => void
   /** Primary button label */
   primaryLabel?: string
   /** Callback when primary button is clicked */
   onPrimaryClick?: () => void
   /** Whether primary button is disabled */
   primaryDisabled?: boolean
+  /** Secondary button label (e.g. "Previous") */
+  secondaryLabel?: string
+  /** Callback when secondary button is clicked */
+  onSecondaryClick?: () => void
   /** Callback when Edit button is clicked */
   onEdit?: () => void
   className?: string
@@ -150,9 +156,12 @@ export function BlockTemplate(props: BlockTemplateProps) {
       children,
       showParticipants = false,
       participants = [],
+      onEditParticipants,
       primaryLabel = "Primary",
       onPrimaryClick,
       primaryDisabled = false,
+      secondaryLabel,
+      onSecondaryClick,
       onEdit,
     } = props as BlockTemplateCreationProps
 
@@ -237,35 +246,50 @@ export function BlockTemplate(props: BlockTemplateProps) {
           className
         )}
       >
-        {/* Header */}
-        <div className="flex flex-col gap-5 w-full">
-          <Titles
-            type="block"
-            title={title}
-            subtitle={subtitle}
-          />
-          {showParticipants && participants.length > 0 && (
-            <ParticipantSummary participants={participants} />
-          )}
-        </div>
+        {/* Header — BlockHeading type "active" (title + subtitle + ParticipantSummary) */}
+        <BlockHeading
+          type="active"
+          title={title}
+          subtitle={subtitle}
+          showPlayers={showParticipants && participants.length > 0}
+        >
+          {showParticipants && participants.length > 0 ? (
+            <ParticipantSummary
+              participants={participants}
+              onEditParticipants={onEditParticipants}
+            />
+          ) : null}
+        </BlockHeading>
 
         {/* Content slot */}
         <div className="w-full">
           {children || <SlotPlaceholder />}
         </div>
 
-        {/* Actions - only show if onPrimaryClick is provided */}
-        {onPrimaryClick && (
+        {/* Actions - show when primary and/or secondary actions exist */}
+        {(onPrimaryClick || onSecondaryClick) && (
           <div className="flex items-center justify-end gap-3 w-full">
-            <Button
-              variant="default"
-              size="lg"
-              onClick={handlePrimaryClick}
-              disabled={primaryDisabled}
-              className="rounded-xl"
-            >
-              {primaryLabel}
-            </Button>
+            {onSecondaryClick && secondaryLabel && (
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={onSecondaryClick}
+                className="rounded-xl"
+              >
+                {secondaryLabel}
+              </Button>
+            )}
+            {onPrimaryClick && (
+              <Button
+                variant="default"
+                size="lg"
+                onClick={handlePrimaryClick}
+                disabled={primaryDisabled}
+                className="rounded-xl"
+              >
+                {primaryLabel}
+              </Button>
+            )}
           </div>
         )}
       </div>

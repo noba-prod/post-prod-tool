@@ -28,17 +28,41 @@ import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft } from "@/l
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
 
+interface CreationBlockParticipant {
+  role: string
+  name: string
+}
+
 interface CreationBlock {
   id: string
   title: string
   subtitle?: string
   variant?: "active" | "completed" | "disabled"
   content?: React.ReactNode
+  /** Show participants summary in block header (uses ParticipantSummary) */
+  showParticipants?: boolean
+  /** Participants for summary (e.g. [{ role: "Client", name: "@zara" }]) */
+  participants?: CreationBlockParticipant[]
+  /** Callback when "Edit participants" is clicked in summary */
+  onEditParticipants?: () => void
   primaryLabel?: string
   onPrimaryClick?: () => void
   primaryDisabled?: boolean
+  /** Secondary button label (e.g. "Previous") */
+  secondaryLabel?: string
+  /** Callback when secondary button is clicked */
+  onSecondaryClick?: () => void
   /** Callback when Edit button is clicked (for completed blocks) */
   onEdit?: () => void
+}
+
+/** Collection summary for create-collection sidebar variant */
+interface CollectionSummaryForSidebar {
+  name: string
+  status?: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
+  client?: string
+  deadline?: string
+  lastUpdate?: string
 }
 
 interface CreationTemplateProps {
@@ -46,12 +70,18 @@ interface CreationTemplateProps {
   title?: string
   /** Breadcrumb items */
   breadcrumbs?: Array<{ label: string; href?: string }>
+  /** Sidebar variant: create-entity (default) or create-collection */
+  sidebarVariant?: "create-entity" | "create-collection"
+  /** Collection summary for sidebar when sidebarVariant is create-collection */
+  collectionSummary?: CollectionSummaryForSidebar
   /** Sidebar stepper items */
   sidebarItems?: Array<{ id: string; label: string }>
   /** Current active sidebar item */
   activeSidebarItem?: string
   /** Blocks to display */
   blocks?: CreationBlock[]
+  /** Optional: step/block ids to show as completed in the sidebar (overrides derivation from blocks) */
+  completedStepIds?: string[]
   /** Callback when a sidebar item is clicked */
   onSidebarItemClick?: (id: string) => void
   /** NavBar props */
@@ -78,6 +108,8 @@ export function CreationTemplate({
     { label: "Entities", href: "/entities" },
     { label: "Create Entity" },
   ],
+  sidebarVariant = "create-entity",
+  collectionSummary,
   sidebarItems = [
     { id: "step-1", label: "Step 1" },
     { id: "step-2", label: "Step 2" },
@@ -85,6 +117,7 @@ export function CreationTemplate({
   ],
   activeSidebarItem,
   blocks = [],
+  completedStepIds,
   onSidebarItemClick,
   navBarProps,
   className,
@@ -353,25 +386,50 @@ export function CreationTemplate({
           {/* Sidebar Container with padding */}
           <aside className="w-[320px] shrink-0 px-4 pb-4 relative z-10 flex flex-col min-h-0">
             <div className="h-full max-h-full rounded-xl overflow-hidden flex flex-col">
-              <SideBar
-                type="create-entity"
-                title={title}
-                items={sidebarItems}
-                activeId={activeSidebarItem || sidebarItems[0]?.id}
-                completedItems={blocks
-                  .map((block, index) => {
-                    // Match block to sidebar item by index
-                    const sidebarItem = sidebarItems[index]
-                    // If block is completed, mark corresponding sidebar item as completed
-                    if (block.variant === "completed" && sidebarItem) {
-                      return sidebarItem.id
-                    }
-                    return null
-                  })
-                  .filter((id): id is string => id !== null)}
-                onItemClick={onSidebarItemClick}
-                deleteLabel="Delete"
-              />
+              {sidebarVariant === "create-collection" ? (
+                <SideBar
+                  type="create-collection"
+                  title="Set up collection"
+                  items={sidebarItems}
+                  activeId={activeSidebarItem || sidebarItems[0]?.id}
+                  completedItems={
+                    completedStepIds ??
+                    blocks
+                      .map((block, index) => {
+                        const sidebarItem = sidebarItems[index]
+                        if (block.variant === "completed" && sidebarItem) {
+                          return sidebarItem.id
+                        }
+                        return null
+                      })
+                      .filter((id): id is string => id !== null)
+                  }
+                  collection={collectionSummary ?? { name: title }}
+                  onItemClick={onSidebarItemClick}
+                  deleteLabel="Delete collection"
+                />
+              ) : (
+                <SideBar
+                  type="create-entity"
+                  title={title}
+                  items={sidebarItems}
+                  activeId={activeSidebarItem || sidebarItems[0]?.id}
+                  completedItems={
+                    completedStepIds ??
+                    blocks
+                      .map((block, index) => {
+                        const sidebarItem = sidebarItems[index]
+                        if (block.variant === "completed" && sidebarItem) {
+                          return sidebarItem.id
+                        }
+                        return null
+                      })
+                      .filter((id): id is string => id !== null)
+                  }
+                  onItemClick={onSidebarItemClick}
+                  deleteLabel="Delete"
+                />
+              )}
             </div>
           </aside>
 
@@ -386,9 +444,14 @@ export function CreationTemplate({
                     currentVariant={block.variant || "active"}
                     title={block.title}
                     subtitle={block.subtitle}
+                    showParticipants={block.showParticipants}
+                    participants={block.participants}
+                    onEditParticipants={block.onEditParticipants}
                     primaryLabel={block.primaryLabel}
                     onPrimaryClick={block.onPrimaryClick}
                     primaryDisabled={block.primaryDisabled}
+                    secondaryLabel={block.secondaryLabel}
+                    onSecondaryClick={block.onSecondaryClick}
                     onEdit={block.onEdit}
                   >
                     {block.content}

@@ -165,7 +165,7 @@ export function FormsDemo() {
           shippingDetailsContent={
             <RowVariants variant="3">
               <OptionPicker
-                label="Who is managing the shipping?"
+                label="Responsible for shipping"
                 options={[
                   { value: "noba", label: "noba*" },
                   { value: "client", label: "Client" },

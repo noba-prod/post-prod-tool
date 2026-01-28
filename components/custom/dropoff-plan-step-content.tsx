@@ -1,0 +1,227 @@
+"use client"
+
+import * as React from "react"
+import { format } from "date-fns"
+import { Forms } from "./forms"
+import { RowVariants } from "./row-variants"
+import { EntitySelected } from "./entity-selected"
+import { DatePicker } from "./date-picker"
+import { TimePicker } from "./time-picker"
+import { OptionPicker } from "./option-picker"
+import { InformativeToast } from "./informative-toast"
+import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { getRepositoryInstances } from "@/lib/services"
+import type { Location } from "@/lib/types"
+import type { CollectionDraft } from "@/lib/domain/collections"
+import type { CollectionConfig } from "@/lib/domain/collections"
+
+/** Build one-line address from shooting Location (Figma: "Rua Concepción Arenal, 10 15006 A Coruña Spain") */
+function formatShootingAddress(c: CollectionConfig): string {
+  const parts = [
+    c.shootingStreetAddress,
+    c.shootingZipCode,
+    c.shootingCity,
+    c.shootingCountry,
+  ].filter(Boolean)
+  return parts.length ? parts.join(" ") : "—"
+}
+
+/** Build one-line address from entity Location (lab creation) */
+function formatEntityLocation(loc: Location): string {
+  const parts = [
+    loc.streetAddress,
+    loc.zipCode,
+    loc.city,
+    loc.country,
+  ].filter(Boolean)
+  return parts.length ? parts.join(" ") : "—"
+}
+
+const SHIPPING_PROVIDER_OPTIONS = [
+  { value: "dhl", label: "DHL" },
+  { value: "fedex", label: "FedEx" },
+  { value: "ups", label: "UPS" },
+  { value: "correos", label: "Correos" },
+  { value: "seur", label: "SEUR" },
+]
+
+export interface DropoffPlanStepContentProps {
+  draft: CollectionDraft
+  /** Called when drop-off config fields change */
+  onDropoffPlanChange: (patch: Partial<Pick<CollectionConfig,
+    | "dropoff_shipping_date"
+    | "dropoff_shipping_time"
+    | "dropoff_shipping_destination_address"
+    | "dropoff_delivery_date"
+    | "dropoff_delivery_time"
+    | "dropoff_managing_shipping"
+    | "dropoff_shipping_carrier"
+    | "dropoff_shipping_tracking"
+  >>) => void
+  /** Options for "Responsible for shipping" (e.g. client + noba*). Built by parent from participants. */
+  managingShippingOptions?: { value: string; label: string }[]
+  className?: string
+}
+
+/**
+ * Drop-off plan block content per Figma node 701-1730993.
+ * Producer collects: Origin (Shooting address, Pick up date, Estimated time),
+ * Destination (Lab address, Delivery date, Estimated time), Shipping details
+ * (Responsible for shipping, Provider, Tracking number).
+ * Participant summary is rendered by BlockTemplate via BlockHeading + ParticipantSummary.
+ */
+export function DropoffPlanStepContent({
+  draft,
+  onDropoffPlanChange,
+  managingShippingOptions = [{ value: "noba", label: "noba*" }],
+  className,
+}: DropoffPlanStepContentProps) {
+  const c = draft.config
+  const [labAddress, setLabAddress] = React.useState<string>("—")
+
+  const pickUpDate = c.dropoff_shipping_date
+    ? new Date(c.dropoff_shipping_date + "T12:00:00")
+    : undefined
+  const deliveryDate = c.dropoff_delivery_date
+    ? new Date(c.dropoff_delivery_date + "T12:00:00")
+    : undefined
+
+  const originAddress = formatShootingAddress(c)
+
+  React.useEffect(() => {
+    const lab = draft.participants.find((p) => p.role === "lab")
+    const eid = lab?.entityId
+    if (!eid) {
+      setLabAddress("—")
+      return
+    }
+    let cancelled = false
+    getRepositoryInstances()
+      .entityRepository?.getEntityById(eid)
+      .then((entity) => {
+        if (cancelled) return
+        setLabAddress(
+          entity?.location
+            ? formatEntityLocation(entity.location)
+            : "—"
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [draft.participants])
+
+  return (
+    <div className={className}>
+      <Forms
+        variant="shipping-module"
+        title="Shipping details (negatives from shooting to lab)"
+        showShippingDetails={true}
+        showInformativeToast={true}
+        originContent={
+          <>
+            <EntitySelected
+              label="Shooting address"
+              entityType="Address"
+              value={originAddress}
+              locked
+            />
+            <RowVariants variant="2">
+              <DatePicker
+                label="Pick up date"
+                date={pickUpDate}
+                onDateChange={(d) =>
+                  onDropoffPlanChange({
+                    dropoff_shipping_date: d ? format(d, "yyyy-MM-dd") : undefined,
+                  })
+                }
+                placeholder="Select date"
+              />
+              <TimePicker
+                label="Estimated time"
+                value={c.dropoff_shipping_time}
+                onValueChange={(v) =>
+                  onDropoffPlanChange({ dropoff_shipping_time: v })
+                }
+                placeholder="Select time"
+              />
+            </RowVariants>
+          </>
+        }
+        destinationContent={
+          <>
+            <EntitySelected
+              label="Lab address"
+              entityType="Address"
+              value={labAddress}
+              locked
+            />
+            <RowVariants variant="2">
+              <DatePicker
+                label="Delivery date"
+                date={deliveryDate}
+                onDateChange={(d) =>
+                  onDropoffPlanChange({
+                    dropoff_delivery_date: d ? format(d, "yyyy-MM-dd") : undefined,
+                  })
+                }
+                placeholder="Select date"
+              />
+              <TimePicker
+                label="Estimated time"
+                value={c.dropoff_delivery_time}
+                onValueChange={(v) =>
+                  onDropoffPlanChange({ dropoff_delivery_time: v })
+                }
+                placeholder="Select time"
+              />
+            </RowVariants>
+          </>
+        }
+        shippingDetailsContent={
+          <RowVariants variant="3">
+            <OptionPicker
+              label="Responsible for shipping"
+              options={managingShippingOptions}
+              value={c.dropoff_managing_shipping ?? ""}
+              onValueChange={(v) =>
+                onDropoffPlanChange({ dropoff_managing_shipping: v || undefined })
+              }
+              placeholder="Zara"
+            />
+            <OptionPicker
+              label="Shipping provider"
+              options={SHIPPING_PROVIDER_OPTIONS}
+              value={c.dropoff_shipping_carrier ?? ""}
+              onValueChange={(v) =>
+                onDropoffPlanChange({ dropoff_shipping_carrier: v || undefined })
+              }
+              placeholder="Search and select a provider"
+            />
+            <Field className="w-full">
+              <FieldLabel>Tracking number</FieldLabel>
+              <FieldContent>
+                <Input
+                  placeholder="Paste here the tracking number"
+                  className="h-10 w-full"
+                  value={c.dropoff_shipping_tracking ?? ""}
+                  onChange={(e) =>
+                    onDropoffPlanChange({
+                      dropoff_shipping_tracking: e.target.value || undefined,
+                    })
+                  }
+                />
+              </FieldContent>
+            </Field>
+          </RowVariants>
+        }
+        informativeToastContent={
+          <InformativeToast
+            message="The client will be responsible for defining key details of the shipping to ensure successful tracking of the drop-off."
+          />
+        }
+      />
+    </div>
+  )
+}

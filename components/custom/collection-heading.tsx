@@ -7,7 +7,8 @@ import {
   CollectionProgressTag, 
   StageStatusTag, 
   TimeStampTag, 
-  DateIndicatorTag 
+  DateIndicatorTag,
+  PhotographerNameTag
 } from "./tag"
 import { Button } from "@/components/ui/button"
 import { Settings, Users } from "lucide-react"
@@ -32,6 +33,10 @@ interface CollectionHeadingMainProps {
   stageStatus?: StageStatus
   /** Show stage status tag */
   showStageStatus?: boolean
+  /** Photographer name (shown in photographer tag) */
+  photographerName?: string
+  /** Show photographer name tag */
+  showPhotographerName?: boolean
   /** Show participants button */
   showParticipantsButton?: boolean
   /** Show settings button */
@@ -131,6 +136,8 @@ export function CollectionHeading(props: CollectionHeadingProps) {
     progress = 0,
     stageStatus = "upcoming",
     showStageStatus = true,
+    photographerName,
+    showPhotographerName = false,
     showParticipantsButton = true,
     showSettingsButton = true,
     onParticipants,
@@ -148,9 +155,12 @@ export function CollectionHeading(props: CollectionHeadingProps) {
           <span className="text-lime-500">{clientName}</span>
         </div>
 
-        {/* Sub-heading: progress + stage status */}
+        {/* Sub-heading: progress + photographer name + stage status */}
         <div className="flex items-center gap-2">
           <CollectionProgressTag progress={progress} />
+          {showPhotographerName && photographerName && (
+            <PhotographerNameTag name={photographerName} />
+          )}
           {showStageStatus && (
             <StageStatusTag status={stageStatus} />
           )}

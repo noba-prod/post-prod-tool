@@ -8,9 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandList, CommandItem } from "@/components/ui/command"
 import { SelfPhotographerCreationForm, type SelfPhotographerFormData } from "./self-photographer-creation-form"
+import { NewCollectionModal } from "./new-collection-modal"
 
 // Service imports
-import { createEntityCreationService } from "@/lib/services"
+import { createEntityCreationService, createCollectionsService } from "@/lib/services"
+import type { CollectionConfig } from "@/lib/domain/collections"
+import { useUserContext } from "@/lib/contexts/user-context"
 
 // =============================================================================
 // TYPES
@@ -35,7 +38,7 @@ interface EntityOptionConfig {
 
 /** All available options with their configurations */
 const ALL_OPTIONS: EntityOptionConfig[] = [
-  { id: "collection", label: "Collection", route: "/create/collection" },
+  { id: "collection", label: "Collection" }, // Modal-based: New Collection modal → createDraft → redirect to /collections/create/[id]
   { id: "client", label: "Client", route: "/create/client" },
   { id: "self-photographer", label: "Self-photographer" }, // Modal-based, no route
   { id: "agency", label: "Agency", route: "/create/agency" },
@@ -55,6 +58,8 @@ interface UseCreateEntityOptions {
   onCreated?: () => void
   /** Whether to redirect to /entities after creation (default: true) */
   redirectAfterCreate?: boolean
+  /** Current user id for New Collection modal (manager / producer) */
+  managerUserId?: string
 }
 
 interface UseCreateEntityReturn {
@@ -66,14 +71,22 @@ interface UseCreateEntityReturn {
   selfPhotographerModalOpen: boolean
   /** Set self-photographer modal open state */
   setSelfPhotographerModalOpen: (open: boolean) => void
+  /** Whether the New Collection modal is open */
+  newCollectionModalOpen: boolean
+  /** Set New Collection modal open state */
+  setNewCollectionModalOpen: (open: boolean) => void
   /** Whether self-photographer creation is in progress */
   isCreating: boolean
+  /** Whether New Collection draft creation is in progress */
+  isCreatingCollection: boolean
   /** Handle option selection from command menu */
   handleOptionSelect: (optionId: CreateEntityOption) => void
   /** Handle self-photographer form submit */
   handleSelfPhotographerSubmit: (data: SelfPhotographerFormData) => Promise<void>
   /** Handle self-photographer modal cancel */
   handleSelfPhotographerCancel: () => void
+  /** Handle New Collection modal submit */
+  handleNewCollectionSubmit: (config: CollectionConfig, clientDisplayName?: string) => Promise<void>
   /** Filtered options based on configuration */
   options: EntityOptionConfig[]
 }
@@ -87,12 +100,15 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
     allowedOptions,
     onCreated,
     redirectAfterCreate = true,
+    managerUserId = "",
   } = config
 
   const router = useRouter()
   const [commandOpen, setCommandOpen] = React.useState(false)
   const [selfPhotographerModalOpen, setSelfPhotographerModalOpen] = React.useState(false)
+  const [newCollectionModalOpen, setNewCollectionModalOpen] = React.useState(false)
   const [isCreating, setIsCreating] = React.useState(false)
+  const [isCreatingCollection, setIsCreatingCollection] = React.useState(false)
 
   // Filter options based on configuration
   const options = React.useMemo(() => {
@@ -109,13 +125,17 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
     const option = ALL_OPTIONS.find(o => o.id === optionId)
     if (!option) return
 
+    if (optionId === "collection") {
+      setNewCollectionModalOpen(true)
+      return
+    }
+
     // If option has a route, navigate to it
     if (option.route) {
       router.push(option.route)
       return
     }
 
-    // Otherwise, handle modal-based creation
     if (optionId === "self-photographer") {
       setSelfPhotographerModalOpen(true)
     }
@@ -170,15 +190,47 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
     setSelfPhotographerModalOpen(false)
   }, [])
 
+  // Handle New Collection modal submit (collections-logic §3.3)
+  const handleNewCollectionSubmit = React.useCallback(
+    async (config: CollectionConfig, clientDisplayName?: string) => {
+      setIsCreatingCollection(true)
+      try {
+        const service = createCollectionsService()
+        const draft = await service.createDraft(config)
+        setNewCollectionModalOpen(false)
+
+        const clientLabel = clientDisplayName ? `@${clientDisplayName}` : "@client"
+        toast.success(
+          `Collection created successfully – ${config.name} for ${clientLabel} has been added to your list as a draft`
+        )
+
+        onCreated?.()
+        router.push(`/collections/create/${draft.id}`)
+      } catch (err) {
+        console.error("Failed to create collection draft:", err)
+        toast.error("Failed to create collection", {
+          description: err instanceof Error ? err.message : "An unexpected error occurred",
+        })
+      } finally {
+        setIsCreatingCollection(false)
+      }
+    },
+    [onCreated, router]
+  )
+
   return {
     commandOpen,
     setCommandOpen,
     selfPhotographerModalOpen,
     setSelfPhotographerModalOpen,
+    newCollectionModalOpen,
+    setNewCollectionModalOpen,
     isCreating,
+    isCreatingCollection,
     handleOptionSelect,
     handleSelfPhotographerSubmit,
     handleSelfPhotographerCancel,
+    handleNewCollectionSubmit,
     options,
   }
 }
@@ -241,20 +293,33 @@ export function CreateEntityCommand({
   popoverAlign = "end",
   disabled = false,
 }: CreateEntityCommandProps) {
+  let managerUserId = ""
+  try {
+    const ctx = useUserContext()
+    managerUserId = ctx.user?.id ?? ""
+  } catch {
+    // UserContext not available (e.g. outside provider)
+  }
+
   const {
     commandOpen,
     setCommandOpen,
     selfPhotographerModalOpen,
     setSelfPhotographerModalOpen,
+    newCollectionModalOpen,
+    setNewCollectionModalOpen,
     isCreating,
+    isCreatingCollection,
     handleOptionSelect,
     handleSelfPhotographerSubmit,
     handleSelfPhotographerCancel,
+    handleNewCollectionSubmit,
     options,
   } = useCreateEntity({
     allowedOptions,
     onCreated,
     redirectAfterCreate,
+    managerUserId,
   })
 
   return (
@@ -297,6 +362,15 @@ export function CreateEntityCommand({
         onSubmit={handleSelfPhotographerSubmit}
         onCancel={handleSelfPhotographerCancel}
         isSubmitting={isCreating}
+      />
+
+      {/* New Collection Modal (collections-logic §3.2) */}
+      <NewCollectionModal
+        open={newCollectionModalOpen}
+        onOpenChange={setNewCollectionModalOpen}
+        managerUserId={managerUserId}
+        onSubmit={handleNewCollectionSubmit}
+        isSubmitting={isCreatingCollection}
       />
     </>
   )

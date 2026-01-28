@@ -41,6 +41,15 @@ export function TemplatesDemo() {
         contextual: "/dev/templates/view",
       },
     },
+    {
+      id: "collection",
+      name: "Collection Template",
+      description: "Template for published collection view. NavBar + CollectionHeading (fixed) + scrollable stepper of CollectionStepper steps; each step opens a modal with contextual info.",
+      routes: {
+        basic: "/dev/templates/collection",
+        contextual: "/dev/templates/collection",
+      },
+    },
   ]
 
   const handleNavigate = (route: string) => {
@@ -96,6 +105,7 @@ export function TemplatesDemo() {
           <li><strong>Main Template:</strong> NavBar + Titles (main-section) + Layout (for Collections, Entities, Team pages)</li>
           <li><strong>Creation Template:</strong> NavBar + Breadcrumb + SideBar (create-entity) + Blocks (creation mode) with StepConnector</li>
           <li><strong>View Template:</strong> NavBar + Breadcrumb + SideBar (view-entity) + Blocks (view mode) with spacing</li>
+          <li><strong>Collection Template:</strong> NavBar + CollectionHeading (fixed) + scrollable stepper of CollectionStepper steps; step click opens ModalWindow</li>
         </ul>
       </div>
     </div>

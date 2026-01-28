@@ -27,6 +27,9 @@ export { CheckSelection } from "./check-selection"
 export { StepIndicator } from "./step-indicator"
 export { StepConnector } from "./step-connector"
 export { ProgressItem } from "./progress-item"
+export { VerticalProgressIndicator } from "./vertical-progress-indicator"
+export { CollectionStepSummary } from "./collection-step-summary"
+export { CollectionStepper } from "./collection-stepper"
 export { MenuItem } from "./menu-item"
 export { ContextualMenu } from "./contextual-menu"
 export { EntitySummaryCard } from "./entity-summary-card"
@@ -74,6 +77,7 @@ export {
   BlockTemplateDemo,
   ModalWindowDemo,
   TemplatesDemo,
+  CollectionStepperDemo,
 } from "./demos"
 
 // Añade aquí tus nuevos componentes personalizados:

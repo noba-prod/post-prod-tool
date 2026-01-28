@@ -86,6 +86,8 @@ interface SideBarCreateCollectionProps extends SideBarBaseProps {
     deadline?: string
     lastUpdate?: string
   }
+  /** Array of completed item ids (for stepper) */
+  completedItems?: string[]
   /** Delete button label */
   deleteLabel?: string
 }
@@ -185,7 +187,7 @@ export function SideBar(props: SideBarProps) {
   }
 
   if (type === "create-collection") {
-    const { items, collection, deleteLabel = "Delete collection", onDelete } = props
+    const { items, collection, completedItems = [], deleteLabel = "Delete collection", onDelete } = props
     return (
       <div className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}>
         {/* Content - scrollable area */}
@@ -201,6 +203,7 @@ export function SideBar(props: SideBarProps) {
               type="stepper"
               items={items}
               activeId={activeId}
+              completedItems={completedItems}
               onItemClick={onItemClick}
             />
           </div>

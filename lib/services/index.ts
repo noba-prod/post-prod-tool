@@ -30,3 +30,10 @@ export {
   resetEntityCreationService,
   getRepositoryInstances,
 } from "./factories/entity-creation-service.factory"
+
+// Collections Service
+export {
+  CollectionsService,
+  CollectionsServiceError,
+  createCollectionsService,
+} from "./collections"

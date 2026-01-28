@@ -57,9 +57,17 @@ export function TimePicker({
   className,
 }: TimePickerProps) {
   const [open, setOpen] = React.useState(false)
+  const [triggerWidth, setTriggerWidth] = React.useState<number | null>(null)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
 
   // Find selected slot label
   const selectedSlot = timeSlots.find((slot) => slot.value === value)
+
+  React.useLayoutEffect(() => {
+    if (open && triggerRef.current) {
+      setTriggerWidth(triggerRef.current.offsetWidth)
+    }
+  }, [open])
 
   const handleSelect = (selectedValue: string) => {
     onValueChange?.(selectedValue)
@@ -81,6 +89,7 @@ export function TimePicker({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
+            ref={triggerRef}
             variant="outline"
             role="combobox"
             aria-expanded={open}
@@ -97,7 +106,11 @@ export function TimePicker({
             <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[200px] p-1" align="start">
+        <PopoverContent
+          className="p-1"
+          align="start"
+          style={triggerWidth != null ? { width: triggerWidth } : undefined}
+        >
           <div className="flex flex-col">
             {timeSlots.map((slot) => (
               <button

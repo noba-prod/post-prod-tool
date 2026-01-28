@@ -49,7 +49,7 @@ export function Titles({
         className
       )}
     >
-      <span className={cn(titleStyles[type], "block w-full")}>
+      <span className={cn(titleStyles[type], "block w-full", className)}>
         {title}
       </span>
       {hasSubtitle && (

@@ -20,6 +20,8 @@ export function CollectionHeadingDemo() {
           clientName="@zara"
           progress={0}
           stageStatus="upcoming"
+          photographerName="John Doe"
+          showPhotographerName={true}
           onParticipants={() => alert("Participants clicked!")}
           onSettings={() => alert("Settings clicked!")}
         />
@@ -36,6 +38,8 @@ export function CollectionHeadingDemo() {
           clientName="@mango"
           progress={65}
           stageStatus="in-progress"
+          photographerName="Jane Smith"
+          showPhotographerName={true}
         />
       </div>
 

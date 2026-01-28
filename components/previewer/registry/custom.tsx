@@ -11,6 +11,7 @@ import {
   DateIndicatorTag,
   TimeStampTag,
   CollectionProgressTag,
+  PhotographerNameTag,
 } from "@/components/custom/tag"
 import { CollectionCard } from "@/components/custom/collection-card"
 import { Titles } from "@/components/custom/titles"
@@ -37,6 +38,7 @@ import {
   TemplatesDemo,
   UserCreationFormDemo,
   EntityBasicInformationFormDemo,
+  CollectionStepperDemo,
 } from "@/components/custom/demos"
 import { PhoneInput } from "@/components/custom/phone-input"
 import { DatePicker } from "@/components/custom/date-picker"
@@ -309,6 +311,15 @@ export const customRegistry: ComponentEntry[] = [
             <CollectionProgressTag progress={90} />
             <CollectionProgressTag progress={95} />
             <CollectionProgressTag progress={100} />
+          </div>
+        </div>
+        {/* Photographer Name */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Photographer Name</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <PhotographerNameTag name="John Doe" />
+            <PhotographerNameTag name="Jane Smith" />
+            <PhotographerNameTag name="Mike Johnson" />
           </div>
         </div>
       </div>
@@ -676,6 +687,17 @@ Gap: 16px | Padding: 40px`,
     title: "Collection Heading",
     description: "Collection page heading showing '[collection:name] by [client:name]' title, status badge (draft/upcoming/in-progress/completed/canceled), progress indicator, and CTA buttons (Participants, Settings). Uses Main Section title style (36px).",
     demo: <CollectionHeadingDemo />,
+  },
+  {
+    id: "collection-stepper",
+    name: "collection-stepper",
+    title: "Collection Stepper",
+    description: "Master component for a collection phase: Vertical Progress Indicator + Step Summary + optional expand button. Three variants: locked, active, completed. CollectionStepSummary uses Titles (form) + StageStatusTag, TimeStampTag, DateIndicatorTag; active variant has Ring (2px outside stroke, zinc-900) per Figma 13526-38751.",
+    demo: (
+      <div className="w-full min-w-0 [&>*]:max-w-none [&>*]:w-full">
+        <CollectionStepperDemo />
+      </div>
+    ),
   },
   {
     id: "layout",

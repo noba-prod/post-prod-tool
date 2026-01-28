@@ -63,12 +63,13 @@ export function ContextualMenu({
           const nextItem = items[index + 1]
           const isNextCompleted = nextItem ? completedItems.includes(nextItem.id) : false
           
-          // Determine status: completed > active > disabled
+          // Determine status: active > completed > disabled.
+          // The selected step always shows as "active" so the user always knows where they are.
           let status: "active" | "disabled" | "completed" = "disabled"
-          if (isCompleted) {
-            status = "completed"
-          } else if (isActive) {
+          if (isActive) {
             status = "active"
+          } else if (isCompleted) {
+            status = "completed"
           }
           
           return (

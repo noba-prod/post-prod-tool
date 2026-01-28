@@ -6,3 +6,11 @@ export type { CreationTemplateProps, CreationBlock } from "./creation-template"
 
 export { ViewTemplate } from "./view-template"
 export type { ViewTemplateProps, ViewBlock } from "./view-template"
+
+export { CollectionTemplate } from "./collection-template"
+export type {
+  CollectionTemplateProps,
+  CollectionTemplateStep,
+  CollectionStepStatus,
+  CollectionStageStatus,
+} from "./collection-template"
