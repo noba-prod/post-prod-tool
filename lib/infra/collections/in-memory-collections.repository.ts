@@ -49,6 +49,7 @@ export class InMemoryCollectionsRepository implements ICollectionsRepository {
 
     const updated: CollectionDraft = {
       ...current,
+      ...(patch.status !== undefined && { status: patch.status }),
       ...(patch.participants !== undefined && { participants: patch.participants }),
       ...(patch.creationData !== undefined && { creationData: patch.creationData }),
       ...(patch.config !== undefined && {
@@ -58,5 +59,11 @@ export class InMemoryCollectionsRepository implements ICollectionsRepository {
     }
     store.set(id, updated)
     return updated
+  }
+
+  async listDrafts(): Promise<CollectionDraft[]> {
+    const list = Array.from(store.values())
+    list.sort((a, b) => (b.updatedAt > a.updatedAt ? 1 : b.updatedAt < a.updatedAt ? -1 : 0))
+    return list
   }
 }

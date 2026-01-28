@@ -18,6 +18,8 @@ const thumbnailMap: Record<CollectionStatus, string> = {
 }
 
 interface CollectionCardProps {
+  /** Stable id for the collection/draft (e.g. for React key and navigation) */
+  id?: string
   /** Formato de la card */
   format?: CollectionCardFormat
   /** Estado de la colección */
@@ -30,7 +32,7 @@ interface CollectionCardProps {
   location?: string
   /** Fecha de inicio */
   startDate?: string
-  /** Fecha de fin */
+  /** Fecha de fin (deadline / final de producción) */
   endDate?: string
   /** URL de imagen personalizada (override del thumbnail por defecto) */
   thumbnailUrl?: string
@@ -40,6 +42,7 @@ interface CollectionCardProps {
 }
 
 export function CollectionCard({
+  id,
   format = "default",
   status = "draft",
   collectionName = "collection name",

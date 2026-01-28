@@ -10,7 +10,7 @@ import { TimePicker } from "./time-picker"
 import { OptionPicker } from "./option-picker"
 import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import type { CollectionDraft } from "@/lib/domain/collections"
+import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
 
 const CITIES = [
@@ -53,6 +53,8 @@ export interface ShootingSetupStepContentProps {
     | "shootingCity"
     | "shootingCountry"
   >>) => void
+  /** Chronology constraints (minDate, defaultDate, disabled, reason) per slot */
+  chronologyConstraints?: Record<string, ChronologyConstraint>
   className?: string
 }
 
@@ -64,9 +66,12 @@ export interface ShootingSetupStepContentProps {
 export function ShootingSetupStepContent({
   draft,
   onShootingSetupChange,
+  chronologyConstraints,
   className,
 }: ShootingSetupStepContentProps) {
   const c = draft.config
+  const startConstraint = chronologyConstraints?.["shooting_setup"]
+  const endConstraint = chronologyConstraints?.["shooting_setup_ending"]
 
   const startDate = c.shootingStartDate
     ? new Date(c.shootingStartDate + "T12:00:00")
@@ -74,6 +79,14 @@ export function ShootingSetupStepContent({
   const endDate = c.shootingEndDate
     ? new Date(c.shootingEndDate + "T12:00:00")
     : undefined
+
+  React.useEffect(() => {
+    if (!endConstraint?.defaultDate || c.shootingEndDate) return
+    onShootingSetupChange({
+      shootingEndDate: endConstraint.defaultDate,
+      ...(endConstraint.previousTimePreset && { shootingEndTime: endConstraint.previousTimePreset }),
+    })
+  }, [endConstraint?.defaultDate, endConstraint?.previousTimePreset, c.shootingEndDate, onShootingSetupChange])
 
   return (
     <div className={className}>
@@ -93,6 +106,9 @@ export function ShootingSetupStepContent({
                   })
                 }
                 placeholder="Dec 4, 2025"
+                minDate={startConstraint?.minDate}
+                disabled={startConstraint?.isEnabled === false}
+                helperText={startConstraint?.reason}
               />
               <TimePicker
                 label="Time"
@@ -101,6 +117,7 @@ export function ShootingSetupStepContent({
                   onShootingSetupChange({ shootingStartTime: v })
                 }
                 placeholder="Morning - 09:00am"
+                disabled={startConstraint?.isEnabled === false}
               />
             </RowVariants>
           }
@@ -116,6 +133,9 @@ export function ShootingSetupStepContent({
                   })
                 }
                 placeholder="Dec 14, 2025"
+                minDate={endConstraint?.minDate}
+                disabled={endConstraint?.isEnabled === false}
+                helperText={endConstraint?.reason}
               />
               <TimePicker
                 label="Time"
@@ -124,6 +144,7 @@ export function ShootingSetupStepContent({
                   onShootingSetupChange({ shootingEndTime: v })
                 }
                 placeholder="Midday - 12:00pm"
+                disabled={endConstraint?.isEnabled === false}
               />
             </RowVariants>
           }

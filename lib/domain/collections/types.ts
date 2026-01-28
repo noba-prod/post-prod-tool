@@ -83,8 +83,10 @@ export interface CollectionConfig {
   hasEditionStudio: boolean
   /** Shooting date (key date) */
   shootingDate?: string
-  /** Client finals deadline (key date) */
+  /** Client finals deadline (key date) — from New Collection modal; editable in Check Finals step */
   clientFinalsDeadline?: string
+  /** Client finals deadline time — from New Collection modal; editable in Check Finals step */
+  clientFinalsDeadlineTime?: string
   // Shooting setup (DB-aligned, per Figma node 697-1729404)
   shootingStartDate?: string
   shootingStartTime?: string
@@ -104,6 +106,34 @@ export interface CollectionConfig {
   dropoff_managing_shipping?: string
   dropoff_shipping_carrier?: string
   dropoff_shipping_tracking?: string
+  // Low-res scan (Figma node 707-1732747)
+  lowResScanDeadlineDate?: string
+  lowResScanDeadlineTime?: string
+  lowResShippingPickupDate?: string
+  lowResShippingPickupTime?: string
+  lowResShippingDeliveryDate?: string
+  lowResShippingDeliveryTime?: string
+  lowResShippingManaging?: string
+  lowResShippingProvider?: string
+  lowResShippingTracking?: string
+  // Photo selection (Figma node 710-1734582; collections-logic §10.4, §10.5)
+  photoSelectionPhotographerDueDate?: string
+  photoSelectionPhotographerDueTime?: string
+  photoSelectionClientDueDate?: string
+  photoSelectionClientDueTime?: string
+  // LR to HR setup (Figma node 712-1735600; collections-logic §10.6 — lab sends high-res selection to photographer)
+  lrToHrDueDate?: string
+  lrToHrDueTime?: string
+  // Pre-check & Edition (Figma node 714-1736413; collections-logic §10.7, §10.8 — photographer retouch instructions, edition studio final edits)
+  editionPhotographerDueDate?: string
+  editionPhotographerDueTime?: string
+  editionStudioDueDate?: string
+  editionStudioDueTime?: string
+  // Check Finals (Figma node 716-1738375; collections-logic §5.1 — photographer check and client approve finals)
+  checkFinalsPhotographerDueDate?: string
+  checkFinalsPhotographerDueTime?: string
+  checkFinalsClientDueDate?: string
+  checkFinalsClientDueTime?: string
 }
 
 // =============================================================================
@@ -132,7 +162,7 @@ export interface CreationData {
 // COLLECTION DRAFT (collections-logic §2, §3.3, §4)
 // =============================================================================
 
-export type CollectionDraftStatus = "draft"
+export type CollectionDraftStatus = "draft" | "upcoming" | "in_progress"
 
 export interface CollectionDraft {
   id: string

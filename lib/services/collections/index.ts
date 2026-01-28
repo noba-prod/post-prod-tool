@@ -2,6 +2,7 @@ export { CollectionsService, CollectionsServiceError } from "./collections.servi
 
 import { CollectionsService } from "./collections.service"
 import { InMemoryCollectionsRepository } from "@/lib/infra/collections"
+import { NoopNotificationsService } from "../notifications/noop-notifications.service"
 
 let collectionsServiceInstance: CollectionsService | null = null
 
@@ -13,7 +14,8 @@ let collectionsServiceInstance: CollectionsService | null = null
 export function createCollectionsService(): CollectionsService {
   if (!collectionsServiceInstance) {
     collectionsServiceInstance = new CollectionsService(
-      new InMemoryCollectionsRepository()
+      new InMemoryCollectionsRepository(),
+      new NoopNotificationsService()
     )
   }
   return collectionsServiceInstance

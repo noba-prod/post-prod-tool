@@ -28,11 +28,15 @@ export {
 export {
   canUserEditStep,
   computeCreationTemplate,
+  derivePublishedStatus,
+  getChronologyConstraints,
   getStepOwner,
   isCreationStepComplete,
   isDraftComplete,
   isParticipantsStepComplete,
 } from "./workflow"
+
+export type { ChronologyConstraint, ChronologyConstraintsResult } from "./workflow"
 
 // Repository interface only
 export type {

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:scenarios": "npx tsx lib/domain/collections/__tests__/scenario-matrix-check.ts"
+    "test:scenarios": "npx tsx lib/domain/collections/__tests__/scenario-matrix-check.ts",
+    "test:chronology": "npx tsx lib/domain/collections/__tests__/chronology-constraints-check.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",

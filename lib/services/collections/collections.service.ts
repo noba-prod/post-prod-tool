@@ -10,6 +10,8 @@ import type {
   CollectionDraftPatch,
   ICollectionsRepository,
 } from "@/lib/domain/collections"
+import { isDraftComplete, derivePublishedStatus } from "@/lib/domain/collections/workflow"
+import type { INotificationsService } from "../notifications/notifications.interface"
 
 export class CollectionsServiceError extends Error {
   constructor(
@@ -34,7 +36,10 @@ function validateCreateDraftConfig(config: Partial<CollectionConfig>): void {
 }
 
 export class CollectionsService {
-  constructor(private readonly repository: ICollectionsRepository) {}
+  constructor(
+    private readonly repository: ICollectionsRepository,
+    private readonly notifications: INotificationsService
+  ) {}
 
   async createDraft(config: CollectionConfig): Promise<CollectionDraft> {
     validateCreateDraftConfig(config)
@@ -50,5 +55,57 @@ export class CollectionsService {
     patch: CollectionDraftPatch
   ): Promise<CollectionDraft | null> {
     return this.repository.updateDraft(id, patch)
+  }
+
+  async listDrafts(): Promise<CollectionDraft[]> {
+    return this.repository.listDrafts()
+  }
+
+  /**
+   * Publishes a collection draft (changes status from "draft" to "upcoming" or "in_progress").
+   * Validates draft is complete before publishing.
+   * @param id Draft ID
+   * @param now Current date/time (defaults to new Date())
+   * @returns Updated draft with new status
+   * @throws CollectionsServiceError with code "NOT_FOUND" if draft doesn't exist
+   * @throws CollectionsServiceError with code "DRAFT_INCOMPLETE" if draft is not complete
+   */
+  async publishCollection(id: string, now: Date = new Date()): Promise<CollectionDraft> {
+    const draft = await this.repository.getDraftById(id)
+    if (!draft) {
+      throw new CollectionsServiceError("Draft not found", "NOT_FOUND")
+    }
+
+    if (!isDraftComplete(draft)) {
+      throw new CollectionsServiceError("Finish required setup before publishing", "DRAFT_INCOMPLETE")
+    }
+
+    const newStatus = derivePublishedStatus(draft.config, now)
+    const updated = await this.repository.updateDraft(id, { status: newStatus })
+
+    if (!updated) {
+      throw new CollectionsServiceError("Failed to update draft status", "UPDATE_FAILED")
+    }
+
+    // Prepare notification payload (participant user IDs from draft.participants)
+    const participantUserIds: string[] = []
+    const participantEntityIds: string[] = []
+    for (const participant of draft.participants) {
+      if (participant.entityId) {
+        participantEntityIds.push(participant.entityId)
+      }
+      if (participant.userIds) {
+        participantUserIds.push(...participant.userIds)
+      }
+    }
+
+    // Enqueue notification (no-op for now, but seam is ready)
+    await this.notifications.collectionPublished({
+      collectionId: id,
+      participantUserIds,
+      participantEntityIds,
+    })
+
+    return updated
   }
 }

@@ -39,6 +39,7 @@ import {
   UserCreationFormDemo,
   EntityBasicInformationFormDemo,
   CollectionStepperDemo,
+  PublishCollectionDialogDemo,
 } from "@/components/custom/demos"
 import { PhoneInput } from "@/components/custom/phone-input"
 import { DatePicker } from "@/components/custom/date-picker"
@@ -719,6 +720,13 @@ Gap: 16px | Padding: 40px`,
     title: "Modal Window",
     description: "Right-aligned slide-in modal panel with overlay (#000 at 36% opacity). Structure: Header (Titles + Close button, fixed), Content (scrollable), Footer (ActionBar, fixed). Slides in from right with animation. Click outside or press Escape to close.",
     demo: <ModalWindowDemo />,
+  },
+  {
+    id: "publish-collection-dialog",
+    name: "publish-collection-dialog",
+    title: "Publish Collection Dialog",
+    description: "Centered dialog (Figma 175-32103) with overlay #000 at 40% opacity. Content: Titles (Ready to publish + subtitle), CollectionCard (landscape), ActionBar (Cancel / Publish collection). Used when user clicks Publish collection on Check Finals step.",
+    demo: <PublishCollectionDialogDemo />,
   },
   {
     id: "user-creation-form",

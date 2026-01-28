@@ -131,11 +131,11 @@ function FormShippingModule({
       {/* Title */}
       <Titles type="form" title={title} showSubtitle={false} />
 
-      {/* Horizontal Flow - Origin -> Destination */}
-      <div className="flex items-center gap-5 w-full">
+      {/* Horizontal Flow - Origin -> Destination (fill container, equal-width capsules, responsive/truncate) */}
+      <div className="flex items-center gap-5 w-full min-w-0">
         {/* Origin Capsule */}
-        <div className="flex-1 border border-zinc-200 rounded-xl p-4">
-          <div className="flex flex-col gap-5 w-full">
+        <div className="flex-1 min-w-0 border border-zinc-200 rounded-xl p-4 overflow-hidden">
+          <div className="flex flex-col gap-5 w-full min-w-0 overflow-hidden">
             {originContent}
           </div>
         </div>
@@ -144,8 +144,8 @@ function FormShippingModule({
         <ArrowRight className="w-4 h-4 shrink-0 text-zinc-900" />
 
         {/* Destination Capsule */}
-        <div className="flex-1 border border-zinc-200 rounded-xl p-4">
-          <div className="flex flex-col gap-5 w-full">
+        <div className="flex-1 min-w-0 border border-zinc-200 rounded-xl p-4 overflow-hidden">
+          <div className="flex flex-col gap-5 w-full min-w-0 overflow-hidden">
             {destinationContent}
           </div>
         </div>
@@ -182,11 +182,11 @@ function FormHorizontalFlow({
   className,
 }: FormHorizontalFlowProps) {
   return (
-    <div className={cn("flex items-center gap-5 w-full", className)}>
+    <div className={cn("flex items-center gap-5 w-full min-w-0", className)}>
       {/* First Capsule */}
-      <div className="flex-1 border border-zinc-200 rounded-xl p-4">
+      <div className="flex-1 min-w-0 border border-zinc-200 rounded-xl p-4 overflow-hidden">
         <FormBasic title={firstTitle} showTitle={true}>
-          {firstContent}
+          <div className="min-w-0 overflow-hidden flex flex-col gap-5">{firstContent}</div>
         </FormBasic>
       </div>
 
@@ -194,9 +194,9 @@ function FormHorizontalFlow({
       <ArrowRight className="w-4 h-4 shrink-0 text-zinc-900" />
 
       {/* Second Capsule */}
-      <div className="flex-1 border border-zinc-200 rounded-xl p-4">
+      <div className="flex-1 min-w-0 border border-zinc-200 rounded-xl p-4 overflow-hidden">
         <FormBasic title={secondTitle} showTitle={true}>
-          {secondContent}
+          <div className="min-w-0 overflow-hidden flex flex-col gap-5">{secondContent}</div>
         </FormBasic>
       </div>
     </div>

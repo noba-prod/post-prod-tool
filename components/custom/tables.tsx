@@ -80,6 +80,8 @@ interface TablesProps {
   onDelete?: (id: string) => void
   /** Callback al ver detalles de un elemento */
   onViewDetails?: (id: string) => void
+  /** Callback al hacer click en fila de colección (id, status). Draft → setup, published → view */
+  onCollectionRowClick?: (id: string, status: CollectionStatus) => void
   /** Callback al abrir configuración */
   onSettings?: (id: string) => void
   /** Callback al cambiar permiso de edición */
@@ -328,9 +330,12 @@ function EntitiesTable({
 function CollectionsTable({
   data = sampleCollections,
   onSettings,
+  onRowClick,
 }: {
   data?: Collection[]
   onSettings?: (id: string) => void
+  /** Callback when row is clicked (id, status). If provided, row becomes clickable. */
+  onRowClick?: (id: string, status: CollectionStatus) => void
 }) {
   return (
     <TableWrapper>
@@ -348,7 +353,26 @@ function CollectionsTable({
         </TableHeader>
         <TableBody>
           {data.map((collection) => (
-            <TableRow key={collection.id} className="h-[52px]">
+            <TableRow
+              key={collection.id}
+              className={cn(
+                "h-[52px]",
+                onRowClick && "cursor-pointer hover:bg-muted/50 transition-colors"
+              )}
+              onClick={onRowClick ? () => onRowClick(collection.id, collection.status) : undefined}
+              role={onRowClick ? "button" : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        onRowClick(collection.id, collection.status)
+                      }
+                    }
+                  : undefined
+                }
+            >
               <TableCell className="font-medium">{collection.name}</TableCell>
               <TableCell>
                 <CollectionStatusTag status={collection.status} />
@@ -361,7 +385,10 @@ function CollectionsTable({
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => onSettings?.(collection.id)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSettings?.(collection.id)
+                  }}
                   className="h-10 w-10"
                 >
                   <Settings className="size-4" />
@@ -444,6 +471,7 @@ export function Tables({
   participantsData,
   onDelete,
   onViewDetails,
+  onCollectionRowClick,
   onSettings,
   onEditPermissionChange,
   onEditUser,
@@ -476,7 +504,11 @@ export function Tables({
     case "collections":
       return (
         <div className={className}>
-          <CollectionsTable data={collectionsData} onSettings={onSettings} />
+          <CollectionsTable
+            data={collectionsData}
+            onSettings={onSettings}
+            onRowClick={onCollectionRowClick}
+          />
         </div>
       )
     case "participants":

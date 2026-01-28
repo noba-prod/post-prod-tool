@@ -137,6 +137,7 @@ export function NewCollectionModal({
       handprintIsDifferentLab: hasHandprint ? handprintIsDifferentLab : false,
       hasEditionStudio,
       clientFinalsDeadline: deadlineDate.trim() || undefined,
+      clientFinalsDeadlineTime: timeValue.trim() || undefined,
     }
     const clientName = clientOptions.find((c) => c.id === cid)?.name
     onSubmit(config, clientName)
@@ -151,6 +152,7 @@ export function NewCollectionModal({
     handprintIsDifferentLab,
     hasEditionStudio,
     deadlineDate,
+    timeValue,
     clientOptions,
     onSubmit,
   ])

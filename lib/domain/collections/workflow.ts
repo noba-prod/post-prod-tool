@@ -12,6 +12,7 @@ import type {
   ParticipantRole,
   StepId,
   UserForPermission,
+  CollectionDraftStatus,
 } from "./types"
 
 // =============================================================================
@@ -32,6 +33,45 @@ import type {
 // StepId → UI label (STEP_LABELS in UI): participants, shooting_setup, dropoff_plan, low_res_config,
 //   photo_selection, lr_to_hr_setup, handprint_high_res_config, edition_config, check_finals.
 // =============================================================================
+
+// =============================================================================
+// DERIVE PUBLISHED STATUS (HITO 4)
+// Determines collection status after publish based on shooting date vs now.
+// If shootingDate exists AND is in the past → "in_progress", else → "upcoming".
+// =============================================================================
+
+/**
+ * Derives the published status for a collection based on shooting date.
+ * @param config Collection configuration
+ * @param now Current date/time (defaults to new Date())
+ * @returns "upcoming" if shooting date is missing or in the future, "in_progress" if in the past
+ */
+export function derivePublishedStatus(
+  config: CollectionConfig,
+  now: Date = new Date()
+): "upcoming" | "in_progress" {
+  // Use shootingDate (key date) if available, fallback to shootingStartDate
+  const shootingDateStr = config.shootingDate ?? config.shootingStartDate
+  if (!shootingDateStr?.trim()) {
+    return "upcoming"
+  }
+
+  // Parse date string (YYYY-MM-DD format)
+  const shootingDate = new Date(shootingDateStr + "T12:00:00")
+  if (Number.isNaN(shootingDate.getTime())) {
+    return "upcoming"
+  }
+
+  // Compare dates (ignore time, compare date-only)
+  const nowDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const shootingDateOnly = new Date(
+    shootingDate.getFullYear(),
+    shootingDate.getMonth(),
+    shootingDate.getDate()
+  )
+
+  return shootingDateOnly <= nowDateOnly ? "in_progress" : "upcoming"
+}
 
 // =============================================================================
 // COMPUTE CREATION TEMPLATE (collections-logic §3.2, §4 + PHOTO matrix)
@@ -105,7 +145,8 @@ export function computeCreationTemplate(
     steps.push({
       stepId: "lr_to_hr_setup",
       requiredBlocks: ["lr_to_hr_setup"],
-      ownerRoles: ["lab", producer],
+      // Digital workflow: photographer converts LR → HR and delivers HR to the client.
+      ownerRoles: ["photographer", producer],
       mandatory: true,
     })
   }
@@ -133,7 +174,8 @@ export function computeCreationTemplate(
 
 // =============================================================================
 // IS CREATION STEP COMPLETE — For UI "completed" state and sidebar highlighting
-// A step is complete when every requiredBlock is in completedBlockIds.
+// A step is complete when the user marked it done (stepId in completedBlockIds)
+// or when every requiredBlock is in completedBlockIds (e.g. steps whose UI is a single block).
 // =============================================================================
 
 export function isCreationStepComplete(
@@ -141,24 +183,37 @@ export function isCreationStepComplete(
   completedBlockIds: CreationBlockId[]
 ): boolean {
   const set = new Set(completedBlockIds)
+  if (set.has(step.stepId)) return true
   return step.requiredBlocks.every((b) => set.has(b))
 }
 
 // =============================================================================
 // IS DRAFT COMPLETE (collections-logic §5.1)
-// True only if all required participants and all required config blocks are done.
+// True when all mandatory info is done so Publish can be enabled.
+// - All steps before "Check Finals" must be completed (user clicked Next).
+// - Check Finals is the last step; we don't require it in completedBlockIds
+//   (user reaches it by completing previous steps; Publish opens the dialog).
+// - Shipping details (Responsible for shipping, Provider, Tracking) are nice-to-have
+//   and do not block completion; only step completion and participants are required.
 // =============================================================================
 
 export function isDraftComplete(draft: CollectionDraft): boolean {
   const templateSteps = computeCreationTemplate(draft.config)
   const completed = new Set(draft.creationData.completedBlockIds)
+  const lastStepId =
+    templateSteps.length > 0
+      ? templateSteps[templateSteps.length - 1].stepId
+      : null
 
-  // Every mandatory creation step must have its required blocks completed
+  // Every mandatory step except the last (Check Finals) must be completed
   for (const step of templateSteps) {
     if (!step.mandatory) continue
-    for (const blockId of step.requiredBlocks) {
-      if (!completed.has(blockId)) return false
-    }
+    // Last step: user is on Check Finals; we don't require it in completedBlockIds to enable Publish
+    if (step.stepId === lastStepId && lastStepId === "check_finals") continue
+    const stepDone =
+      completed.has(step.stepId) ||
+      step.requiredBlocks.every((b) => completed.has(b))
+    if (!stepDone) return false
   }
 
   // Required participants: derived from config (collections-logic §4.1)
@@ -288,4 +343,214 @@ export function canUserEditStep(
   const owners = getStepOwner(stepId, draft)
   if (!owners.includes(user.role)) return false
   return user.hasEditPermission
+}
+
+// =============================================================================
+// CHRONOLOGY CONSTRAINTS — Creation Template date/time pickers (linear flow)
+// Dates/times must never go backwards. Uses derived steps order from config.
+// =============================================================================
+
+export interface ChronologyConstraint {
+  /** Minimum selectable date (ISO date string or Date); dates before this are disabled */
+  minDate?: string
+  /** Suggested default date when current is empty (prefill from previous step) */
+  defaultDate?: string
+  /** When same day as previous: do not allow time before previous time */
+  minTimePolicy?: "none" | "sameDayNotBeforePreviousTime"
+  /** Previous step's time preset for same-day default */
+  previousTimePreset?: string
+  /** Whether this date/time control is enabled (false when previous step has no date) */
+  isEnabled: boolean
+  /** Reason when disabled, e.g. "Select previous step date first" */
+  reason?: string
+}
+
+export interface ChronologyConstraintsResult {
+  byBlockId: Record<string, ChronologyConstraint>
+  /** Optional patch to auto-correct downstream values that became invalid after earlier step change */
+  suggestedCorrection?: Partial<CollectionConfig>
+}
+
+type ConfigKey = keyof CollectionConfig
+
+/** Ordered date-bearing slots: constraintKey, config date key, config time key. Only steps that render date pickers. */
+function getOrderedDateSlots(
+  steps: CreationTemplateStep[]
+): { key: string; dateKey: ConfigKey; timeKey?: ConfigKey }[] {
+  const slots: { key: string; dateKey: ConfigKey; timeKey?: ConfigKey }[] = []
+  for (const step of steps) {
+    switch (step.stepId) {
+      case "shooting_setup":
+        slots.push({
+          key: "shooting_setup",
+          dateKey: "shootingStartDate",
+          timeKey: "shootingStartTime",
+        })
+        slots.push({
+          key: "shooting_setup_ending",
+          dateKey: "shootingEndDate",
+          timeKey: "shootingEndTime",
+        })
+        break
+      case "dropoff_plan":
+        slots.push({
+          key: "dropoff_plan_shipping",
+          dateKey: "dropoff_shipping_date",
+          timeKey: "dropoff_shipping_time",
+        })
+        slots.push({
+          key: "dropoff_plan_delivery",
+          dateKey: "dropoff_delivery_date",
+          timeKey: "dropoff_delivery_time",
+        })
+        break
+      case "low_res_config":
+        slots.push({
+          key: "low_res_config",
+          dateKey: "lowResScanDeadlineDate",
+          timeKey: "lowResScanDeadlineTime",
+        })
+        break
+      case "photo_selection":
+        slots.push({
+          key: "photo_selection_photographer",
+          dateKey: "photoSelectionPhotographerDueDate",
+          timeKey: "photoSelectionPhotographerDueTime",
+        })
+        slots.push({
+          key: "photo_selection_client",
+          dateKey: "photoSelectionClientDueDate",
+          timeKey: "photoSelectionClientDueTime",
+        })
+        break
+      case "lr_to_hr_setup":
+      case "handprint_high_res_config":
+        slots.push({
+          key: step.stepId,
+          dateKey: "lrToHrDueDate",
+          timeKey: "lrToHrDueTime",
+        })
+        break
+      case "edition_config":
+        slots.push({
+          key: "edition_config_photographer",
+          dateKey: "editionPhotographerDueDate",
+          timeKey: "editionPhotographerDueTime",
+        })
+        slots.push({
+          key: "edition_config_studio",
+          dateKey: "editionStudioDueDate",
+          timeKey: "editionStudioDueTime",
+        })
+        break
+      case "check_finals":
+        slots.push({
+          key: "check_finals_photographer",
+          dateKey: "checkFinalsPhotographerDueDate",
+          timeKey: "checkFinalsPhotographerDueTime",
+        })
+        slots.push({
+          key: "check_finals_client",
+          dateKey: "clientFinalsDeadline",
+          timeKey: "clientFinalsDeadlineTime",
+        })
+        break
+      default:
+        break
+    }
+  }
+  return slots
+}
+
+function parseDate(s: string | undefined): Date | null {
+  if (!s || typeof s !== "string") return null
+  const d = new Date(s + "T12:00:00")
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** Compare two date strings (YYYY-MM-DD). Returns -1 if a < b, 0 if equal, 1 if a > b. */
+function compareDateStrings(a: string, b: string): number {
+  if (a < b) return -1
+  if (a > b) return 1
+  return 0
+}
+
+/** Time preset order for same-day constraint (earlier = smaller index). */
+const TIME_PRESET_ORDER: Record<string, number> = {
+  morning: 0,
+  "Morning (9:00am)": 0,
+  midday: 1,
+  "Midday (12:00pm)": 1,
+  "Midday - 12:00pm": 1,
+  "end-of-day": 2,
+  "End of day (5:00pm)": 2,
+  "End of day - 05:00pm": 2,
+}
+
+function getTimeOrder(value: string | undefined): number {
+  if (!value) return -1
+  return TIME_PRESET_ORDER[value] ?? 0
+}
+
+/**
+ * Compute chronological constraints for all date/time pickers in the Creation Template.
+ * Uses derived steps order (computeCreationTemplate). Pure function; no I/O.
+ */
+export function getChronologyConstraints(
+  draft: CollectionDraft
+): ChronologyConstraintsResult {
+  const steps = computeCreationTemplate(draft.config)
+  const slots = getOrderedDateSlots(steps)
+  const c = draft.config
+  const byBlockId: Record<string, ChronologyConstraint> = {}
+  const suggestedCorrection: Partial<CollectionConfig> = {}
+  let previousDate: string | undefined
+  let previousTime: string | undefined
+
+  slots.forEach((slot, index) => {
+    const currentDateStr = c[slot.dateKey] as string | undefined
+    const currentTimeStr = slot.timeKey ? (c[slot.timeKey] as string | undefined) : undefined
+    const currentDate = parseDate(currentDateStr)
+
+    const isFirstSlotInOrder = index === 0
+    const minDate = previousDate ?? undefined
+    const defaultDate = isFirstSlotInOrder ? undefined : (previousDate ?? undefined)
+    const isEnabled = isFirstSlotInOrder || !!previousDate
+    const reason = !isEnabled ? "Select previous step date first" : undefined
+
+    const sameDay = previousDate && currentDateStr && previousDate === currentDateStr
+    const minTimePolicy: ChronologyConstraint["minTimePolicy"] =
+      sameDay && previousTime ? "sameDayNotBeforePreviousTime" : "none"
+    const previousTimePreset = sameDay ? previousTime : undefined
+
+    byBlockId[slot.key] = {
+      minDate,
+      defaultDate,
+      minTimePolicy,
+      previousTimePreset,
+      isEnabled,
+      reason,
+    }
+
+    // Auto-correct: if current value is before minDate, suggest correction to minDate
+    if (minDate && currentDateStr && compareDateStrings(currentDateStr, minDate) < 0) {
+      ;(suggestedCorrection as Record<string, string>)[slot.dateKey] = minDate
+      if (slot.timeKey && previousTime) {
+        ;(suggestedCorrection as Record<string, string>)[slot.timeKey] = previousTime
+      }
+    }
+
+    // Update previous to latest in this slot (for next iteration)
+    const slotDate = currentDateStr || previousDate
+    const slotTime = currentTimeStr ?? previousTime
+    if (slotDate) {
+      previousDate = slotDate
+      previousTime = slotTime
+    }
+  })
+
+  return {
+    byBlockId,
+    suggestedCorrection: Object.keys(suggestedCorrection).length > 0 ? suggestedCorrection : undefined,
+  }
 }

@@ -11,7 +11,7 @@ import type { CollectionConfig, CollectionDraft } from "./types"
  * Partial update for a draft. Only provided fields are updated.
  */
 export type CollectionDraftPatch = Partial<
-  Omit<CollectionDraft, "id" | "status" | "config" | "updatedAt">
+  Omit<CollectionDraft, "id" | "config" | "updatedAt">
 > & {
   config?: Partial<CollectionDraft["config"]>
 }
@@ -41,4 +41,10 @@ export interface ICollectionsRepository {
     id: string,
     patch: CollectionDraftPatch
   ): Promise<CollectionDraft | null>
+
+  /**
+   * Lists all drafts (e.g. for the Collections list page).
+   * Order: most recent first (by updatedAt).
+   */
+  listDrafts(): Promise<CollectionDraft[]>
 }

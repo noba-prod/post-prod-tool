@@ -84,6 +84,12 @@ interface CreationTemplateProps {
   completedStepIds?: string[]
   /** Callback when a sidebar item is clicked */
   onSidebarItemClick?: (id: string) => void
+  /** When create-collection: callback when Delete collection is clicked */
+  onDeleteCollection?: () => void
+  /** When create-collection and Check Finals active: callback when Publish collection is clicked */
+  onPublishCollection?: () => void
+  /** When create-collection and Check Finals active: disable Publish until draft is complete */
+  publishCollectionDisabled?: boolean
   /** NavBar props */
   navBarProps?: {
     variant?: "noba" | "collaborator" | "photographer"
@@ -119,6 +125,9 @@ export function CreationTemplate({
   blocks = [],
   completedStepIds,
   onSidebarItemClick,
+  onDeleteCollection,
+  onPublishCollection,
+  publishCollectionDisabled = true,
   navBarProps,
   className,
 }: CreationTemplateProps) {
@@ -406,7 +415,10 @@ export function CreationTemplate({
                   }
                   collection={collectionSummary ?? { name: title }}
                   onItemClick={onSidebarItemClick}
+                  onDelete={onDeleteCollection}
                   deleteLabel="Delete collection"
+                  onPublish={onPublishCollection}
+                  publishDisabled={publishCollectionDisabled}
                 />
               ) : (
                 <SideBar
@@ -458,10 +470,10 @@ export function CreationTemplate({
                   </BlockTemplate>
                   {index < blocks.length - 1 && (
                     <div className="flex justify-center">
-                      <StepConnector 
-                        status={block.variant === "completed" ? "completed" : "uncompleted"} 
-                        orientation="vertical" 
-                        className="h-5" 
+                      <StepConnector
+                        status="uncompleted"
+                        orientation="vertical"
+                        className="h-5"
                       />
                     </div>
                   )}

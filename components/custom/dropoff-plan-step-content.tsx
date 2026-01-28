@@ -13,7 +13,7 @@ import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { getRepositoryInstances } from "@/lib/services"
 import type { Location } from "@/lib/types"
-import type { CollectionDraft } from "@/lib/domain/collections"
+import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
 
 /** Build one-line address from shooting Location (Figma: "Rua Concepción Arenal, 10 15006 A Coruña Spain") */
@@ -61,6 +61,8 @@ export interface DropoffPlanStepContentProps {
   >>) => void
   /** Options for "Responsible for shipping" (e.g. client + noba*). Built by parent from participants. */
   managingShippingOptions?: { value: string; label: string }[]
+  /** Chronology constraints (minDate, defaultDate, disabled, reason) per slot */
+  chronologyConstraints?: Record<string, ChronologyConstraint>
   className?: string
 }
 
@@ -75,10 +77,13 @@ export function DropoffPlanStepContent({
   draft,
   onDropoffPlanChange,
   managingShippingOptions = [{ value: "noba", label: "noba*" }],
+  chronologyConstraints,
   className,
 }: DropoffPlanStepContentProps) {
   const c = draft.config
   const [labAddress, setLabAddress] = React.useState<string>("—")
+  const shippingConstraint = chronologyConstraints?.["dropoff_plan_shipping"]
+  const deliveryConstraint = chronologyConstraints?.["dropoff_plan_delivery"]
 
   const pickUpDate = c.dropoff_shipping_date
     ? new Date(c.dropoff_shipping_date + "T12:00:00")
@@ -112,6 +117,21 @@ export function DropoffPlanStepContent({
     }
   }, [draft.participants])
 
+  React.useEffect(() => {
+    if (!deliveryConstraint?.defaultDate || c.dropoff_delivery_date) return
+    onDropoffPlanChange({
+      dropoff_delivery_date: deliveryConstraint.defaultDate,
+      ...(deliveryConstraint.previousTimePreset && {
+        dropoff_delivery_time: deliveryConstraint.previousTimePreset,
+      }),
+    })
+  }, [
+    deliveryConstraint?.defaultDate,
+    deliveryConstraint?.previousTimePreset,
+    c.dropoff_delivery_date,
+    onDropoffPlanChange,
+  ])
+
   return (
     <div className={className}>
       <Forms
@@ -137,6 +157,9 @@ export function DropoffPlanStepContent({
                   })
                 }
                 placeholder="Select date"
+                minDate={shippingConstraint?.minDate}
+                disabled={shippingConstraint?.isEnabled === false}
+                helperText={shippingConstraint?.reason}
               />
               <TimePicker
                 label="Estimated time"
@@ -145,6 +168,7 @@ export function DropoffPlanStepContent({
                   onDropoffPlanChange({ dropoff_shipping_time: v })
                 }
                 placeholder="Select time"
+                disabled={shippingConstraint?.isEnabled === false}
               />
             </RowVariants>
           </>
@@ -167,6 +191,9 @@ export function DropoffPlanStepContent({
                   })
                 }
                 placeholder="Select date"
+                minDate={deliveryConstraint?.minDate}
+                disabled={deliveryConstraint?.isEnabled === false}
+                helperText={deliveryConstraint?.reason}
               />
               <TimePicker
                 label="Estimated time"
@@ -175,6 +202,7 @@ export function DropoffPlanStepContent({
                   onDropoffPlanChange({ dropoff_delivery_time: v })
                 }
                 placeholder="Select time"
+                disabled={deliveryConstraint?.isEnabled === false}
               />
             </RowVariants>
           </>

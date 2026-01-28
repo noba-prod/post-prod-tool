@@ -125,7 +125,7 @@ export function Grid({ items = defaultItems, className }: GridProps) {
       >
         {items.map((item, index) => (
           <CollectionCard
-            key={index}
+            key={item.id ?? index}
             {...item}
             className="!w-full h-[192px]"
           />

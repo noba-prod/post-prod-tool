@@ -43,6 +43,10 @@ interface FilterBarProps {
   actionDisabled?: boolean
   /** Whether to hide the Client filter (useful in entity view context) */
   hideClientFilter?: boolean
+  /** Client options for collections variant (from registered entities). When provided, used instead of mock. */
+  clientOptions?: { id: string; name: string }[]
+  /** Photographer options for collections variant (from registered entities). Enables Photographer filter. */
+  photographerOptions?: { id: string; name: string }[]
 }
 
 // Mock data
@@ -225,11 +229,14 @@ export function FilterBar({
   className,
   actionDisabled = false,
   hideClientFilter = false,
+  clientOptions,
+  photographerOptions = [],
 }: FilterBarProps) {
   // State for popover open/close
   const [clientOpen, setClientOpen] = React.useState(false)
   const [statusOpen, setStatusOpen] = React.useState(false)
   const [createdByOpen, setCreatedByOpen] = React.useState(false)
+  const [photographerOpen, setPhotographerOpen] = React.useState(false)
   const [roleOpen, setRoleOpen] = React.useState(false)
   const [typeOpen, setTypeOpen] = React.useState(false)
 
@@ -237,9 +244,12 @@ export function FilterBar({
   const [selectedClient, setSelectedClient] = React.useState<string | null>(null)
   const [selectedStatus, setSelectedStatus] = React.useState<string | null>(null)
   const [selectedCreatedBy, setSelectedCreatedBy] = React.useState<string | null>(null)
+  const [selectedPhotographer, setSelectedPhotographer] = React.useState<string | null>(null)
   const [selectedRole, setSelectedRole] = React.useState<string | null>(null)
   const [selectedType, setSelectedType] = React.useState<string | null>(null)
   const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">("desc")
+
+  const clientsForFilter = clientOptions?.length ? clientOptions : MOCK_CLIENTS
 
   // Handlers
   const handleClientSelect = (clientId: string, clientName: string) => {
@@ -258,6 +268,12 @@ export function FilterBar({
     setSelectedCreatedBy(userId === selectedCreatedBy ? null : userId)
     setCreatedByOpen(false)
     onFilterChange?.("createdBy", userId)
+  }
+
+  const handlePhotographerSelect = (photographerId: string, photographerName: string) => {
+    setSelectedPhotographer(photographerId === selectedPhotographer ? null : photographerId)
+    setPhotographerOpen(false)
+    onFilterChange?.("photographer", photographerId)
   }
 
   const handleRoleSelect = (role: string) => {
@@ -281,10 +297,18 @@ export function FilterBar({
   // Get display labels
   const getClientLabel = () => {
     if (selectedClient) {
-      const client = MOCK_CLIENTS.find(c => c.id === selectedClient)
+      const client = clientsForFilter.find((c) => c.id === selectedClient)
       return `Client: ${client?.name || "all"}`
     }
     return "Client: all"
+  }
+
+  const getPhotographerLabel = () => {
+    if (selectedPhotographer) {
+      const photographer = photographerOptions.find((p) => p.id === selectedPhotographer)
+      return `Photographer: ${photographer?.name || "all"}`
+    }
+    return "Photographer: all"
   }
 
   const getStatusLabel = () => {
@@ -376,7 +400,7 @@ export function FilterBar({
                   <CommandList>
                     <CommandEmpty>No client found.</CommandEmpty>
                     <CommandGroup>
-                      {MOCK_CLIENTS.map((client) => (
+                      {clientsForFilter.map((client) => (
                         <CommandItem
                           key={client.id}
                           value={client.name}
@@ -435,6 +459,34 @@ export function FilterBar({
                         data-checked={selectedCreatedBy === user.id}
                       >
                         {user.name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </FilterButtonWithPopover>
+
+            {/* Photographer Filter */}
+            <FilterButtonWithPopover
+              label={getPhotographerLabel()}
+              open={photographerOpen}
+              onOpenChange={setPhotographerOpen}
+            >
+              <Command>
+                <CommandInput placeholder="Search photographer..." />
+                <CommandList>
+                  <CommandEmpty>No photographer found.</CommandEmpty>
+                  <CommandGroup>
+                    {photographerOptions.map((photographer) => (
+                      <CommandItem
+                        key={photographer.id}
+                        value={photographer.name}
+                        onSelect={() =>
+                          handlePhotographerSelect(photographer.id, photographer.name)
+                        }
+                        data-checked={selectedPhotographer === photographer.id}
+                      >
+                        {photographer.name}
                       </CommandItem>
                     ))}
                   </CommandGroup>
