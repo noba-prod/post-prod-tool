@@ -66,10 +66,10 @@ function runChronologyAssertions(): void {
   if (end2?.isEnabled !== false) {
     throw new Error("Expected shooting_setup_ending to be disabled when no previous date")
   }
-  if (end2?.reason !== "Select previous step date first") {
-    throw new Error(`Expected reason 'Select previous step date first', got ${end2?.reason}`)
+  if (end2?.reason !== undefined) {
+    throw new Error(`Expected reason to be hidden (undefined), got ${end2?.reason}`)
   }
-  console.log("OK: no shooting date — downstream disabled with reason")
+  console.log("OK: no shooting date — downstream disabled, reason hidden")
 
   // 3) Downstream date before minDate — suggestedCorrection should correct it
   const draftInvalidDownstream = minimalDraft({

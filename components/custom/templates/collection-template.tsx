@@ -27,6 +27,12 @@ export interface CollectionTemplateStep {
   deadlineLabel?: string
   deadlineDate?: string
   deadlineTime?: string
+  /** When true, step is not part of this collection type (greyed out in UI). */
+  inactive?: boolean
+  /** Optional contextual note (e.g. "by different HP lab", "No shipping details"). */
+  annotation?: string
+  /** When true, step requires attention (e.g. red exclamation). */
+  attention?: boolean
 }
 
 export type CollectionStageStatus = "upcoming" | "in-progress" | "in-transit" | "done" | "delivered"
@@ -56,6 +62,8 @@ export interface CollectionTemplateProps {
   progress?: number
   /** Stage status tag (CollectionHeading main) */
   stageStatus?: CollectionStageStatus
+  /** Shooting type: Digital or Handprint (tag to the left of photographer) */
+  shootingType?: "digital" | "handprint"
   /** Photographer name (CollectionHeading main) */
   photographerName?: string
   /** Show photographer name tag */
@@ -98,6 +106,7 @@ export function CollectionTemplate({
   clientName = "@zara",
   progress = 42,
   stageStatus = "in-progress",
+  shootingType,
   photographerName,
   showPhotographerName = false,
   showParticipantsButton = true,
@@ -157,6 +166,10 @@ export function CollectionTemplate({
   const role = userContext?.user?.role ?? navBarProps?.role ?? "admin"
   const isAdmin = role?.toLowerCase() === "admin"
 
+  const visibleSteps = React.useMemo(
+    () => steps.filter((step) => !step.inactive),
+    [steps]
+  )
   const openStep = React.useMemo(
     () => steps.find((s) => s.id === openStepId) ?? null,
     [steps, openStepId]
@@ -188,6 +201,7 @@ export function CollectionTemplate({
             progress={progress}
             stageStatus={stageStatus}
             showStageStatus
+            shootingType={shootingType}
             photographerName={photographerName}
             showPhotographerName={showPhotographerName}
             showParticipantsButton={showParticipantsButton}
@@ -199,7 +213,7 @@ export function CollectionTemplate({
 
         <div className="flex-1 overflow-y-auto min-h-0 px-6 pt-4 pb-8">
           <div className="flex flex-col gap-0 w-full">
-            {steps.map((step) => (
+            {visibleSteps.map((step, index) => (
               <CollectionStepper
                 key={step.id}
                 status={step.status}
@@ -209,12 +223,10 @@ export function CollectionTemplate({
                 deadlineLabel={step.deadlineLabel ?? "Deadline:"}
                 deadlineDate={step.deadlineDate ?? "Dec 4, 2025"}
                 deadlineTime={step.deadlineTime ?? "End of day (5:00pm)"}
-                onStepClick={
-                  step.status !== "locked"
-                    ? () => setOpenStepId(step.id)
-                    : undefined
-                }
+                onStepClick={() => setOpenStepId(step.id)}
                 showExpandButton
+                  isFirst={index === 0}
+                isLast={index === visibleSteps.length - 1}
               />
             ))}
           </div>

@@ -119,6 +119,14 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
     return ALL_OPTIONS.filter(opt => allowedOptions.includes(opt.id))
   }, [allowedOptions])
 
+  // Listen for empty-state CTA (e.g. collections page "Create new")
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    const handler = () => setNewCollectionModalOpen(true)
+    window.addEventListener("noba:open-create-collection", handler)
+    return () => window.removeEventListener("noba:open-create-collection", handler)
+  }, [])
+
   // Handle option selection
   const handleOptionSelect = React.useCallback((optionId: CreateEntityOption) => {
     setCommandOpen(false)
@@ -198,7 +206,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
       setIsCreatingCollection(true)
       try {
         const service = createCollectionsService()
-        const draft = await service.createDraft(config)
+        const collection = await service.createCollection(config)
         setNewCollectionModalOpen(false)
 
         const clientLabel = clientDisplayName ? `@${clientDisplayName}` : "@client"
@@ -207,7 +215,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
         )
 
         onCreated?.()
-        router.push(`/collections/create/${draft.id}`)
+        router.push(`/collections/create/${collection.id}`)
       } catch (err) {
         console.error("Failed to create collection draft:", err)
         toast.error("Failed to create collection", {

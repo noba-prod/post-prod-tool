@@ -159,19 +159,32 @@ export interface CreationData {
 }
 
 // =============================================================================
-// COLLECTION DRAFT (collections-logic §2, §3.3, §4)
+// COLLECTION (collections-logic §2, §3.3, §4) — single entity for draft + published
 // =============================================================================
 
-export type CollectionDraftStatus = "draft" | "upcoming" | "in_progress"
+export type CollectionStatus =
+  | "draft"
+  | "upcoming"
+  | "in_progress"
+  | "completed"
+  | "canceled"
 
-export interface CollectionDraft {
+export interface Collection {
   id: string
-  status: CollectionDraftStatus
+  status: CollectionStatus
   config: CollectionConfig
   participants: CollectionParticipant[]
   creationData: CreationData
   updatedAt: string
+  /** Set when status changes from draft to upcoming/in_progress (publish). */
+  publishedAt?: string
 }
+
+/** Alias for backward compatibility; workflow and UI use same shape. */
+export type CollectionDraftStatus = "draft" | "upcoming" | "in_progress"
+
+/** @deprecated Use Collection. Kept for gradual migration. */
+export type CollectionDraft = Collection
 
 // =============================================================================
 // CREATION TEMPLATE STEP — One row in the Creation Template sidebar (collections-logic §4)

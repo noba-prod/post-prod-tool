@@ -256,6 +256,33 @@ export function CollectionProgressTag({
 }
 
 // ============================================================================
+// SHOOTING TYPE TAG (Digital / Handprint — same style as photographer tag, no icon)
+// ============================================================================
+
+interface ShootingTypeTagProps {
+  /** Tipo de shooting */
+  type?: "digital" | "handprint"
+  className?: string
+}
+
+export function ShootingTypeTag({
+  type = "digital",
+  className,
+}: ShootingTypeTagProps) {
+  const label = type === "handprint" ? "Handprint" : "Digital"
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 px-2 py-1 text-sm font-semibold rounded-lg bg-sidebar-accent text-foreground whitespace-nowrap",
+        className
+      )}
+    >
+      <span>{label}</span>
+    </span>
+  )
+}
+
+// ============================================================================
 // PHOTOGRAPHER NAME TAG
 // ============================================================================
 
@@ -293,5 +320,6 @@ export type {
   TimeStampTagProps,
   CollectionProgressTagProps,
   PhotographerNameTagProps,
+  ShootingTypeTagProps,
 }
 

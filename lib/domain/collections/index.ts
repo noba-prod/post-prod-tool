@@ -6,9 +6,11 @@
 
 // Types
 export type {
+  Collection,
   CollectionConfig,
   CollectionDraft,
   CollectionDraftStatus,
+  CollectionStatus,
   CollectionParticipant,
   CreationBlockId,
   CreationData,
@@ -32,6 +34,7 @@ export {
   getChronologyConstraints,
   getStepOwner,
   isCreationStepComplete,
+  isCreationStepContentComplete,
   isDraftComplete,
   isParticipantsStepComplete,
 } from "./workflow"
@@ -40,6 +43,24 @@ export type { ChronologyConstraint, ChronologyConstraintsResult } from "./workfl
 
 // Repository interface only
 export type {
-  CollectionDraftPatch,
+  CollectionUpdatePatch,
   ICollectionsRepository,
+  ListCollectionsFilters,
 } from "./repository.interface"
+
+// View mode steps (canonical list + derivation from config; reusable for demo and collection view page)
+export {
+  configToViewStepsInput,
+  formatDeadlineDate,
+  getViewStepDefinitions,
+  viewStepsWithStatus,
+  viewStepsWithStatusFromCollection,
+  VIEW_STEP_IDS,
+} from "./view-mode-steps"
+export type {
+  ViewStepId,
+  ViewStepDefinition,
+  ViewStepsConfigInput,
+  ViewStepStatus,
+  ViewStepsFromCollectionOptions,
+} from "./view-mode-steps"

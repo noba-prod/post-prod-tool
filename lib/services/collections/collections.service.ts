@@ -1,14 +1,14 @@
 /**
- * Collections service — domain-facing layer for draft creation and retrieval.
+ * Collections service — domain-facing layer for create, read, update, list, publish.
  * Depends on ICollectionsRepository. No UI. No React.
  * Source of truth: noba-poc/docs/context/collections-logic.md
  */
 
 import type {
+  Collection,
   CollectionConfig,
-  CollectionDraft,
-  CollectionDraftPatch,
   ICollectionsRepository,
+  ListCollectionsFilters,
 } from "@/lib/domain/collections"
 import { isDraftComplete, derivePublishedStatus } from "@/lib/domain/collections/workflow"
 import type { INotificationsService } from "../notifications/notifications.interface"
@@ -23,7 +23,7 @@ export class CollectionsServiceError extends Error {
   }
 }
 
-function validateCreateDraftConfig(config: Partial<CollectionConfig>): void {
+function validateCreateConfig(config: Partial<CollectionConfig>): void {
   if (!config.name?.trim()) {
     throw new CollectionsServiceError("Collection name is required", "VALIDATION_ERROR")
   }
@@ -35,76 +35,82 @@ function validateCreateDraftConfig(config: Partial<CollectionConfig>): void {
   }
 }
 
+function generateId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+}
+
 export class CollectionsService {
   constructor(
     private readonly repository: ICollectionsRepository,
     private readonly notifications: INotificationsService
   ) {}
 
-  async createDraft(config: CollectionConfig): Promise<CollectionDraft> {
-    validateCreateDraftConfig(config)
-    return this.repository.createDraft(config)
+  /**
+   * Creates a new collection (draft) from modal config.
+   */
+  async createCollection(config: CollectionConfig): Promise<Collection> {
+    validateCreateConfig(config)
+    const id = generateId()
+    const now = new Date().toISOString()
+    const collection: Collection = {
+      id,
+      status: "draft",
+      config,
+      participants: [],
+      creationData: { completedBlockIds: [] },
+      updatedAt: now,
+    }
+    return this.repository.create(collection)
   }
 
-  async getDraftById(id: string): Promise<CollectionDraft | null> {
-    return this.repository.getDraftById(id)
+  async getCollectionById(id: string): Promise<Collection | null> {
+    return this.repository.getById(id)
   }
 
-  async updateDraft(
+  async updateCollection(
     id: string,
-    patch: CollectionDraftPatch
-  ): Promise<CollectionDraft | null> {
-    return this.repository.updateDraft(id, patch)
+    patch: import("@/lib/domain/collections").CollectionUpdatePatch
+  ): Promise<Collection | null> {
+    return this.repository.update(id, patch)
   }
 
-  async listDrafts(): Promise<CollectionDraft[]> {
-    return this.repository.listDrafts()
+  async listCollections(filters?: ListCollectionsFilters): Promise<Collection[]> {
+    return this.repository.list(filters)
   }
 
   /**
-   * Publishes a collection draft (changes status from "draft" to "upcoming" or "in_progress").
-   * Validates draft is complete before publishing.
-   * @param id Draft ID
-   * @param now Current date/time (defaults to new Date())
-   * @returns Updated draft with new status
-   * @throws CollectionsServiceError with code "NOT_FOUND" if draft doesn't exist
-   * @throws CollectionsServiceError with code "DRAFT_INCOMPLETE" if draft is not complete
+   * Publishes a collection draft (status → upcoming or in_progress).
+   * Validates draft is complete. Sets publishedAt.
    */
-  async publishCollection(id: string, now: Date = new Date()): Promise<CollectionDraft> {
-    const draft = await this.repository.getDraftById(id)
-    if (!draft) {
-      throw new CollectionsServiceError("Draft not found", "NOT_FOUND")
+  async publishCollection(id: string, now: Date = new Date()): Promise<Collection> {
+    const collection = await this.repository.getById(id)
+    if (!collection) {
+      throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
     }
 
-    if (!isDraftComplete(draft)) {
-      throw new CollectionsServiceError("Finish required setup before publishing", "DRAFT_INCOMPLETE")
+    if (!isDraftComplete(collection)) {
+      throw new CollectionsServiceError(
+        "Finish required setup before publishing",
+        "DRAFT_INCOMPLETE"
+      )
     }
 
-    const newStatus = derivePublishedStatus(draft.config, now)
-    const updated = await this.repository.updateDraft(id, { status: newStatus })
+    const newStatus = derivePublishedStatus(collection.config, now)
+    const nowISO = now.toISOString()
+    const updated = await this.repository.update(id, {
+      status: newStatus,
+      publishedAt: nowISO,
+    })
 
     if (!updated) {
-      throw new CollectionsServiceError("Failed to update draft status", "UPDATE_FAILED")
+      throw new CollectionsServiceError("Failed to update collection status", "UPDATE_FAILED")
     }
 
-    // Prepare notification payload (participant user IDs from draft.participants)
-    const participantUserIds: string[] = []
-    const participantEntityIds: string[] = []
-    for (const participant of draft.participants) {
-      if (participant.entityId) {
-        participantEntityIds.push(participant.entityId)
-      }
-      if (participant.userIds) {
-        participantUserIds.push(...participant.userIds)
-      }
-    }
-
-    // Enqueue notification (no-op for now, but seam is ready)
-    await this.notifications.collectionPublished({
-      collectionId: id,
-      participantUserIds,
-      participantEntityIds,
-    })
+    // TODO: notify participants when notification system is implemented
+    // notifyParticipants(collection)
 
     return updated
   }

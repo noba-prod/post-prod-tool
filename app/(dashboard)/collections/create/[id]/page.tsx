@@ -19,6 +19,7 @@ import {
   computeCreationTemplate,
   isDraftComplete,
   isCreationStepComplete,
+  isCreationStepContentComplete,
   getChronologyConstraints,
   derivePublishedStatus,
 } from "@/lib/domain/collections"
@@ -75,7 +76,7 @@ export default function CollectionCreatePage({
   React.use(searchParams)
   const router = useRouter()
   const [draft, setDraft] = React.useState<Awaited<
-    ReturnType<ReturnType<typeof createCollectionsService>["getDraftById"]>
+    ReturnType<ReturnType<typeof createCollectionsService>["getCollectionById"]>
   > | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [activeStep, setActiveStep] = React.useState<CreationBlockId | "">("")
@@ -93,7 +94,7 @@ export default function CollectionCreatePage({
       return
     }
     let cancelled = false
-    service.getDraftById(id).then((d) => {
+    service.getCollectionById(id).then((d) => {
       if (!cancelled) {
         setDraft(d)
         if (d) {
@@ -132,7 +133,7 @@ export default function CollectionCreatePage({
             userIds: [draft.config.managerUserId],
             editPermissionByUserId: { [draft.config.managerUserId]: true },
           })
-          service.updateDraft(id, { participants: next }).then((updated) => {
+          service.updateCollection(id, { participants: next }).then((updated) => {
             if (updated) setDraft(updated)
           })
         })
@@ -143,7 +144,7 @@ export default function CollectionCreatePage({
         ...draft.participants,
         { role: "client", entityId: draft.config.clientEntityId },
       ]
-      service.updateDraft(id, { participants: next }).then((updated) => {
+      service.updateCollection(id, { participants: next }).then((updated) => {
         if (updated) setDraft(updated)
       })
     }
@@ -193,7 +194,7 @@ export default function CollectionCreatePage({
     if (!draft || !id) return
     const { suggestedCorrection } = getChronologyConstraints(draft)
     if (!suggestedCorrection || Object.keys(suggestedCorrection).length === 0) return
-    service.updateDraft(id, { config: suggestedCorrection }).then((updated) => {
+    service.updateCollection(id, { config: suggestedCorrection }).then((updated) => {
       if (updated) setDraft(updated)
     })
   }, [draft, id, service])
@@ -210,7 +211,7 @@ export default function CollectionCreatePage({
   const handleParticipantsChange = React.useCallback(
     (participants: CollectionParticipant[]) => {
       if (!draft || !id) return
-      service.updateDraft(id, { participants }).then((updated) => {
+      service.updateCollection(id, { participants }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -229,7 +230,7 @@ export default function CollectionCreatePage({
       | "shootingCountry"
     >>) => {
       if (!draft || !id) return
-      service.updateDraft(id, { config: patch }).then((updated) => {
+      service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -248,7 +249,7 @@ export default function CollectionCreatePage({
       | "dropoff_shipping_tracking"
     >>) => {
       if (!draft || !id) return
-      service.updateDraft(id, { config: patch }).then((updated) => {
+      service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -268,7 +269,7 @@ export default function CollectionCreatePage({
       | "lowResShippingTracking"
     >>) => {
       if (!draft || !id) return
-      service.updateDraft(id, { config: patch }).then((updated) => {
+      service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -283,7 +284,7 @@ export default function CollectionCreatePage({
       | "photoSelectionClientDueTime"
     >>) => {
       if (!draft || !id) return
-      service.updateDraft(id, { config: patch }).then((updated) => {
+      service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -293,7 +294,7 @@ export default function CollectionCreatePage({
   const handleLrToHrSetupChange = React.useCallback(
     (patch: Partial<Pick<CollectionConfig, "lrToHrDueDate" | "lrToHrDueTime">>) => {
       if (!draft || !id) return
-      service.updateDraft(id, { config: patch }).then((updated) => {
+      service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -308,7 +309,7 @@ export default function CollectionCreatePage({
       | "editionStudioDueTime"
     >>) => {
       if (!draft || !id) return
-      service.updateDraft(id, { config: patch }).then((updated) => {
+      service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -323,7 +324,7 @@ export default function CollectionCreatePage({
       | "clientFinalsDeadlineTime"
     >>) => {
       if (!draft || !id) return
-      service.updateDraft(id, { config: patch }).then((updated) => {
+      service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -338,7 +339,7 @@ export default function CollectionCreatePage({
         ...new Set([...draft.creationData.completedBlockIds, currentStepId]),
       ] as CreationBlockId[]
       service
-        .updateDraft(id, { creationData: { completedBlockIds: nextCompleted } })
+        .updateCollection(id, { creationData: { completedBlockIds: nextCompleted } })
         .then((updated) => {
           if (updated) setDraft(updated)
           setActiveStepHandler(nextStepId)
@@ -347,14 +348,26 @@ export default function CollectionCreatePage({
     [draft, id, service, setActiveStepHandler]
   )
 
-  /** Publish collection (sidebar and block primary CTA). Disabled until isDraftComplete(draft). */
+  /** Publish collection (sidebar and block primary CTA). Disabled until draft and Check Finals block are complete. */
   const handlePublish = React.useCallback(() => {
-    if (!draft || !isDraftComplete(draft)) return
+    if (
+      !draft ||
+      !isDraftComplete(draft) ||
+      !isCreationStepContentComplete(draft, "check_finals")
+    )
+      return
     setPublishDialogOpen(true)
   }, [draft])
 
   const handleConfirmPublish = React.useCallback(async () => {
-    if (!draft || !id || !isDraftComplete(draft) || isPublishing) return
+    if (
+      !draft ||
+      !id ||
+      !isDraftComplete(draft) ||
+      !isCreationStepContentComplete(draft, "check_finals") ||
+      isPublishing
+    )
+      return
 
     setIsPublishing(true)
     try {
@@ -566,7 +579,9 @@ export default function CollectionCreatePage({
           : nextStepId
             ? () => handleNextClick(stepId, nextStepId)
             : undefined,
-        primaryDisabled: isLast ? !isDraftComplete(draft) : false,
+        primaryDisabled: isLast
+          ? !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
+          : !isCreationStepContentComplete(draft, stepId),
         secondaryLabel: isFirst ? undefined : "Previous",
         onSecondaryClick: isFirst
           ? undefined
@@ -577,6 +592,12 @@ export default function CollectionCreatePage({
       }
     })
   }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries])
+
+  // Derive published status for right card preview (must run before any early return to keep hooks order stable)
+  const derivedStatus = React.useMemo(() => {
+    if (!draft?.config) return "upcoming" as const
+    return derivePublishedStatus(draft.config)
+  }, [draft?.config])
 
   if (loading) {
     return (
@@ -605,11 +626,6 @@ export default function CollectionCreatePage({
       </div>
     )
   }
-
-  // Derive published status for right card preview
-  const derivedStatus = React.useMemo(() => {
-    return derivePublishedStatus(draft.config)
-  }, [draft.config])
 
   const publishCardBase = {
     collectionName: draft.config.name || "Create collection",
@@ -675,7 +691,9 @@ export default function CollectionCreatePage({
         onSidebarItemClick={(stepId) => setActiveStep(stepId as CreationBlockId)}
         onDeleteCollection={handleDeleteCollection}
         onPublishCollection={handlePublish}
-        publishCollectionDisabled={!isDraftComplete(draft)}
+        publishCollectionDisabled={
+          !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
+        }
         blocks={blocks}
       />
       <PublishCollectionDialog
@@ -688,7 +706,11 @@ export default function CollectionCreatePage({
           setPublishDialogOpen(false)
           setActiveStep("participants")
         }}
-        publishDisabled={!isDraftComplete(draft) || isPublishing}
+        publishDisabled={
+          !isDraftComplete(draft) ||
+          !isCreationStepContentComplete(draft, "check_finals") ||
+          isPublishing
+        }
         onPublish={handleConfirmPublish}
       />
     </>

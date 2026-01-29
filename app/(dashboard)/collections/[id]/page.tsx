@@ -6,55 +6,38 @@ import { CollectionTemplate } from "@/components/custom/templates/collection-tem
 import type { CollectionTemplateStep } from "@/components/custom/templates/collection-template"
 import { createCollectionsService } from "@/lib/services"
 import { getRepositoryInstances } from "@/lib/services"
-import { computeCreationTemplate } from "@/lib/domain/collections"
-import type { CreationBlockId } from "@/lib/domain/collections"
-
-/** UI labels for view steps — map stepId to PHOTO labels (collections-logic §4) */
-const STEP_LABELS: Record<CreationBlockId, string> = {
-  participants: "Participants",
-  shooting_setup: "Shooting setup",
-  dropoff_plan: "Drop-off plan",
-  low_res_config: "Low-res scan",
-  photographer_selection_config: "Photographer selection",
-  client_selection_config: "Client selection",
-  photo_selection: "Photo selection",
-  lr_to_hr_setup: "LR to HR setup",
-  handprint_high_res_config: "LR to HR setup",
-  edition_config: "Pre-check & Edition",
-  check_finals: "Check Finals",
-}
-
-function stepLabel(stepId: CreationBlockId): string {
-  return STEP_LABELS[stepId] ?? stepId
-}
+import {
+  getViewStepDefinitions,
+  configToViewStepsInput,
+  viewStepsWithStatusFromCollection,
+} from "@/lib/domain/collections"
 
 /**
- * Maps creation template steps to CollectionTemplate view steps.
- * For published collections, all steps are shown; status is derived from position.
+ * Maps view-mode steps (with status and deadlines from collection) to CollectionTemplateStep.
+ * Reuses the same structure as the demo; steps are derived from collection config
+ * (digital only / digital + edition / hand print only / handprint + different lab / etc.).
  */
-function creationStepsToViewSteps(
-  creationSteps: { stepId: CreationBlockId }[],
-  collectionStatus: "upcoming" | "in_progress"
+function viewStepsToTemplateSteps(
+  withStatus: ReturnType<typeof viewStepsWithStatusFromCollection>
 ): CollectionTemplateStep[] {
-  return creationSteps.map((step, index) => {
-    const id = step.stepId
-    const title = stepLabel(step.stepId)
-    // Simple heuristic: first steps completed, current in-progress, rest locked
-    const isCompleted = collectionStatus === "in_progress" && index < creationSteps.length - 1
-    const isActive = index === creationSteps.length - 1 || (collectionStatus === "upcoming" && index === 0)
-    const status: CollectionTemplateStep["status"] = isCompleted ? "completed" : isActive ? "active" : "locked"
-    const stageStatus = isCompleted ? "done" : isActive ? "in-progress" : "upcoming"
-    return {
-      id,
-      title,
-      status,
-      stageStatus,
-      timeStampStatus: "on-track",
-      deadlineLabel: "Deadline:",
-      deadlineDate: "—",
-      deadlineTime: "—",
-    }
-  })
+  return withStatus.map((step) => ({
+    id: step.id,
+    title: step.title,
+    status: step.status,
+    stageStatus:
+      step.status === "completed"
+        ? "done"
+        : step.status === "active"
+          ? "in-progress"
+          : "upcoming",
+    timeStampStatus: "on-track",
+    deadlineLabel: "Deadline:",
+    deadlineDate: step.deadlineDate ?? "—",
+    deadlineTime: step.deadlineTime ?? "End of day (5:00pm)",
+    inactive: step.inactive,
+    annotation: step.annotation,
+    attention: step.attention,
+  }))
 }
 
 export default function CollectionViewPage({
@@ -66,7 +49,7 @@ export default function CollectionViewPage({
   const router = useRouter()
   const [loading, setLoading] = React.useState(true)
   const [collection, setCollection] = React.useState<Awaited<
-    ReturnType<ReturnType<typeof createCollectionsService>["getDraftById"]>
+    ReturnType<ReturnType<typeof createCollectionsService>["getCollectionById"]>
   > | null>(null)
   const [clientName, setClientName] = React.useState<string>("—")
   const [photographerName, setPhotographerName] = React.useState<string | undefined>(undefined)
@@ -79,19 +62,19 @@ export default function CollectionViewPage({
       return
     }
     let cancelled = false
-    service.getDraftById(id).then((draft) => {
+    service.getCollectionById(id).then((c) => {
       if (cancelled) return
-      if (!draft) {
+      if (!c) {
         setCollection(null)
         setLoading(false)
         return
       }
       // If draft, redirect to setup flow
-      if (draft.status === "draft") {
+      if (c.status === "draft") {
         router.replace(`/collections/create/${id}`)
         return
       }
-      setCollection(draft)
+      setCollection(c)
       setLoading(false)
     })
     return () => {
@@ -148,16 +131,17 @@ export default function CollectionViewPage({
     )
   }
 
-  // Only published collections reach here (draft redirects to create flow)
-  const creationSteps = computeCreationTemplate(collection.config)
-  const viewSteps = creationStepsToViewSteps(
-    creationSteps,
-    collection.status === "in_progress" ? "in_progress" : "upcoming"
-  )
+  // Published collections: view steps from config (same scenarios as demo), deadlines from collection, one step active
+  const viewStepsConfig = configToViewStepsInput(collection.config)
+  const definitions = getViewStepDefinitions(viewStepsConfig)
+  const stepsWithStatus = viewStepsWithStatusFromCollection(definitions, collection.config)
+  const steps = viewStepsToTemplateSteps(stepsWithStatus)
 
   const stageStatus =
     collection.status === "in_progress" ? "in-progress" : "upcoming"
   const progress = collection.status === "in_progress" ? 42 : 0
+
+  const shootingType = collection.config.hasHandprint ? "handprint" : "digital"
 
   return (
     <CollectionTemplate
@@ -165,6 +149,7 @@ export default function CollectionViewPage({
       clientName={clientName}
       progress={progress}
       stageStatus={stageStatus}
+      shootingType={shootingType}
       photographerName={photographerName}
       showPhotographerName={!!photographerName}
       showParticipantsButton={true}
@@ -175,7 +160,7 @@ export default function CollectionViewPage({
       onSettings={() => {
         // TODO: open settings
       }}
-      steps={viewSteps}
+      steps={steps}
       navBarProps={{
         variant: "noba",
         userName: "Martin Becerra",

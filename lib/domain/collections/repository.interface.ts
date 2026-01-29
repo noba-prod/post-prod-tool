@@ -5,46 +5,29 @@
  * Source of truth: noba-poc/docs/context/collections-logic.md
  */
 
-import type { CollectionConfig, CollectionDraft } from "./types"
+import type { Collection, CollectionStatus } from "./types"
 
-/**
- * Partial update for a draft. Only provided fields are updated.
- */
-export type CollectionDraftPatch = Partial<
-  Omit<CollectionDraft, "id" | "config" | "updatedAt">
-> & {
-  config?: Partial<CollectionDraft["config"]>
+export interface ListCollectionsFilters {
+  status?: CollectionStatus
+  clientEntityId?: string
+  createdByUserId?: string
+}
+
+/** Patch for update: top-level fields optional; config is merged (partial). */
+export type CollectionUpdatePatch = Partial<Omit<Collection, "id" | "config">> & {
+  config?: Partial<Collection["config"]>
 }
 
 /**
- * Repository for Collection drafts.
+ * Repository for Collections (draft + published).
  * No side effects beyond persistence; no business rules.
  */
 export interface ICollectionsRepository {
-  /**
-   * Creates a new draft from modal config.
-   * Returns the draft with a generated id, status "draft", empty participants and creationData.
-   */
-  createDraft(config: CollectionConfig): Promise<CollectionDraft>
+  create(collection: Collection): Promise<Collection>
 
-  /**
-   * Retrieves a draft by id.
-   * @returns The draft if found, null otherwise
-   */
-  getDraftById(id: string): Promise<CollectionDraft | null>
+  getById(id: string): Promise<Collection | null>
 
-  /**
-   * Updates an existing draft with a partial payload.
-   * @returns The updated draft, or null if not found
-   */
-  updateDraft(
-    id: string,
-    patch: CollectionDraftPatch
-  ): Promise<CollectionDraft | null>
+  update(id: string, patch: CollectionUpdatePatch): Promise<Collection | null>
 
-  /**
-   * Lists all drafts (e.g. for the Collections list page).
-   * Order: most recent first (by updatedAt).
-   */
-  listDrafts(): Promise<CollectionDraft[]>
+  list(filters?: ListCollectionsFilters): Promise<Collection[]>
 }

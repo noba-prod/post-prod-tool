@@ -138,7 +138,12 @@ export function DropoffPlanStepContent({
         variant="shipping-module"
         title="Shipping details (negatives from shooting to lab)"
         showShippingDetails={true}
-        showInformativeToast={true}
+        showInformativeToast={
+          !!(
+            c.dropoff_managing_shipping &&
+            c.dropoff_managing_shipping !== "noba"
+          )
+        }
         originContent={
           <>
             <EntitySelected
@@ -212,11 +217,11 @@ export function DropoffPlanStepContent({
             <OptionPicker
               label="Responsible for shipping"
               options={managingShippingOptions}
-              value={c.dropoff_managing_shipping ?? ""}
+              value={c.dropoff_managing_shipping ?? "noba"}
               onValueChange={(v) =>
                 onDropoffPlanChange({ dropoff_managing_shipping: v || undefined })
               }
-              placeholder="Zara"
+              placeholder="noba*"
             />
             <OptionPicker
               label="Shipping provider"

@@ -6,182 +6,129 @@ import {
   CollectionTemplate,
   type CollectionTemplateStep,
 } from "@/components/custom/templates/collection-template"
+import {
+  getViewStepDefinitions,
+  viewStepsWithStatus,
+  type ViewStepsConfigInput,
+} from "@/lib/domain/collections/view-mode-steps"
 
-/** Step definition with ISO deadline for status derivation (collections-logic §6: step status is deadline-based). */
-type StepWithDeadline = Omit<CollectionTemplateStep, "status"> & {
-  deadlineIso: string
-}
+/** Reference date for status derivation (deadline-based). */
+const AS_OF_DATE = "2025-12-05"
 
-/**
- * Derives step status from deadlines (collections-logic §6).
- * - deadline < asOf → completed
- * - first step with deadline >= asOf → active (ensures at least one active when any deadline is today/future)
- * - rest → locked
- */
-function stepsWithStatusFromDeadlines(
-  steps: StepWithDeadline[],
-  asOfDate: string
-): CollectionTemplateStep[] {
-  let activeAssigned = false
-  return steps.map((step) => {
-    if (step.deadlineIso < asOfDate) {
-      return { ...step, status: "completed" as const }
-    }
-    if (!activeAssigned) {
-      activeAssigned = true
-      return { ...step, status: "active" as const }
-    }
-    return { ...step, status: "locked" as const }
-  })
-}
-
-/**
- * Example steps aligned with collections-logic.md §10.
- * deadlineIso drives status; deadlineDate is for display.
- */
-const exampleStepsWithDeadlines: StepWithDeadline[] = [
+/** Scenario variants from the collection configuration matrix (aligned with image). */
+const SCENARIOS: Array<{
+  id: string
+  label: string
+  config: ViewStepsConfigInput
+}> = [
   {
-    id: "shooting",
-    title: "Shooting",
-    deadlineIso: "2025-11-28",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Nov 28, 2025",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "done",
-    timeStampStatus: "on-track",
+    id: "digital-only",
+    label: "1. Digital only",
+    config: {
+      hasHandprint: false,
+      hasEditionStudio: false,
+      handprintIsDifferentLab: false,
+    },
   },
   {
-    id: "negatives-drop-off",
-    title: "Negatives Drop-off",
-    deadlineIso: "2025-12-04",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Dec 4, 2025",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "in-progress",
-    timeStampStatus: "on-track",
+    id: "digital-edition",
+    label: "2. Digital + Edition",
+    config: {
+      hasHandprint: false,
+      hasEditionStudio: true,
+      handprintIsDifferentLab: false,
+    },
   },
   {
-    id: "low-res-scanning",
-    title: "Low-Res Scanning",
-    deadlineIso: "2025-12-10",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Dec 10, 2025",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "upcoming",
-    timeStampStatus: "on-track",
+    id: "handprint-only",
+    label: "3. Hand print only",
+    config: {
+      hasHandprint: true,
+      hasEditionStudio: false,
+      handprintIsDifferentLab: false,
+      lowResNoShippingDetails: true,
+    },
   },
   {
-    id: "photographer-selection",
-    title: "Photographer Selection",
-    deadlineIso: "2025-12-18",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Dec 18, 2025",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "upcoming",
-    timeStampStatus: "on-track",
+    id: "handprint-different-lab",
+    label: "4. Hand print + Different lab",
+    config: {
+      hasHandprint: true,
+      hasEditionStudio: false,
+      handprintIsDifferentLab: true,
+    },
   },
   {
-    id: "client-selection",
-    title: "Client Selection",
-    deadlineIso: "2025-12-24",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Dec 24, 2025",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "upcoming",
-    timeStampStatus: "on-track",
-  },
-  {
-    id: "handprint-high-res",
-    title: "Handprint High-Res",
-    deadlineIso: "2026-01-06",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Jan 6, 2026",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "upcoming",
-    timeStampStatus: "on-track",
-  },
-  {
-    id: "edition-request",
-    title: "Edition Request",
-    deadlineIso: "2026-01-12",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Jan 12, 2026",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "upcoming",
-    timeStampStatus: "on-track",
-  },
-  {
-    id: "final-edits",
-    title: "Final Edits",
-    deadlineIso: "2026-01-20",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Jan 20, 2026",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "upcoming",
-    timeStampStatus: "on-track",
-  },
-  {
-    id: "photographer-last-check",
-    title: "Photographer Last Check",
-    deadlineIso: "2026-01-25",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Jan 25, 2026",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "upcoming",
-    timeStampStatus: "on-track",
-  },
-  {
-    id: "client-confirmation",
-    title: "Client Confirmation",
-    deadlineIso: "2026-01-30",
-    deadlineLabel: "Deadline:",
-    deadlineDate: "Jan 30, 2026",
-    deadlineTime: "End of day (5:00pm)",
-    stageStatus: "upcoming",
-    timeStampStatus: "on-track",
+    id: "handprint-edition-different-lab",
+    label: "5. Hand print + Edition + Different lab",
+    config: {
+      hasHandprint: true,
+      hasEditionStudio: true,
+      handprintIsDifferentLab: true,
+    },
   },
 ]
 
-/** Reference date for status derivation (deadline-based). Pick so at least one step is active. */
-const AS_OF_DATE = "2025-12-05"
+function definitionsToTemplateSteps(
+  withStatus: ReturnType<typeof viewStepsWithStatus>
+): CollectionTemplateStep[] {
+  return withStatus.map((step) => ({
+    id: step.id,
+    title: step.title,
+    status: step.status,
+    stageStatus:
+      step.status === "completed"
+        ? "done"
+        : step.status === "active"
+          ? "in-progress"
+          : "upcoming",
+    timeStampStatus: "on-track",
+    deadlineLabel: "Deadline:",
+    deadlineDate: step.deadlineDate ?? "—",
+    deadlineTime: "End of day (5:00pm)",
+    inactive: step.inactive,
+    annotation: step.annotation,
+    attention: step.attention,
+  }))
+}
 
 export default function CollectionTemplatePage() {
-  const [view, setView] = React.useState<"basic" | "contextual">("basic")
+  const [scenarioId, setScenarioId] = React.useState<string>(SCENARIOS[0].id)
+
+  const scenario = React.useMemo(
+    () => SCENARIOS.find((s) => s.id === scenarioId) ?? SCENARIOS[0],
+    [scenarioId]
+  )
 
   const steps = React.useMemo(() => {
-    const source =
-      view === "basic"
-        ? exampleStepsWithDeadlines.slice(0, 4)
-        : exampleStepsWithDeadlines
-    return stepsWithStatusFromDeadlines(source, AS_OF_DATE)
-  }, [view])
+    const definitions = getViewStepDefinitions(scenario.config)
+    const withStatus = viewStepsWithStatus(definitions, AS_OF_DATE)
+    return definitionsToTemplateSteps(withStatus)
+  }, [scenario.config])
 
   return (
     <div className="min-h-screen">
-      <div className="fixed top-4 right-4 z-50 flex gap-2">
-        <Button
-          variant={view === "basic" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setView("basic")}
-        >
-          Basic
-        </Button>
-        <Button
-          variant={view === "contextual" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setView("contextual")}
-        >
-          Contextual
-        </Button>
+      <div className="fixed top-4 right-4 z-50 flex flex-wrap gap-2 max-w-[90vw]">
+        {SCENARIOS.map((s) => (
+          <Button
+            key={s.id}
+            variant={scenarioId === s.id ? "default" : "outline"}
+            size="sm"
+            onClick={() => setScenarioId(s.id)}
+          >
+            {s.label}
+          </Button>
+        ))}
       </div>
 
       <CollectionTemplate
-        collectionName={view === "contextual" ? "Kids Summer'25" : "Example Collection"}
-        clientName={view === "contextual" ? "@zara" : "@client"}
-        progress={view === "contextual" ? 42 : 25}
+        collectionName="Kids Summer'25"
+        clientName="@zara"
+        progress={42}
         stageStatus="in-progress"
-        photographerName={view === "contextual" ? "Tom Haser" : undefined}
-        showPhotographerName={view === "contextual"}
+        shootingType={scenario.config.hasHandprint ? "handprint" : "digital"}
+        photographerName="Tom Haser"
+        showPhotographerName
         showParticipantsButton
         showSettingsButton
         onParticipants={() => {}}

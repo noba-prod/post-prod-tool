@@ -288,6 +288,80 @@ export function isParticipantsStepComplete(draft: CollectionDraft): boolean {
 }
 
 // =============================================================================
+// IS CREATION STEP CONTENT COMPLETE (minimal required info per step)
+// Used to enable/disable the "Next" button: user cannot advance until step minimum is met.
+// =============================================================================
+
+export function isCreationStepContentComplete(
+  draft: CollectionDraft,
+  stepId: CreationBlockId
+): boolean {
+  const c = draft.config
+
+  switch (stepId) {
+    case "participants":
+      return isParticipantsStepComplete(draft)
+
+    case "shooting_setup": {
+      const hasStart = !!c.shootingStartDate?.trim()
+      const hasEnd = !!c.shootingEndDate?.trim()
+      const hasLocation = !!c.shootingCity?.trim() || !!c.shootingCountry?.trim()
+      return hasStart && hasEnd && hasLocation
+    }
+
+    case "dropoff_plan": {
+      const hasShippingDate = !!c.dropoff_shipping_date?.trim()
+      const hasDeliveryDate = !!c.dropoff_delivery_date?.trim()
+      return hasShippingDate && hasDeliveryDate
+    }
+
+    case "low_res_config": {
+      return !!c.lowResScanDeadlineDate?.trim()
+    }
+
+    case "photographer_selection_config":
+    case "client_selection_config":
+      // Photo selection step has two blocks; we validate the whole step in photo_selection
+      return true
+
+    case "photo_selection": {
+      const hasPhotographerDue = !!c.photoSelectionPhotographerDueDate?.trim()
+      const hasClientDue = !!c.photoSelectionClientDueDate?.trim()
+      return hasPhotographerDue && hasClientDue
+    }
+
+    case "lr_to_hr_setup":
+    case "handprint_high_res_config": {
+      return !!c.lrToHrDueDate?.trim()
+    }
+
+    case "edition_config": {
+      const hasPhotographerDue = !!c.editionPhotographerDueDate?.trim()
+      const hasStudioDue = !!c.editionStudioDueDate?.trim()
+      return hasPhotographerDue && hasStudioDue
+    }
+
+    case "check_finals": {
+      // Check Finals: all fields of the block must be completed before Publish is enabled.
+      // Photographer check finals: Date + Time. Client approve finals: Date + Time.
+      const hasPhotographerDate = !!c.checkFinalsPhotographerDueDate?.trim()
+      const hasPhotographerTime = !!c.checkFinalsPhotographerDueTime?.trim()
+      const hasClientDeadline = !!c.clientFinalsDeadline?.trim()
+      const hasClientDeadlineTime = !!c.clientFinalsDeadlineTime?.trim()
+      return (
+        hasPhotographerDate &&
+        hasPhotographerTime &&
+        hasClientDeadline &&
+        hasClientDeadlineTime
+      )
+    }
+
+    default:
+      return true
+  }
+}
+
+// =============================================================================
 // GET STEP OWNER (collections-logic §9, §10)
 // Producer is ALWAYS included. Returns roles that own the step.
 // =============================================================================
@@ -361,7 +435,7 @@ export interface ChronologyConstraint {
   previousTimePreset?: string
   /** Whether this date/time control is enabled (false when previous step has no date) */
   isEnabled: boolean
-  /** Reason when disabled, e.g. "Select previous step date first" */
+  /** Reason when disabled (not shown in UI; kept for future use) */
   reason?: string
 }
 
@@ -516,7 +590,7 @@ export function getChronologyConstraints(
     const minDate = previousDate ?? undefined
     const defaultDate = isFirstSlotInOrder ? undefined : (previousDate ?? undefined)
     const isEnabled = isFirstSlotInOrder || !!previousDate
-    const reason = !isEnabled ? "Select previous step date first" : undefined
+    const reason = undefined
 
     const sameDay = previousDate && currentDateStr && previousDate === currentDateStr
     const minTimePolicy: ChronologyConstraint["minTimePolicy"] =

@@ -8,165 +8,13 @@ import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Grid } from "@/components/custom/grid"
 import { Tables } from "@/components/custom/tables"
+import { Button } from "@/components/ui/button"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
-import type { Collection } from "@/components/custom/tables"
+import type { Collection as TableCollection } from "@/components/custom/tables"
 import { createCollectionsService, createEntityCreationService, getRepositoryInstances } from "@/lib/services"
-import type { CollectionDraft } from "@/lib/domain/collections"
-
-// ============================================================================
-// MOCK DATA
-// ============================================================================
-
-type CollectionStatus = "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
-
-interface CollectionData {
-  id: string
-  name: string
-  status: CollectionStatus
-  clientId: string
-  clientName: string
-  location: string
-  startDate: string
-  endDate: string
-  createdBy: string
-  participants: number
-  createdAt: Date
-}
-
-const MOCK_COLLECTIONS: CollectionData[] = [
-  {
-    id: "1",
-    name: "kids summer'25",
-    status: "draft",
-    clientId: "1",
-    clientName: "zara",
-    location: "a coruña, spain",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "1",
-    participants: 0,
-    createdAt: new Date("2025-01-05"),
-  },
-  {
-    id: "2",
-    name: "Sakura: Cherry blossom",
-    status: "upcoming",
-    clientId: "2",
-    clientName: "loewe",
-    location: "tokyo, japan",
-    startDate: "apr 4, 2025",
-    endDate: "apr 14, 2025",
-    createdBy: "2",
-    participants: 6,
-    createdAt: new Date("2025-01-04"),
-  },
-  {
-    id: "3",
-    name: "Beach resort 2025",
-    status: "in-progress",
-    clientId: "3",
-    clientName: "maisondumonde",
-    location: "miami, usa",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "1",
-    participants: 8,
-    createdAt: new Date("2025-01-03"),
-  },
-  {
-    id: "4",
-    name: "streetwear collection 2025",
-    status: "completed",
-    clientId: "4",
-    clientName: "mango",
-    location: "los angeles, usa",
-    startDate: "nov 24, 2025",
-    endDate: "dec 4, 2025",
-    createdBy: "3",
-    participants: 4,
-    createdAt: new Date("2025-01-02"),
-  },
-  {
-    id: "5",
-    name: "luxury evening coffee 2025",
-    status: "draft",
-    clientId: "5",
-    clientName: "dior",
-    location: "paris, france",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "2",
-    participants: 0,
-    createdAt: new Date("2025-01-01"),
-  },
-  {
-    id: "6",
-    name: "Speed run 2025",
-    status: "completed",
-    clientId: "1",
-    clientName: "zaraathleticz",
-    location: "madrid, spain",
-    startDate: "nov 19, 2025",
-    endDate: "nov 29, 2025",
-    createdBy: "1",
-    participants: 1,
-    createdAt: new Date("2024-12-28"),
-  },
-  {
-    id: "7",
-    name: "spring/summer 2025",
-    status: "draft",
-    clientId: "3",
-    clientName: "ecoalf",
-    location: "menorca, spain",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "4",
-    participants: 0,
-    createdAt: new Date("2024-12-25"),
-  },
-  {
-    id: "8",
-    name: "fall lookbook 2025",
-    status: "canceled",
-    clientId: "4",
-    clientName: "renatta&go",
-    location: "madrid, spain",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "5",
-    participants: 0,
-    createdAt: new Date("2024-12-20"),
-  },
-  {
-    id: "9",
-    name: "Holiday special 2025",
-    status: "upcoming",
-    clientId: "2",
-    clientName: "loewe",
-    location: "barcelona, spain",
-    startDate: "jan 10, 2026",
-    endDate: "jan 20, 2026",
-    createdBy: "1",
-    participants: 5,
-    createdAt: new Date("2025-01-06"),
-  },
-  {
-    id: "10",
-    name: "Resort collection 2026",
-    status: "in-progress",
-    clientId: "5",
-    clientName: "dior",
-    location: "cannes, france",
-    startDate: "jan 5, 2026",
-    endDate: "jan 15, 2026",
-    createdBy: "3",
-    participants: 12,
-    createdAt: new Date("2025-01-07"),
-  },
-]
+import type { Collection } from "@/lib/domain/collections"
 
 // ============================================================================
 // FILTER TYPES
@@ -186,10 +34,12 @@ interface Filters {
 
 /**
  * Maps domain status (with underscore) to UI status (with hyphen).
- * Domain: "draft" | "upcoming" | "in_progress"
+ * Domain: "draft" | "upcoming" | "in_progress" | "completed" | "canceled"
  * UI: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
  */
-function mapStatusToUI(status: CollectionDraft["status"]): "draft" | "upcoming" | "in-progress" {
+function mapStatusToUI(
+  status: Collection["status"]
+): "draft" | "upcoming" | "in-progress" | "completed" | "canceled" {
   if (status === "in_progress") return "in-progress"
   return status
 }
@@ -200,8 +50,8 @@ function mapStatusToUI(status: CollectionDraft["status"]): "draft" | "upcoming" 
  * config.shootingCity and config.shootingCountry.
  * Shown as-is (no transform) so labels like "A Coruña", "United Kingdom" stay correct.
  */
-function draftLocation(draft: CollectionDraft): string {
-  const { config } = draft
+function collectionLocation(c: Collection): string {
+  const { config } = c
   if (!config.shootingCity?.trim() && !config.shootingCountry?.trim()) return "—"
   const city = config.shootingCity?.trim() ?? "—"
   const country = config.shootingCountry?.trim() ?? "—"
@@ -209,8 +59,8 @@ function draftLocation(draft: CollectionDraft): string {
 }
 
 /** Comienzo de producción = shooting start (solo cuando está completado ese paso); si no, TBD. Final = deadline (modal). */
-function draftDates(draft: CollectionDraft): { start: string; end: string } {
-  const { config } = draft
+function collectionDates(c: Collection): { start: string; end: string } {
+  const { config } = c
   const shootingStart = config.shootingStartDate ?? config.shootingDate ?? ""
   const deadline = config.clientFinalsDeadline ?? ""
   const format = (iso: string) =>
@@ -230,7 +80,7 @@ export default function CollectionsPage() {
   const authAdapter = useAuthAdapter()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [drafts, setDrafts] = useState<CollectionDraft[]>([])
+  const [collections, setCollections] = useState<Collection[]>([])
   const [clientNamesByEntityId, setClientNamesByEntityId] = useState<Record<string, string>>({})
   const [clientOptions, setClientOptions] = useState<{ id: string; name: string }[]>([])
   const [photographerOptions, setPhotographerOptions] = useState<{ id: string; name: string }[]>([])
@@ -261,11 +111,11 @@ export default function CollectionsPage() {
     checkSession()
   }, [router, authAdapter])
 
-  // Fetch drafts from service (single source of truth for list)
+  // Fetch collections from service (single source of truth for list)
   useEffect(() => {
     if (!session) return
     const service = createCollectionsService()
-    service.listDrafts().then(setDrafts)
+    service.listCollections().then(setCollections)
   }, [session])
 
   // Load client and photographer options for filters (registered entities)
@@ -286,9 +136,9 @@ export default function CollectionsPage() {
     })
   }, [session])
 
-  // Resolve client display names for drafts (entity by clientEntityId)
+  // Resolve client display names for collections (entity by clientEntityId)
   useEffect(() => {
-    if (drafts.length === 0) {
+    if (collections.length === 0) {
       setClientNamesByEntityId({})
       return
     }
@@ -298,7 +148,7 @@ export default function CollectionsPage() {
       setClientNamesByEntityId({})
       return
     }
-    const ids = [...new Set(drafts.map((d) => d.config.clientEntityId).filter(Boolean))]
+    const ids = [...new Set(collections.map((c) => c.config.clientEntityId).filter(Boolean))]
     const load = async () => {
       const map: Record<string, string> = {}
       await Promise.all(
@@ -310,7 +160,7 @@ export default function CollectionsPage() {
       setClientNamesByEntityId(map)
     }
     load()
-  }, [drafts])
+  }, [collections])
 
   // Handle filter changes
   const handleFilterChange = (filterId: string, value: string) => {
@@ -331,26 +181,24 @@ export default function CollectionsPage() {
     router.push("/auth/login")
   }
 
-  // When we have real drafts, use them (most recent first); otherwise fallback to mock
-  const usingDrafts = drafts.length > 0
-
-  const filteredDrafts = React.useMemo(() => {
-    if (!usingDrafts) return []
-    let result = [...drafts]
+  const filteredCollections = React.useMemo(() => {
+    let result = [...collections]
     if (filters.client) {
-      result = result.filter((d) => d.config.clientEntityId === filters.client)
+      result = result.filter((c) => c.config.clientEntityId === filters.client)
     }
     if (filters.status) {
-      // Map UI status (with hyphen) to domain status (with underscore) for filtering
       const domainStatus = filters.status === "in-progress" ? "in_progress" : filters.status
-      result = result.filter((d) => d.status === domainStatus)
+      result = result.filter((c) => c.status === domainStatus)
     }
     if (filters.photographer) {
-      result = result.filter((d) =>
-        d.participants.some(
+      result = result.filter((c) =>
+        c.participants.some(
           (p) => p.role === "photographer" && p.entityId === filters.photographer
         )
       )
+    }
+    if (filters.createdBy) {
+      result = result.filter((c) => c.config.managerUserId === filters.createdBy)
     }
     result.sort((a, b) => {
       const tA = new Date(a.updatedAt).getTime()
@@ -358,25 +206,11 @@ export default function CollectionsPage() {
       return filters.sortOrder === "desc" ? tB - tA : tA - tB
     })
     return result
-  }, [drafts, usingDrafts, filters.client, filters.status, filters.photographer, filters.sortOrder])
-
-  const filteredCollections = React.useMemo(() => {
-    if (usingDrafts) return []
-    let result = [...MOCK_COLLECTIONS]
-    if (filters.client) result = result.filter(c => c.clientId === filters.client)
-    if (filters.status) result = result.filter(c => c.status === filters.status)
-    if (filters.createdBy) result = result.filter(c => c.createdBy === filters.createdBy)
-    result.sort((a, b) => {
-      const dateA = a.createdAt.getTime()
-      const dateB = b.createdAt.getTime()
-      return filters.sortOrder === "desc" ? dateB - dateA : dateA - dateB
-    })
-    return result
-  }, [usingDrafts, filters])
+  }, [collections, filters.client, filters.status, filters.photographer, filters.createdBy, filters.sortOrder])
 
   /** Navigate to collection: draft → setup flow, published → view flow */
   const handleCollectionClick = React.useCallback(
-    (id: string, status: CollectionDraft["status"]) => {
+    (id: string, status: Collection["status"]) => {
       if (status === "draft") {
         router.push(`/collections/create/${id}`)
       } else {
@@ -387,75 +221,49 @@ export default function CollectionsPage() {
   )
 
   const gridItems: CollectionCardProps[] = React.useMemo(() => {
-    if (usingDrafts) {
-      return filteredDrafts.map(d => {
-        const { start, end } = draftDates(d)
-        const clientName = clientNamesByEntityId[d.config.clientEntityId]
-          ? `@${clientNamesByEntityId[d.config.clientEntityId].toLowerCase()}`
-          : "—"
-        return {
-          id: d.id,
-          status: mapStatusToUI(d.status),
-          collectionName: d.config.name || "—",
-          clientName,
-          location: draftLocation(d),
-          startDate: start,
-          endDate: end,
-          onClick: () => handleCollectionClick(d.id, d.status),
-        }
-      })
-    }
-    return filteredCollections.map(c => {
-      const isDraft = c.status === "draft"
-      const onClick = () => {
-        if (isDraft) router.push(`/collections/create/${c.id}`)
-        else router.push(`/collections/${c.id}`)
-      }
+    return filteredCollections.map((c) => {
+      const { start, end } = collectionDates(c)
+      const clientName = clientNamesByEntityId[c.config.clientEntityId]
+        ? `@${clientNamesByEntityId[c.config.clientEntityId].toLowerCase()}`
+        : "—"
       return {
         id: c.id,
-        status: c.status,
-        collectionName: c.name,
-        clientName: `@${c.clientName}`,
-        location: c.location,
-        startDate: c.startDate,
-        endDate: c.endDate,
-        onClick,
+        status: mapStatusToUI(c.status),
+        collectionName: c.config.name || "—",
+        clientName,
+        location: collectionLocation(c),
+        startDate: start,
+        endDate: end,
+        onClick: () => handleCollectionClick(c.id, c.status),
       }
     })
-  }, [usingDrafts, filteredDrafts, filteredCollections, clientNamesByEntityId, router, handleCollectionClick])
+  }, [filteredCollections, clientNamesByEntityId, handleCollectionClick])
 
-  const tableItems: Collection[] = React.useMemo(() => {
-    if (usingDrafts) {
-      return filteredDrafts.map(d => {
-        const { start } = draftDates(d)
-        const loc = draftLocation(d)
-        const clientName = clientNamesByEntityId[d.config.clientEntityId]
-        const client = clientName
-          ? clientName.charAt(0).toUpperCase() + clientName.slice(1)
-          : "—"
-        return {
-          id: d.id,
-          name: d.config.name || "—",
-          status: mapStatusToUI(d.status),
-          client,
-          starting: start,
-          location: loc !== "—" ? loc.split(", ").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(", ") : "—",
-          participants: d.participants.length,
-        }
-      })
-    }
-    return filteredCollections.map(c => ({
-      id: c.id,
-      name: c.name,
-      status: c.status,
-      client: c.clientName.charAt(0).toUpperCase() + c.clientName.slice(1),
-      starting: c.startDate.charAt(0).toUpperCase() + c.startDate.slice(1),
-      location: c.location.split(", ").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(", "),
-      participants: c.participants,
-    }))
-  }, [usingDrafts, filteredDrafts, filteredCollections, clientNamesByEntityId])
+  const tableItems: TableCollection[] = React.useMemo(() => {
+    return filteredCollections.map((c) => {
+      const { start } = collectionDates(c)
+      const loc = collectionLocation(c)
+      const clientName = clientNamesByEntityId[c.config.clientEntityId]
+      const client = clientName
+        ? clientName.charAt(0).toUpperCase() + clientName.slice(1)
+        : "—"
+      return {
+        id: c.id,
+        name: c.config.name || "—",
+        status: mapStatusToUI(c.status),
+        client,
+        starting: start,
+        location:
+          loc !== "—"
+            ? loc.split(", ").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(", ")
+            : "—",
+        participants: c.participants.length,
+      }
+    })
+  }, [filteredCollections, clientNamesByEntityId])
 
-  const hasItems = usingDrafts ? filteredDrafts.length > 0 : filteredCollections.length > 0
+  const hasItems = filteredCollections.length > 0
+  const isEmpty = collections.length === 0
 
   if (loading) {
     return (
@@ -510,13 +318,35 @@ export default function CollectionsPage() {
             />
           )}
           {!hasItems && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-lg font-medium text-muted-foreground">
-                No collections found
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Try adjusting your filters
-              </p>
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
+              {isEmpty ? (
+                <>
+                  <p className="text-lg font-medium text-muted-foreground">
+                    No collections yet
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Create your first collection to get started.
+                  </p>
+                  <Button
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(new CustomEvent("noba:open-create-collection"))
+                      }
+                    }}
+                  >
+                    Create new
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-medium text-muted-foreground">
+                    No collections found
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Try adjusting your filters
+                  </p>
+                </>
+              )}
             </div>
           )}
         </LayoutSection>

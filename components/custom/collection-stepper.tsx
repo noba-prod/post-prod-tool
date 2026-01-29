@@ -24,10 +24,16 @@ interface CollectionStepperProps {
   deadlineDate?: string
   /** Deadline time */
   deadlineTime?: string
-  /** Callback when step is clicked (e.g. to open step modal). Not used when status is locked. */
+  /** Callback when step is clicked (e.g. to open step modal). All steps (active, locked, completed) are clickable when this is set, except inactive. */
   onStepClick?: () => void
   /** Whether to show the expand/arrow button */
   showExpandButton?: boolean
+  /** When true, step is not part of this collection type (greyed out, not clickable). */
+  inactive?: boolean
+  /** When true, step is first in list – top progress segment is hidden. */
+  isFirst?: boolean
+  /** When true, step is last in list – bottom progress segment is hidden. */
+  isLast?: boolean
   className?: string
 }
 
@@ -46,48 +52,64 @@ export function CollectionStepper({
   deadlineTime = "End of day (5:00pm)",
   onStepClick,
   showExpandButton = true,
+  inactive = false,
+  isFirst = false,
+  isLast = false,
   className,
 }: CollectionStepperProps) {
   const isLocked = status === "locked"
+  const clickable = !inactive && !!onStepClick
+  const isDisabled = inactive
 
   return (
     <div
       className={cn(
         "flex items-stretch gap-8",
-        !isLocked && onStepClick && "cursor-pointer",
+        clickable && "cursor-pointer",
+        inactive && "opacity-50 pointer-events-none",
         className
       )}
-      onClick={!isLocked ? onStepClick : undefined}
-      role={!isLocked && onStepClick ? "button" : undefined}
-      tabIndex={!isLocked && onStepClick ? 0 : undefined}
+      onClick={clickable ? () => onStepClick?.() : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
       data-status={status}
+      data-inactive={inactive || undefined}
     >
-      <VerticalProgressIndicator status={status} segmentHeight={32} />
+      <VerticalProgressIndicator
+        status={inactive ? "locked" : status}
+        segmentHeight={32}
+        hideTopSegment={isFirst}
+        hideBottomSegment={isLast}
+      />
       {/* Figma layout8/layout16: Summary + CTA with gap 12px; 12px top/bottom padding */}
       <div className="flex items-stretch gap-3 flex-1 min-w-0 py-3">
-        <CollectionStepSummary
-          status={status}
-          title={title}
-          stageStatus={stageStatus}
-          timeStampStatus={timeStampStatus}
-          deadlineLabel={deadlineLabel}
-          deadlineDate={deadlineDate}
-          deadlineTime={deadlineTime}
-          className="flex-1 min-w-0"
-        />
+        <div className="flex flex-1 min-w-0 flex-col gap-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <CollectionStepSummary
+              status={inactive ? "locked" : status}
+              title={title}
+              stageStatus={stageStatus}
+              timeStampStatus={timeStampStatus}
+              deadlineLabel={deadlineLabel}
+              deadlineDate={deadlineDate}
+              deadlineTime={deadlineTime}
+              className="flex-1 min-w-0"
+            />
+          </div>
+        </div>
         {showExpandButton && (
           <div className="shrink-0 w-10 self-stretch min-h-0 flex">
             <Button
-              variant={status === "active" ? "default" : "secondary"}
+              variant={status === "active" && !inactive ? "default" : "secondary"}
               size="icon"
               className={cn(
                 "!h-full !min-h-0 w-full rounded-xl",
-                isLocked && "opacity-50 pointer-events-none"
+                isDisabled && "opacity-50 pointer-events-none"
               )}
               aria-label="Open step"
               onClick={(e) => {
                 e.stopPropagation()
-                if (!isLocked && onStepClick) onStepClick()
+                if (clickable) onStepClick?.()
               }}
             >
               <ChevronRight className="size-4" />

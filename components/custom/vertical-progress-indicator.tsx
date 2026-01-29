@@ -11,6 +11,10 @@ interface VerticalProgressIndicatorProps {
   status?: VerticalProgressIndicatorStatus
   /** Height of each track segment (top and bottom). Default 32 (8rem equivalent via h-8). */
   segmentHeight?: number
+  /** When true, hide the top segment (e.g. first step in list). */
+  hideTopSegment?: boolean
+  /** When true, hide the bottom segment (e.g. last step in list). */
+  hideBottomSegment?: boolean
   className?: string
 }
 
@@ -22,6 +26,8 @@ interface VerticalProgressIndicatorProps {
 export function VerticalProgressIndicator({
   status = "locked",
   segmentHeight = 32,
+  hideTopSegment = false,
+  hideBottomSegment = false,
   className,
 }: VerticalProgressIndicatorProps) {
   const isLocked = status === "locked"
@@ -45,9 +51,9 @@ export function VerticalProgressIndicator({
       className={cn("flex flex-col items-center shrink-0", className)}
       data-status={status}
     >
-      {/* Top segment – no gap with indicator (Figma layout3 gap:0) */}
+      {/* Top segment – hidden for first step so it reads as start of process */}
       <div
-        className={cn(trackClass, "flex-1 min-h-0")}
+        className={cn(trackClass, "flex-1 min-h-0", hideTopSegment && "opacity-0")}
         style={{ height: segmentHeight }}
       >
         <div
@@ -58,9 +64,9 @@ export function VerticalProgressIndicator({
 
       <StepIndicator status={stepStatus} color={stepColor} />
 
-      {/* Bottom segment – no gap with indicator */}
+      {/* Bottom segment – hidden for last step so it reads as end of process */}
       <div
-        className={cn(trackClass, "flex-1 min-h-0")}
+        className={cn(trackClass, "flex-1 min-h-0", hideBottomSegment && "opacity-0")}
         style={{ height: segmentHeight }}
       >
         <div
