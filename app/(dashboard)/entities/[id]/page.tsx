@@ -11,11 +11,11 @@ import { ModalWindow } from "@/components/custom/modal-window"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
-import { createEntityDetailService, EntityNotFoundError, createEntityCreationService } from "@/lib/services"
-import type { EntityType, StandardEntityType, CreateEntityDraftPayload } from "@/lib/types"
+import { createEntityDetailService, EntityNotFoundError } from "@/lib/services"
+import type { EntityType, StandardEntityType } from "@/lib/types"
 import { entityTypeToLabel, entityRequiresLocation, roleToLabel } from "@/lib/types"
 import { useUserContext } from "@/lib/contexts/user-context"
-import { mapEntityToFormData, mapSelfPhotographerToFormData, mapFormToEntityDraft, mapFormToUserPayload, mapSelfPhotographerFormToEntityDraft, mapUserToFormData, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
+import { mapEntityToFormData, mapSelfPhotographerToFormData, mapFormToUserPayload, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import type { SelfPhotographerFormData } from "@/components/custom/self-photographer-creation-form"
 import { formatDistanceToNow } from "date-fns"
@@ -113,27 +113,63 @@ export default function EntityDetailPage() {
 
     setIsSavingBasicInfo(true)
     try {
-      const service = createEntityCreationService()
-      let draft: CreateEntityDraftPayload
+      let payload: {
+        name?: string
+        email?: string
+        phoneNumber?: string
+        countryCode?: string
+        notes?: string
+        location?: {
+          streetAddress?: string
+          zipCode?: string
+          city?: string
+          country?: string
+        }
+      } = {}
 
-      // Handle self-photographer vs standard entities
       if (entity.entity.type === "self-photographer") {
         if (!selfPhotographerFormData) {
           return
         }
-        draft = mapSelfPhotographerFormToEntityDraft(selfPhotographerFormData)
+        payload = {
+          name: `${selfPhotographerFormData.firstName} ${selfPhotographerFormData.lastName || ""}`.trim(),
+          email: selfPhotographerFormData.email.trim() || undefined,
+          phoneNumber: selfPhotographerFormData.phoneNumber.trim(),
+          countryCode: selfPhotographerFormData.countryCode,
+          notes: selfPhotographerFormData.notes.trim() || undefined,
+        }
       } else {
         if (!basicFormData) {
           return
         }
-        draft = mapFormToEntityDraft(basicFormData)
+        payload = {
+          name: basicFormData.entityName.trim(),
+          email: basicFormData.email.trim() || undefined,
+          phoneNumber: basicFormData.phoneNumber.trim(),
+          countryCode: basicFormData.countryCode,
+          notes: basicFormData.notes.trim() || undefined,
+          location: {
+            streetAddress: basicFormData.streetAddress.trim(),
+            zipCode: basicFormData.zipCode.trim(),
+            city: basicFormData.city.trim(),
+            country: basicFormData.country.trim(),
+          },
+        }
       }
-      
-      // Ensure type matches existing entity (cannot change type)
-      draft.type = entity.entity.type
 
-      const result = await service.updateEntityBasicInfo(entityId, draft)
-      
+      const response = await fetch(`/api/entities/${entityId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errorBody = (await response.json()) as { error?: string }
+        throw new Error(errorBody.error || "Failed to update entity")
+      }
+
+      const result = (await response.json()) as { entity: import("@/lib/types").Entity }
+
       // Refresh entity data
       const updatedData = await fetchEntityData()
       setEntity(updatedData)
@@ -186,7 +222,6 @@ export default function EntityDetailPage() {
 
     setIsCreatingMember(true)
     try {
-      const service = createEntityCreationService()
       // Convert to UserFormData format (entity type must be StandardEntityType for UserFormData)
       // Since we're adding a member to an existing entity, we know it's not self-photographer
       const userFormData = {
@@ -196,8 +231,18 @@ export default function EntityDetailPage() {
           : null,
       }
       const payload = mapFormToUserPayload(userFormData)
+      const response = await fetch(`/api/entities/${entityId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
 
-      const result = await service.addTeamMember(entityId, payload)
+      if (!response.ok) {
+        const errorBody = (await response.json()) as { error?: string }
+        throw new Error(errorBody.error || "Failed to create team member")
+      }
+
+      const result = (await response.json()) as { user: import("@/lib/types").User }
       
       // Refresh entity data
       const updatedData = await fetchEntityData()
@@ -250,7 +295,6 @@ export default function EntityDetailPage() {
 
     setIsUpdatingUser(true)
     try {
-      const service = createEntityCreationService()
       // Convert to UserFormData format (entity type must be StandardEntityType for UserFormData)
       // Since we're editing a team member, we know the entity is not self-photographer
       const userFormData: import("@/lib/utils/form-mappers").UserFormData = {
@@ -265,8 +309,16 @@ export default function EntityDetailPage() {
         role: userData.role,
       }
       const payload = mapFormToUpdateUserPayload(userFormData)
-      
-      await service.updateUser(editingUserId, payload)
+      const response = await fetch(`/api/users/${editingUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errorBody = (await response.json()) as { error?: string }
+        throw new Error(errorBody.error || "Failed to update user")
+      }
       
       // Refresh entity data
       const updatedData = await fetchEntityData()

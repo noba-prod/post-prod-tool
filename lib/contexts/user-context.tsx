@@ -3,7 +3,10 @@
 import * as React from "react"
 import type { User, Entity } from "@/lib/types"
 import { useAuthAdapter } from "@/lib/auth"
-import { getRepositoryInstances } from "@/lib/services"
+import { getRepositoryInstances, fetchSupabaseUserData } from "@/lib/services"
+
+// Check if using mock auth
+const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
 
 /**
  * User context value interface.
@@ -69,6 +72,52 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
   React.useEffect(() => {
     let cancelled = false
 
+    async function loadUserDataFromMock(session: { userId: string; email: string }) {
+      // Get repository instances (mock/in-memory)
+      const { userRepository, entityRepository } = getRepositoryInstances()
+      
+      if (!userRepository || !entityRepository) {
+        console.warn("Repositories not initialized")
+        return null
+      }
+
+      // Fetch user by ID first, if not found try by email as fallback
+      let fetchedUser = await userRepository.getUserById(session.userId)
+      
+      // Fallback: if user not found by ID, try to find by email
+      if (!fetchedUser && session.email) {
+        const allUsers = await userRepository.getAllUsers()
+        fetchedUser = allUsers.find(
+          (u) => u.email.toLowerCase() === session.email.toLowerCase()
+        ) || null
+        
+        if (fetchedUser) {
+          console.log(`[UserContext] Found user by email fallback: ${fetchedUser.id} for email ${session.email}`)
+        }
+      }
+      
+      if (!fetchedUser) {
+        console.warn(`[UserContext] User not found for userId: ${session.userId}, email: ${session.email}`)
+        return null
+      }
+
+      console.log(`[UserContext] Loaded user: ${fetchedUser.id}, entityId: ${fetchedUser.entityId}, entityType: ${fetchedUser.entityId ? 'loading...' : 'none'}`)
+
+      // Fetch entity
+      let fetchedEntity = null
+      if (fetchedUser.entityId) {
+        fetchedEntity = await entityRepository.getEntityById(fetchedUser.entityId)
+        
+        if (fetchedEntity) {
+          console.log(`[UserContext] Loaded entity: ${fetchedEntity.id}, type: ${fetchedEntity.type}, name: ${fetchedEntity.name}`)
+        } else {
+          console.warn(`[UserContext] Entity not found for entityId: ${fetchedUser.entityId}`)
+        }
+      }
+
+      return { user: fetchedUser, entity: fetchedEntity }
+    }
+
     async function loadUserData() {
       setLoading(true)
       
@@ -84,64 +133,30 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
           return
         }
 
-        // Get repository instances
-        const { userRepository, entityRepository } = getRepositoryInstances()
-        
-        if (!userRepository || !entityRepository) {
-          console.warn("Repositories not initialized")
-          if (!cancelled) {
-            setUser(null)
-            setEntity(null)
-            setLoading(false)
-          }
-          return
-        }
+        let userData: { user: User; entity: Entity | null } | null = null
 
-        // Fetch user by ID first, if not found try by email as fallback
-        let fetchedUser = await userRepository.getUserById(session.userId)
-        
-        // Fallback: if user not found by ID, try to find by email
-        if (!fetchedUser && session.email) {
-          const allUsers = await userRepository.getAllUsers()
-          fetchedUser = allUsers.find(
-            (u) => u.email.toLowerCase() === session.email.toLowerCase()
-          ) || null
-          
-          if (fetchedUser) {
-            console.log(`[UserContext] Found user by email fallback: ${fetchedUser.id} for email ${session.email}`)
-          }
+        if (USE_MOCK_AUTH) {
+          // Use mock/in-memory repositories
+          userData = await loadUserDataFromMock(session)
+        } else {
+          // Use Supabase to fetch profile and organization data
+          console.log(`[UserContext] Fetching user data from Supabase for userId: ${session.userId}`)
+          userData = await fetchSupabaseUserData(session.userId)
         }
         
         if (cancelled) return
 
-        if (!fetchedUser) {
-          console.warn(`[UserContext] User not found for userId: ${session.userId}, email: ${session.email}`)
+        if (!userData) {
+          console.warn(`[UserContext] User data not found for userId: ${session.userId}`)
           setUser(null)
           setEntity(null)
           setLoading(false)
           return
         }
 
-        console.log(`[UserContext] Loaded user: ${fetchedUser.id}, entityId: ${fetchedUser.entityId}, entityType: ${fetchedUser.entityId ? 'loading...' : 'none'}`)
-        setUser(fetchedUser)
-
-        // Fetch entity
-        if (fetchedUser.entityId) {
-          const fetchedEntity = await entityRepository.getEntityById(fetchedUser.entityId)
-          
-          if (!cancelled) {
-            if (fetchedEntity) {
-              console.log(`[UserContext] Loaded entity: ${fetchedEntity.id}, type: ${fetchedEntity.type}, name: ${fetchedEntity.name}`)
-            } else {
-              console.warn(`[UserContext] Entity not found for entityId: ${fetchedUser.entityId}`)
-            }
-            setEntity(fetchedEntity)
-            setLoading(false)
-          }
-        } else {
-          setEntity(null)
-          setLoading(false)
-        }
+        setUser(userData.user)
+        setEntity(userData.entity)
+        setLoading(false)
       } catch (error) {
         console.error("[UserContext] Failed to load user data:", error)
         if (!cancelled) {

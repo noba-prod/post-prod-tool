@@ -57,10 +57,7 @@ export function createEntityCreationService(): EntityCreationService {
 export function createEntitiesListService(): EntitiesListService {
   ensureRepositories()
   if (!entitiesListServiceInstance) {
-    entitiesListServiceInstance = new EntitiesListService(
-      entityRepositoryInstance!,
-      userRepositoryInstance!
-    )
+    entitiesListServiceInstance = new EntitiesListService()
   }
   return entitiesListServiceInstance
 }
@@ -75,10 +72,7 @@ export function createEntitiesListService(): EntitiesListService {
 export function createEntityDetailService(): EntityDetailService {
   ensureRepositories()
   if (!entityDetailServiceInstance) {
-    entityDetailServiceInstance = new EntityDetailService(
-      entityRepositoryInstance!,
-      userRepositoryInstance!
-    )
+    entityDetailServiceInstance = new EntityDetailService()
   }
   return entityDetailServiceInstance
 }

@@ -17,10 +17,16 @@ interface NavigationConfig {
 /**
  * Hook to determine navigation configuration based on entity type.
  * 
- * Rules (from users-roles-access-model.md):
+ * Rules:
  * - noba: variant "noba", tabs ["Collections", "Entities", "Team"]
  * - self-photographer: variant "photographer", tabs ["Collections"]
  * - Other entities: variant "collaborator", tabs ["Collections", "Team"]
+ * 
+ * Entity type is determined by Supabase profile service (supabase-profile-service.ts):
+ * - is_internal=true AND organization_id=NOBA_ORGANIZATION_ID AND org.type='noba' → "noba"
+ * - is_internal=true (even without org) → "noba"
+ * - organization.type='self_photographer' → "self-photographer"
+ * - All other organization types → mapped to entity type (collaborator variant)
  * 
  * @param entityType Entity type (null if not loaded)
  * @returns Navigation configuration

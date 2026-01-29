@@ -1,5 +1,3 @@
-import type { IEntityRepository } from "@/lib/repositories/interfaces/entity-repository.interface"
-import type { IUserRepository } from "@/lib/repositories/interfaces/user-repository.interface"
 import type { Entity, User } from "@/lib/types"
 
 // =============================================================================
@@ -43,10 +41,6 @@ export class EntityNotFoundError extends Error {
  * Uses repository interfaces for future DB compatibility.
  */
 export class EntityDetailService {
-  constructor(
-    private readonly entityRepository: IEntityRepository,
-    private readonly userRepository: IUserRepository
-  ) {}
 
   /**
    * Fetches an entity with all its team members.
@@ -62,28 +56,25 @@ export class EntityDetailService {
    * ```
    */
   async getEntityWithTeamMembers(entityId: string): Promise<EntityDetailResult> {
-    // Fetch entity
-    const entity = await this.entityRepository.getEntityById(entityId)
-    
-    if (!entity) {
+    const response = await fetch(`/api/entities/${entityId}`, {
+      method: "GET",
+      cache: "no-store",
+    })
+
+    if (response.status === 404) {
       throw new EntityNotFoundError(entityId)
     }
 
-    // Fetch team members
-    const teamMembers = await this.userRepository.listUsersByEntityId(entityId)
-
-    // Find admin users
-    const adminUsers = teamMembers.filter((user) => user.role === "admin")
-    
-    // Primary admin is the first one found (or null if none)
-    const adminUser = adminUsers.length > 0 ? adminUsers[0] : null
-
-    return {
-      entity,
-      teamMembers,
-      adminUser,
-      adminUsers,
+    if (!response.ok) {
+      const errorBody = (await response.json()) as { error?: string }
+      throw new Error(errorBody.error || "Failed to fetch entity details")
     }
+
+    const data = (await response.json()) as EntityDetailResult
+    if (data.entity?.updatedAt) {
+      data.entity.updatedAt = new Date(data.entity.updatedAt)
+    }
+    return data
   }
 
   /**
@@ -93,7 +84,14 @@ export class EntityDetailService {
    * @returns true if the entity exists, false otherwise
    */
   async entityExists(entityId: string): Promise<boolean> {
-    const entity = await this.entityRepository.getEntityById(entityId)
-    return entity !== null
+    try {
+      await this.getEntityWithTeamMembers(entityId)
+      return true
+    } catch (error) {
+      if (error instanceof EntityNotFoundError) {
+        return false
+      }
+      return false
+    }
   }
 }

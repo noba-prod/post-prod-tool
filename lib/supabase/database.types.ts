@@ -8,6 +8,7 @@
 // ============================================================================
 
 export type OrganizationType =
+  | 'noba'
   | 'client'
   | 'photography_agency'
   | 'self_photographer'
@@ -36,6 +37,7 @@ export interface Organization {
   name: string
   email: string | null
   phone: string | null
+  prefix: string | null
   profile_picture_url: string | null
   notes: string | null
   street_address: string | null
@@ -52,6 +54,7 @@ export interface OrganizationInsert {
   name: string
   email?: string | null
   phone?: string | null
+  prefix?: string | null
   profile_picture_url?: string | null
   notes?: string | null
   street_address?: string | null
@@ -68,6 +71,7 @@ export interface OrganizationUpdate {
   name?: string
   email?: string | null
   phone?: string | null
+  prefix?: string | null
   profile_picture_url?: string | null
   notes?: string | null
   street_address?: string | null
@@ -84,6 +88,7 @@ export interface Profile {
   last_name: string | null
   email: string
   phone: string | null
+  prefix: string | null
   role: UserRole | null
   is_internal: boolean
   created_at: string
@@ -97,6 +102,7 @@ export interface ProfileInsert {
   last_name?: string | null
   email: string
   phone?: string | null
+  prefix?: string | null
   role?: UserRole | null
   is_internal?: boolean
   created_at?: string
@@ -109,6 +115,7 @@ export interface ProfileUpdate {
   last_name?: string | null
   email?: string
   phone?: string | null
+  prefix?: string | null
   role?: UserRole | null
   is_internal?: boolean
   updated_at?: string

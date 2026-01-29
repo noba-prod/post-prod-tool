@@ -133,7 +133,7 @@ export default function ClientCreationPage() {
             ),
             primaryLabel: creation.step1PrimaryLabel,
             onPrimaryClick: creation.handleStep1Primary,
-            primaryDisabled: !creation.isBasicInfoValid || creation.isUpdating,
+            primaryDisabled: !creation.isBasicInfoValid || creation.isUpdating || creation.isCreating,
             onEdit: creation.handleEditBasicInfo,
           },
           {

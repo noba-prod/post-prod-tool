@@ -267,7 +267,7 @@ export function EntityBasicInformationForm({
                     type="text"
                     value={formData.entityName}
                     onChange={(e) => updateFormData({ entityName: e.target.value })}
-                    placeholder={`Write the name of the ${entityTypeToLabel(entityType).toLowerCase()}...`}
+                    placeholder={`Write the name of the ${(entityTypeToLabel(entityType) ?? "entity").toLowerCase()}...`}
                     required
                     disabled={disabled}
                     readOnly={disabled}
@@ -315,7 +315,7 @@ export function EntityBasicInformationForm({
                       type="text"
                       value={formData.zipCode}
                       onChange={(e) => updateFormData({ zipCode: e.target.value })}
-                      placeholder={`Complete the address of the ${entityTypeToLabel(entityType).toLowerCase()}`}
+                      placeholder={`Complete the address of the ${(entityTypeToLabel(entityType) ?? "entity").toLowerCase()}`}
                       required
                       disabled={disabled}
                       readOnly={disabled}

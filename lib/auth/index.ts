@@ -8,6 +8,7 @@
 "use client"
 
 import { mockAuthAdapter } from "./mock-adapter"
+import { supabaseAuthAdapter } from "./supabase-adapter"
 import type { AuthAdapter } from "./adapter"
 
 // Use mock adapter if MOCK_AUTH is enabled, otherwise use Supabase
@@ -19,9 +20,7 @@ export function getAuthAdapter(): AuthAdapter {
     return mockAuthAdapter
   }
 
-  // TODO: Return Supabase adapter when implemented
-  // return supabaseAuthAdapter
-  return mockAuthAdapter
+  return supabaseAuthAdapter
 }
 
 // Export function instead of instance to avoid SSR issues

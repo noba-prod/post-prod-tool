@@ -321,11 +321,14 @@ RETURNS TABLE(allowed BOOLEAN, reason TEXT) AS $$
 DECLARE
   profile_record RECORD;
   invitation_record RECORD;
+  normalized_email TEXT;
 BEGIN
+  normalized_email := lower(trim(check_email));
+
   -- Check if user exists in profiles
   SELECT * INTO profile_record
   FROM public.profiles
-  WHERE email = check_email;
+  WHERE lower(email) = normalized_email;
   
   IF profile_record.id IS NOT NULL THEN
     -- User exists
@@ -343,7 +346,7 @@ BEGIN
   -- Check for pending invitation
   SELECT * INTO invitation_record
   FROM public.invitations
-  WHERE email = check_email
+  WHERE lower(email) = normalized_email
   AND status = 'pending'
   AND expires_at > now();
   

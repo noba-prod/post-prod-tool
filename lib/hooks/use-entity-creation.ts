@@ -5,20 +5,22 @@ import { toast } from "sonner"
 
 // Service imports
 import { createEntityCreationService, getRepositoryInstances } from "@/lib/services"
-import { 
-  mapFormToEntityDraft, 
-  mapFormToAdminPayload,
+import {
+  mapFormToEntityDraft,
   mapEntityToFormData,
   mapEntityToDraft,
 } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
+import {
+  createAdminForOrganization,
+  createOrganizationFromDraft,
+} from "@/app/actions/entity-creation"
 
 // Type imports
 import type {
   StandardEntityType,
   User,
   CreateEntityDraftPayload,
-  CreateUserPayload,
   Entity,
 } from "@/lib/types"
 
@@ -344,6 +346,39 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
   }, [basicDraft, entityId])
 
   /**
+   * Handle creating a new organization (Step 1 -> Next).
+   * Persists the organization in Supabase before opening the admin modal.
+   */
+  const handleCreateOrganization = React.useCallback(async () => {
+    if (!basicDraft || !basicFormData) return
+
+    setIsCreating(true)
+
+    try {
+      const result = await createOrganizationFromDraft({
+        draft: basicDraft,
+        phone: {
+          prefix: basicFormData.countryCode,
+          number: basicFormData.phoneNumber,
+        },
+        profilePicture: basicFormData.profilePicture ?? null,
+      })
+
+      setEntityId(result.entityId)
+      setEntity(result.entity)
+      setTeamMembers([])
+      setIsAdminModalOpen(true)
+    } catch (error) {
+      console.error("Failed to create organization:", error)
+      toast.error("Failed to create organization", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+      })
+    } finally {
+      setIsCreating(false)
+    }
+  }, [basicDraft, basicFormData])
+
+  /**
    * Handle Step 1 primary button click.
    * - In create mode (entityId === null): Opens admin modal
    * - In edit mode (entityId !== null): Saves changes and returns to team step
@@ -355,10 +390,10 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
       // Edit mode: save changes
       handleSaveBasicInfo()
     } else {
-      // Create mode: open admin modal
-      setIsAdminModalOpen(true)
+      // Create mode: create organization then open admin modal
+      handleCreateOrganization()
     }
-  }, [basicDraft, entityId, handleSaveBasicInfo])
+  }, [basicDraft, entityId, handleSaveBasicInfo, handleCreateOrganization])
 
   /**
    * Handle admin user modal submit.
@@ -372,34 +407,24 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     countryCode: string
     role: "admin" | "editor" | "viewer"
   }) => {
-    if (!basicDraft) return
+    if (!entityId) return
 
     setIsCreating(true)
 
     try {
-      // Get the service instance
-      const service = createEntityCreationService()
-
-      // Map form data to service payload
-      const adminPayload: CreateUserPayload = mapFormToAdminPayload({
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        email: userData.email,
-        phoneNumber: userData.phoneNumber,
-        countryCode: userData.countryCode,
-        role: userData.role,
-        entity: null, // Not needed for mapping
+      const result = await createAdminForOrganization({
+        organizationId: entityId,
+        admin: {
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          email: userData.email,
+          phone: {
+            prefix: userData.countryCode,
+            number: userData.phoneNumber,
+          },
+        },
       })
 
-      // Call the service - this creates both entity and admin user
-      const result = await service.createStandardEntityWithAdmin({
-        draft: basicDraft,
-        admin: adminPayload,
-      })
-
-      // Update state with result
-      setEntityId(result.entityId)
-      setEntity(result.entity)
       setTeamMembers(result.teamMembers)
       setCurrentStep("team")
 
@@ -407,18 +432,18 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
       setIsAdminModalOpen(false)
 
       // Show success toast
-      toast.success("Entity created successfully", {
-        description: `@${result.entity.name} has been added to your list`,
+      toast.success("Admin user created", {
+        description: "The admin user has been added to this client.",
       })
     } catch (error) {
-      console.error("Failed to create entity:", error)
-      toast.error("Failed to create entity", {
+      console.error("Failed to create admin user:", error)
+      toast.error("Failed to create admin user", {
         description: error instanceof Error ? error.message : "An unexpected error occurred",
       })
     } finally {
       setIsCreating(false)
     }
-  }, [basicDraft])
+  }, [entityId])
 
   /**
    * Open the new member modal.

@@ -37,3 +37,13 @@ export {
   CollectionsServiceError,
   createCollectionsService,
 } from "./collections"
+
+// Supabase Profile Service
+export {
+  NOBA_ORGANIZATION_ID,
+  mapOrganizationTypeToEntityType,
+  determineEntityType,
+  fetchSupabaseUserData,
+  getNavBarVariant,
+  type SupabaseUserData,
+} from "./supabase-profile-service"

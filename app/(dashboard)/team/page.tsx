@@ -18,6 +18,12 @@ import { toast } from "sonner"
 import type { CreateUserPayload } from "@/lib/types"
 
 // ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+
+// ============================================================================
 // FILTER TYPES
 // ============================================================================
 
@@ -49,36 +55,54 @@ export default function TeamPage() {
     search: "",
   })
 
-  // Load team members from repository
+  // Load team members: from profiles table by organization_id (Supabase) or repository (mock)
   useEffect(() => {
     async function loadTeamMembers() {
-      if (!userContext.user?.entityId) {
+      const organizationId = userContext.user?.entityId
+      if (!organizationId) {
         setTeamMembers([])
         return
       }
 
       setLoadingTeam(true)
       try {
-        const { userRepository } = getRepositoryInstances()
-        if (!userRepository) {
-          console.warn("User repository not available")
-          setTeamMembers([])
-          return
+        if (USE_MOCK_AUTH) {
+          const { userRepository } = getRepositoryInstances()
+          if (!userRepository) {
+            setTeamMembers([])
+            return
+          }
+          const users = await userRepository.listUsersByEntityId(organizationId)
+          const mappedMembers: TeamMember[] = users.map((u) => ({
+            id: u.id,
+            name: `${u.firstName} ${u.lastName || ""}`.trim(),
+            email: u.email,
+            phone: u.phoneNumber,
+            role: roleToLabel(u.role),
+            collections: 0,
+          }))
+          setTeamMembers(mappedMembers)
+        } else {
+          // Supabase: query profiles by same organization_id via API
+          const res = await fetch(`/api/entities/${organizationId}`)
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            console.warn("Failed to load team members:", err.error || res.status)
+            setTeamMembers([])
+            return
+          }
+          const data = await res.json()
+          const users = data.teamMembers ?? []
+          const mappedMembers: TeamMember[] = users.map((u: { id: string; firstName: string; lastName?: string; email: string; phoneNumber: string; role: string }) => ({
+            id: u.id,
+            name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+            email: u.email,
+            phone: u.phoneNumber ?? "",
+            role: roleToLabel(u.role as "admin" | "editor" | "viewer"),
+            collections: 0,
+          }))
+          setTeamMembers(mappedMembers)
         }
-
-        const users = await userRepository.listUsersByEntityId(userContext.user.entityId)
-        
-        // Map User[] to TeamMember[]
-        const mappedMembers: TeamMember[] = users.map((u) => ({
-          id: u.id,
-          name: `${u.firstName} ${u.lastName || ""}`.trim(),
-          email: u.email,
-          phone: u.phoneNumber,
-          role: roleToLabel(u.role),
-          collections: 0, // TODO: Calculate from collections when available
-        }))
-
-        setTeamMembers(mappedMembers)
       } catch (error) {
         console.error("Failed to load team members:", error)
         setTeamMembers([])
@@ -134,7 +158,9 @@ export default function TeamPage() {
 
   // Handle new member submit
   const handleNewMemberSubmit = useCallback(async (userData: UserFormData) => {
-    if (!userContext.user?.entityId || !userContext.entity) {
+    const organizationId = userContext.user?.entityId
+    const entity = userContext.entity
+    if (!organizationId || !entity) {
       toast.error("Cannot add member", {
         description: "Entity information is not available.",
       })
@@ -143,53 +169,76 @@ export default function TeamPage() {
 
     setIsCreatingMember(true)
     try {
-      const repos = getRepositoryInstances()
-      if (!repos.userRepository) {
-        throw new Error("User repository not available")
+      if (USE_MOCK_AUTH) {
+        const repos = getRepositoryInstances()
+        if (!repos.userRepository) {
+          throw new Error("User repository not available")
+        }
+        const payload: CreateUserPayload = {
+          firstName: userData.firstName.trim(),
+          lastName: userData.lastName?.trim() || undefined,
+          email: userData.email.trim(),
+          phoneNumber: `${userData.countryCode} ${userData.phoneNumber}`.trim(),
+          countryCode: userData.countryCode,
+          role: userData.role,
+        }
+        const newUser = await repos.userRepository.createUser({
+          ...payload,
+          entityId: organizationId,
+          notes: `Team member for ${entity.name}`,
+        })
+        const allUsers = await repos.userRepository.listUsersByEntityId(organizationId)
+        const mappedMembers: TeamMember[] = allUsers.map((u) => ({
+          id: u.id,
+          name: `${u.firstName} ${u.lastName || ""}`.trim(),
+          email: u.email,
+          phone: u.phoneNumber,
+          role: roleToLabel(u.role),
+          collections: 0,
+        }))
+        setTeamMembers(mappedMembers)
+        setIsNewMemberModalOpen(false)
+        toast.success("Team member added successfully", {
+          description: `${newUser.firstName} ${newUser.lastName || ""}`.trim() + " has been added to the team.",
+        })
+        return
       }
 
-      // Create user payload
-      const payload: CreateUserPayload = {
-        firstName: userData.firstName.trim(),
-        lastName: userData.lastName?.trim() || undefined,
-        email: userData.email.trim(),
-        phoneNumber: `${userData.countryCode} ${userData.phoneNumber}`.trim(),
-        countryCode: userData.countryCode,
-        role: userData.role,
-      }
-
-      // Create the team member
-      const newUser = await repos.userRepository.createUser({
-        ...payload,
-        entityId: userContext.user.entityId,
-        notes: `Team member for ${userContext.entity.name}`,
+      // Supabase: create member via API (profiles table, same organization_id)
+      const res = await fetch(`/api/entities/${organizationId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: userData.firstName.trim(),
+          lastName: userData.lastName?.trim() || undefined,
+          email: userData.email.trim(),
+          phoneNumber: userData.phoneNumber.trim(),
+          countryCode: userData.countryCode,
+          role: userData.role,
+        }),
       })
-
-      // Refresh team members list
-      const allUsers = await repos.userRepository.listUsersByEntityId(userContext.user.entityId)
-      
-      // Map to TeamMember format
-      const mappedMembers: TeamMember[] = allUsers.map((u) => ({
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to add team member")
+      }
+      const users = data.teamMembers ?? []
+      const mappedMembers: TeamMember[] = users.map((u: { id: string; firstName: string; lastName?: string; email: string; phoneNumber: string; role: string }) => ({
         id: u.id,
-        name: `${u.firstName} ${u.lastName || ""}`.trim(),
+        name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
         email: u.email,
-        phone: u.phoneNumber,
-        role: roleToLabel(u.role),
+        phone: u.phoneNumber ?? "",
+        role: roleToLabel(u.role as "admin" | "editor" | "viewer"),
         collections: 0,
       }))
-
       setTeamMembers(mappedMembers)
-
-      // Close modal
       setIsNewMemberModalOpen(false)
-
-      // Show success toast
+      const newUser = data.user
       toast.success("Team member added successfully", {
-        description: `${newUser.firstName} ${newUser.lastName || ""}`.trim() + " has been added to the team.",
+        description: newUser ? `${newUser.firstName ?? ""} ${newUser.lastName ?? ""}`.trim() + " has been added to the team." : "Team member added.",
       })
     } catch (error) {
       console.error("Failed to create team member:", error)
-      toast.error("Failed to add team member", {
+      toast.error("Failed to create team member", {
         description: error instanceof Error ? error.message : "An unexpected error occurred",
       })
     } finally {
@@ -197,10 +246,69 @@ export default function TeamPage() {
     }
   }, [userContext.user?.entityId, userContext.entity])
 
-  // Handle delete
-  const handleDelete = (id: string) => {
-    console.log("Delete member:", id)
-  }
+  // Handle delete (remove member from organization)
+  const handleDelete = useCallback(async (id: string) => {
+    const organizationId = userContext.user?.entityId
+    if (!organizationId) {
+      toast.error("Cannot remove member", { description: "Organization not available." })
+      return
+    }
+
+    const member = teamMembers.find((m) => m.id === id)
+    const name = member?.name || "this member"
+    if (!window.confirm(`Remove ${name} from the team? They will no longer have access to this organization.`)) {
+      return
+    }
+
+    try {
+      if (USE_MOCK_AUTH) {
+        const repos = getRepositoryInstances()
+        if (!repos.userRepository) {
+          toast.error("Cannot remove member", { description: "User repository not available." })
+          return
+        }
+        const deleted = await repos.userRepository.deleteUser(id)
+        if (!deleted) {
+          toast.error("Member not found", { description: "The user may have already been removed." })
+          return
+        }
+        const users = await repos.userRepository.listUsersByEntityId(organizationId)
+        const mappedMembers: TeamMember[] = users.map((u) => ({
+          id: u.id,
+          name: `${u.firstName} ${u.lastName || ""}`.trim(),
+          email: u.email,
+          phone: u.phoneNumber,
+          role: roleToLabel(u.role),
+          collections: 0,
+        }))
+        setTeamMembers(mappedMembers)
+        toast.success("Member removed", { description: `${name} has been removed from the team.` })
+        return
+      }
+
+      const res = await fetch(`/api/entities/${organizationId}/members/${id}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to remove member")
+      }
+      const users = data.teamMembers ?? []
+      const mappedMembers: TeamMember[] = users.map((u: { id: string; firstName: string; lastName?: string; email: string; phoneNumber: string; role: string }) => ({
+        id: u.id,
+        name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+        email: u.email,
+        phone: u.phoneNumber ?? "",
+        role: roleToLabel(u.role as "admin" | "editor" | "viewer"),
+        collections: 0,
+      }))
+      setTeamMembers(mappedMembers)
+      toast.success("Member removed", { description: `${name} has been removed from the team.` })
+    } catch (error) {
+      console.error("Failed to remove member:", error)
+      toast.error("Failed to remove member", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+      })
+    }
+  }, [userContext.user?.entityId, teamMembers])
 
   // Filter team members
   const filteredMembers = React.useMemo(() => {
@@ -223,6 +331,14 @@ export default function TeamPage() {
 
     return result
   }, [teamMembers, filters])
+
+  // Navigate to team member profile page when row or name is clicked
+  const handleEditUser = useCallback(
+    (memberId: string) => {
+      router.push(`/team/${memberId}`)
+    },
+    [router]
+  )
 
   // Permissions based on user role
   const canManageTeam = userContext.user?.role === "admin" || userContext.user?.role === "editor"
@@ -292,6 +408,7 @@ export default function TeamPage() {
                 variant="team-members"
                 teamMembersData={filteredMembers}
                 onDelete={canDelete ? handleDelete : undefined}
+                onEditUser={handleEditUser}
               />
               {filteredMembers.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">

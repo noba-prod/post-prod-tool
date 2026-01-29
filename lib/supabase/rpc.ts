@@ -7,8 +7,8 @@ import { createClient } from "./server"
 export async function checkEmailAllowed(email: string) {
   const supabase = await createClient()
   
-  const { data, error } = await supabase.rpc("check_email_allowed", {
-    email_to_check: email,
+  const { data, error } = await supabase.rpc("check_email_precheck", {
+    check_email: email,
   })
 
   if (error) {
@@ -16,7 +16,8 @@ export async function checkEmailAllowed(email: string) {
     return { allowed: false, reason: "error" }
   }
 
-  return data || { allowed: false, reason: "not_invited" }
+  const row = Array.isArray(data) ? data[0] : data
+  return row || { allowed: false, reason: "not_invited" }
 }
 
 

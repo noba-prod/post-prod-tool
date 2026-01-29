@@ -151,15 +151,14 @@ export function SearchCommand({
 
     // Search entities
     entities.forEach((entity) => {
-      if (
-        entity.name.toLowerCase().includes(searchLower) ||
-        entity.type.toLowerCase().includes(searchLower)
-      ) {
+      const nameMatch = (entity.name ?? "").toLowerCase().includes(searchLower)
+      const typeMatch = (entity.type ?? "").toLowerCase().includes(searchLower)
+      if (nameMatch || typeMatch) {
         results.push({
           id: `entity-${entity.id}`,
           type: "entity",
-          primaryLabel: entity.name,
-          contextualLabel: entity.type,
+          primaryLabel: entity.name ?? "",
+          contextualLabel: entity.type ?? "",
           entityId: entity.id,
         })
       }
@@ -167,10 +166,11 @@ export function SearchCommand({
 
     // Search users
     users.forEach((user) => {
-      const fullName = `${user.firstName} ${user.lastName || ""}`.trim()
+      const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
+      const emailMatch = (user.email ?? "").toLowerCase().includes(searchLower)
       if (
         fullName.toLowerCase().includes(searchLower) ||
-        user.email.toLowerCase().includes(searchLower)
+        emailMatch
       ) {
         // Get entity name for contextual label
         const userEntity = entities.find(e => e.id === user.entityId)

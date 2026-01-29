@@ -11,7 +11,8 @@ import { SelfPhotographerCreationForm, type SelfPhotographerFormData } from "./s
 import { NewCollectionModal } from "./new-collection-modal"
 
 // Service imports
-import { createEntityCreationService, createCollectionsService } from "@/lib/services"
+import { createCollectionsService } from "@/lib/services"
+import { createSelfPhotographerInSupabase } from "@/app/actions/entity-creation"
 import type { CollectionConfig } from "@/lib/domain/collections"
 import { useUserContext } from "@/lib/contexts/user-context"
 
@@ -146,15 +147,16 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
     setIsCreating(true)
 
     try {
-      const service = createEntityCreationService()
-
-      const result = await service.createSelfPhotographer({
+      // Use Supabase server action to persist the self-photographer
+      const result = await createSelfPhotographerInSupabase({
         firstName: formData.firstName,
-        lastName: formData.lastName,
+        lastName: formData.lastName || undefined,
         email: formData.email,
-        phoneNumber: formData.phoneNumber,
-        countryCode: formData.countryCode,
-        notes: formData.notes,
+        phone: {
+          prefix: formData.countryCode,
+          number: formData.phoneNumber,
+        },
+        notes: formData.notes || undefined,
       })
 
       // Close modal

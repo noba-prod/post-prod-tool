@@ -16,8 +16,8 @@ export async function precheckEmail(email: string): Promise<PrecheckResult> {
   const supabase = await createClient()
   
   try {
-    const { data, error } = await supabase.rpc("check_email_allowed", {
-      email_to_check: email.toLowerCase().trim(),
+    const { data, error } = await supabase.rpc("check_email_precheck", {
+      check_email: email.toLowerCase().trim(),
     })
 
     if (error) {
@@ -25,10 +25,11 @@ export async function precheckEmail(email: string): Promise<PrecheckResult> {
       return { allowed: false, reason: "error" }
     }
 
-    const result = data as { allowed: boolean; reason?: string }
+    const row = Array.isArray(data) ? data[0] : data
+    const allowed = row?.allowed ?? false
     return {
-      allowed: result.allowed,
-      reason: result.reason as PrecheckResult["reason"] || "not_invited",
+      allowed,
+      reason: allowed ? "ok" : (row?.reason as PrecheckResult["reason"]) || "not_invited",
     }
   } catch (error) {
     console.error("Precheck exception:", error)

@@ -138,6 +138,18 @@ export class InMemoryUserRepository implements IUserRepository {
   }
 
   /**
+   * Deletes a user from memory (removes from team/entity list).
+   * @param id User identifier
+   * @returns true if the user was found and deleted, false otherwise
+   */
+  async deleteUser(id: string): Promise<boolean> {
+    const had = userStore.has(id)
+    userStore.delete(id)
+    if (had) saveToStorage()
+    return had
+  }
+
+  /**
    * Resets the in-memory store and localStorage.
    * Useful for testing and development.
    */

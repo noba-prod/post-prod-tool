@@ -66,8 +66,8 @@ export default function OTPPage() {
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!otp.trim() || otp.length < 6) {
-      toast.error("Please enter the 6-digit code")
+    if (!otp.trim() || otp.length < 8) {
+      toast.error("Please enter the 8-digit code")
       return
     }
 
@@ -163,7 +163,7 @@ export default function OTPPage() {
               {/* OTP Input with separators */}
               <div className="flex justify-center w-full">
                 <InputOTP
-                  maxLength={6}
+                  maxLength={8}
                   value={otp}
                   onChange={setOtp}
                   disabled={loading}
@@ -201,6 +201,17 @@ export default function OTPPage() {
                       className="w-10 h-10 rounded-r-md rounded-l-none border border-[#e4e4e7] bg-white text-base font-medium" 
                     />
                   </InputOTPGroup>
+                  <InputOTPSeparator />
+                  <InputOTPGroup>
+                    <InputOTPSlot 
+                      index={6} 
+                      className="w-10 h-10 rounded-l-md rounded-r-none border border-[#e4e4e7] bg-white text-base font-medium border-r-0" 
+                    />
+                    <InputOTPSlot 
+                      index={7} 
+                      className="w-10 h-10 rounded-r-md rounded-l-none border border-[#e4e4e7] bg-white text-base font-medium" 
+                    />
+                  </InputOTPGroup>
                 </InputOTP>
               </div>
 
@@ -208,7 +219,7 @@ export default function OTPPage() {
               <Button
                 type="submit"
                 className="w-full h-10 rounded-xl bg-[#18181b] text-[#fafafa] hover:bg-[#18181b]/90 font-medium text-sm"
-                disabled={loading || otp.length < 6}
+                disabled={loading || otp.length < 8}
               >
                 {loading ? (
                   <>
