@@ -8,9 +8,42 @@ import { EntitySelected } from "./entity-selected"
 import { DatePicker } from "./date-picker"
 import { TimePicker } from "./time-picker"
 import { getRepositoryInstances } from "@/lib/services"
+import { createClient } from "@/lib/supabase/client"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
+import type { Organization } from "@/lib/supabase/database.types"
 import { cn } from "@/lib/utils"
+
+// ============================================================================
+// SUPABASE HELPERS
+// ============================================================================
+
+function isSupabaseConfigured(): boolean {
+  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+  if (useMockAuth) return false
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return Boolean(
+    url && !url.includes("placeholder") && url.startsWith("https://") &&
+    key && !key.includes("placeholder") && key.length > 20
+  )
+}
+
+async function fetchOrganizationById(id: string): Promise<string | null> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("organizations") as any)
+    .select("id, name")
+    .eq("id", id)
+    .single()
+  if (error) {
+    console.error("[PhotoSelectionStepContent] Failed to fetch organization:", error)
+    return null
+  }
+  const org = data as Organization | null
+  return org?.name ?? null
+}
 
 export interface PhotoSelectionStepContentProps {
   draft: CollectionDraft
@@ -60,12 +93,18 @@ export function PhotoSelectionStepContent({
       return
     }
     let cancelled = false
-    getRepositoryInstances()
-      .entityRepository?.getEntityById(eid)
-      .then((entity) => {
+    const load = async () => {
+      if (isSupabaseConfigured()) {
+        const name = await fetchOrganizationById(eid)
+        if (cancelled) return
+        setPhotographerName(name ?? "—")
+      } else {
+        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
         if (cancelled) return
         setPhotographerName(entity?.name ?? "—")
-      })
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }
@@ -78,12 +117,18 @@ export function PhotoSelectionStepContent({
       return
     }
     let cancelled = false
-    getRepositoryInstances()
-      .entityRepository?.getEntityById(eid)
-      .then((entity) => {
+    const load = async () => {
+      if (isSupabaseConfigured()) {
+        const name = await fetchOrganizationById(eid)
+        if (cancelled) return
+        setClientName(name ?? "—")
+      } else {
+        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
         if (cancelled) return
         setClientName(entity?.name ?? "—")
-      })
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }

@@ -232,21 +232,24 @@ export async function activateInvitation(token: string) {
       console.error("Profile upsert error:", profileError)
     }
 
-    // Add user to collection
-    const { error: memberError } = await supabase
-      .from("collection_members")
-      .insert({
-        collection_id: invitation.collection_id,
-        user_id: userId,
-        role: "member",
-      })
-      .select()
-      .single()
+    // Add user to collection when invitation is collection-scoped
+    const collectionId = invitation.collection_id
+    const invitedRole = invitation.invited_collection_role ?? "manager"
+    if (collectionId) {
+      const { error: memberError } = await supabase
+        .from("collection_members")
+        .insert({
+          collection_id: collectionId,
+          user_id: userId,
+          role: invitedRole,
+        })
+        .select()
+        .single()
 
-    if (memberError) {
-      // Check if already a member
-      if (memberError.code !== "23505") {
-        console.error("Collection member error:", memberError)
+      if (memberError) {
+        if (memberError.code !== "23505") {
+          console.error("Collection member error:", memberError)
+        }
       }
     }
 

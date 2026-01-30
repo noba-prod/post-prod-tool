@@ -225,10 +225,18 @@ export function isDraftComplete(draft: CollectionDraft): boolean {
     if (!presentRoles.has(role)) return false
   }
 
-  // Each required participant must have at least one entity/user assigned
+  // Each required participant must have at least one entity/user assigned (same rules as isParticipantsStepComplete)
+  const getParticipant = (role: ParticipantRole) =>
+    draft.participants.find((p) => p.role === role)
   for (const role of requiredRoles) {
-    const p = draft.participants.find((x) => x.role === role)
-    if (!p?.entityId) return false
+    const p = getParticipant(role)
+    if (role === "producer") {
+      if ((p?.userIds?.length ?? 0) < 1) return false
+    } else if (role === "client") {
+      if (!((p?.entityId ?? draft.config.clientEntityId) ?? "").trim()) return false
+    } else {
+      if (!(p?.entityId ?? "").trim()) return false
+    }
   }
 
   return true
@@ -258,28 +266,39 @@ export function isParticipantsStepComplete(draft: CollectionDraft): boolean {
 
   const getParticipant = (role: ParticipantRole) =>
     participants.find((p) => p.role === role)
-  const hasEntityId = (role: ParticipantRole) => {
-    if (role === "client") {
-      const p = getParticipant("client")
-      return (p?.entityId ?? config.clientEntityId)?.trim().length > 0
-    }
+  
+  // Check if a role has the required data
+  const isRoleFilled = (role: ParticipantRole): boolean => {
     const p = getParticipant(role)
+    
+    // Producer role: requires at least one user (no entityId needed)
+    if (role === "producer") {
+      return (p?.userIds?.length ?? 0) > 0
+    }
+    
+    // Client role: can use entityId from participant or config
+    if (role === "client") {
+      return ((p?.entityId ?? config.clientEntityId) ?? "").trim().length > 0
+    }
+    
+    // Other roles: require entityId
     return (p?.entityId ?? "").trim().length > 0
   }
 
+  // Check all required roles are filled
   for (const role of requiredRoles) {
-    if (!hasEntityId(role)) return false
+    if (!isRoleFilled(role)) return false
   }
 
+  // Additional photographer validation
   const photographer = getParticipant("photographer")
   const photographerUserIds = photographer?.userIds ?? []
 
   if (!config.hasAgency) {
-    if (photographerUserIds.length !== 1) return false
-    const edit = photographer?.editPermissionByUserId?.[photographerUserIds[0]]
-    if (edit !== true) return false
+    // Without agency: need at least 1 photographer user
+    if (photographerUserIds.length < 1) return false
   } else {
-    // When hasAgency, agency is chosen via Photographer's "Select agency" — photographer holds that entityId
+    // With agency: need agency entityId + at least 1 photographer user
     if (!(photographer?.entityId?.trim())) return false
     if (photographerUserIds.length < 1) return false
   }

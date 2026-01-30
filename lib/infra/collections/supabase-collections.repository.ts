@@ -1,0 +1,133 @@
+/**
+ * Supabase implementation of ICollectionsRepository.
+ * Uses collections + collection_members tables; RLS applies.
+ */
+
+import type {
+  Collection,
+  CollectionUpdatePatch,
+  ICollectionsRepository,
+  ListCollectionsFilters,
+} from "@/lib/domain/collections"
+import { createClient } from "@/lib/supabase/client"
+import type { Collection as DbCollection, CollectionMember } from "@/lib/supabase/database.types"
+import {
+  mapDbCollectionToDomain,
+  mapDomainToDbInsert,
+  mapDomainPatchToDbUpdate,
+  mapParticipantsToDbMembers,
+} from "@/lib/utils/collection-mappers"
+
+export class SupabaseCollectionsRepository implements ICollectionsRepository {
+  async create(collection: Collection): Promise<Collection> {
+    const supabase = createClient()
+    const insert = mapDomainToDbInsert(collection)
+    const members = mapParticipantsToDbMembers(collection.id, collection.participants)
+
+    const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
+    const { data: row, error: insertError } = await tbl.insert(insert).select().single()
+    if (insertError) {
+      console.error("[SupabaseCollectionsRepository] create insert error:", insertError)
+      throw insertError
+    }
+
+    if (members.length > 0) {
+      const memTbl = supabase.from("collection_members") as ReturnType<typeof supabase.from>
+      const { error: memError } = await memTbl.insert(members)
+      if (memError) {
+        console.error("[SupabaseCollectionsRepository] create members error:", memError)
+      }
+    }
+
+    const dbRow = row as DbCollection
+    return mapDbCollectionToDomain(dbRow, await this.fetchMembers(collection.id))
+  }
+
+  async getById(id: string): Promise<Collection | null> {
+    const supabase = createClient()
+    const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
+    const { data: row, error } = await tbl.select("*").eq("id", id).single()
+    if (error || !row) return null
+    const members = await this.fetchMembers(id)
+    return mapDbCollectionToDomain(row as DbCollection, members)
+  }
+
+  async update(id: string, patch: CollectionUpdatePatch): Promise<Collection | null> {
+    const supabase = createClient()
+    const current = await this.getById(id)
+    if (!current) return null
+
+    const updatePayload = mapDomainPatchToDbUpdate({
+      config: patch.config,
+      participants: patch.participants,
+      status: patch.status,
+      publishedAt: patch.publishedAt,
+    })
+    const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
+    const { data: row, error } = await tbl.update(updatePayload).eq("id", id).select().single()
+    if (error || !row) return null
+
+    if (patch.participants !== undefined) {
+      const memTbl = supabase.from("collection_members") as ReturnType<typeof supabase.from>
+      const { error: deleteError } = await memTbl.delete().eq("collection_id", id)
+      if (deleteError) {
+        console.error("[SupabaseCollectionsRepository] Failed to delete members:", deleteError)
+      }
+      const members = mapParticipantsToDbMembers(id, patch.participants)
+      if (members.length > 0) {
+        const { error: insertError } = await memTbl.insert(members)
+        if (insertError) {
+          console.error("[SupabaseCollectionsRepository] Failed to insert members:", insertError)
+        }
+      }
+    }
+
+    return mapDbCollectionToDomain(row as DbCollection, await this.fetchMembers(id))
+  }
+
+  async list(filters?: ListCollectionsFilters): Promise<Collection[]> {
+    const supabase = createClient()
+    let idsToFilter: string[] | null = null
+    if (filters?.createdByUserId) {
+      const { data: memberRows } = await (supabase
+        .from("collection_members") as ReturnType<typeof supabase.from>)
+        .select("collection_id")
+        .eq("user_id", filters.createdByUserId)
+      idsToFilter = (memberRows ?? []).map((r: { collection_id: string }) => r.collection_id)
+      if (idsToFilter.length === 0) return []
+    }
+
+    let query = (supabase.from("collections") as ReturnType<typeof supabase.from>)
+      .select("*")
+      .order("updated_at", { ascending: false })
+    if (filters?.clientEntityId) {
+      query = query.eq("client_id", filters.clientEntityId)
+    }
+    if (idsToFilter) {
+      query = query.in("id", idsToFilter)
+    }
+    const { data: rows, error } = await query
+    if (error) {
+      console.error("[SupabaseCollectionsRepository] list error:", error)
+      return []
+    }
+    const list = (rows ?? []) as DbCollection[]
+    const result: Collection[] = []
+    for (const row of list) {
+      const members = await this.fetchMembers(row.id)
+      result.push(mapDbCollectionToDomain(row, members))
+    }
+    if (filters?.status) {
+      return result.filter((c) => c.status === filters.status)
+    }
+    return result
+  }
+
+  private async fetchMembers(collectionId: string): Promise<CollectionMember[]> {
+    const supabase = createClient()
+    const tbl = supabase.from("collection_members") as ReturnType<typeof supabase.from>
+    const { data, error } = await tbl.select("*").eq("collection_id", collectionId)
+    if (error) return []
+    return (data ?? []) as CollectionMember[]
+  }
+}

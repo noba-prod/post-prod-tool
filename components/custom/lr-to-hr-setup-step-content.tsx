@@ -9,8 +9,63 @@ import { EntitySelected } from "./entity-selected"
 import { DatePicker } from "./date-picker"
 import { TimePicker } from "./time-picker"
 import { getRepositoryInstances } from "@/lib/services"
+import { createClient } from "@/lib/supabase/client"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
+import type { Organization, Profile } from "@/lib/supabase/database.types"
+
+// ============================================================================
+// SUPABASE HELPERS
+// ============================================================================
+
+function isSupabaseConfigured(): boolean {
+  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+  if (useMockAuth) return false
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return Boolean(
+    url && !url.includes("placeholder") && url.startsWith("https://") &&
+    key && !key.includes("placeholder") && key.length > 20
+  )
+}
+
+async function fetchOrganizationById(id: string): Promise<string | null> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("organizations") as any)
+    .select("id, name")
+    .eq("id", id)
+    .single()
+  if (error) {
+    console.error("[LrToHrSetupStepContent] Failed to fetch organization:", error)
+    return null
+  }
+  const org = data as Organization | null
+  return org?.name ?? null
+}
+
+async function fetchUserById(id: string): Promise<{ firstName: string; lastName: string; email: string; entityId?: string } | null> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("profiles") as any)
+    .select("id, email, first_name, last_name, organization_id")
+    .eq("id", id)
+    .single()
+  if (error) {
+    console.error("[LrToHrSetupStepContent] Failed to fetch user:", error)
+    return null
+  }
+  const p = data as Profile | null
+  if (!p) return null
+  return {
+    firstName: p.first_name ?? "",
+    lastName: p.last_name ?? "",
+    email: p.email ?? "",
+    entityId: p.organization_id ?? undefined,
+  }
+}
 
 export interface LrToHrSetupStepContentProps {
   draft: CollectionDraft
@@ -56,31 +111,48 @@ export function LrToHrSetupStepContent({
 
   React.useEffect(() => {
     let cancelled = false
-    const repos = getRepositoryInstances()
 
-    ;(async () => {
+    const load = async () => {
       // Digital: show the photographer (person) who will deliver HR to the client.
       if (isDigital) {
-        const userRepo = repos.userRepository
-        if (!userRepo || photographerUserIds.length === 0) {
+        if (photographerUserIds.length === 0) {
           setOwnerName("—")
           return
         }
 
-        const users = (
-          await Promise.all(photographerUserIds.map((id) => userRepo.getUserById(id)))
-        ).filter(Boolean)
+        if (isSupabaseConfigured()) {
+          const users = (
+            await Promise.all(photographerUserIds.map((id) => fetchUserById(id)))
+          ).filter(Boolean) as { firstName: string; lastName: string; email: string; entityId?: string }[]
 
-        // If photographer has an agency selected, their participant.entityId can be an agency entity.
-        // Prefer the user whose entityId is NOT the agency entity id.
-        const preferred =
-          ownerParticipant?.entityId
-            ? users.find((u) => u?.entityId && u.entityId !== ownerParticipant.entityId) ?? users[0]
-            : users[0]
+          // If photographer has an agency selected, prefer the user whose entityId is NOT the agency.
+          const preferred =
+            ownerParticipant?.entityId
+              ? users.find((u) => u?.entityId && u.entityId !== ownerParticipant.entityId) ?? users[0]
+              : users[0]
 
-        const name =
-          preferred ? `${preferred.firstName} ${preferred.lastName ?? ""}`.trim() : ""
-        if (!cancelled) setOwnerName(name || preferred?.email || "—")
+          const name = preferred ? `${preferred.firstName} ${preferred.lastName ?? ""}`.trim() : ""
+          if (!cancelled) setOwnerName(name || preferred?.email || "—")
+        } else {
+          const repos = getRepositoryInstances()
+          const userRepo = repos.userRepository
+          if (!userRepo) {
+            setOwnerName("—")
+            return
+          }
+
+          const users = (
+            await Promise.all(photographerUserIds.map((id) => userRepo.getUserById(id)))
+          ).filter(Boolean)
+
+          const preferred =
+            ownerParticipant?.entityId
+              ? users.find((u) => u?.entityId && u.entityId !== ownerParticipant.entityId) ?? users[0]
+              : users[0]
+
+          const name = preferred ? `${preferred.firstName} ${preferred.lastName ?? ""}`.trim() : ""
+          if (!cancelled) setOwnerName(name || preferred?.email || "—")
+        }
         return
       }
 
@@ -89,10 +161,18 @@ export function LrToHrSetupStepContent({
         setOwnerName("—")
         return
       }
-      const entity = await repos.entityRepository?.getEntityById(entityId)
-      if (!cancelled) setOwnerName(entity?.name ?? "—")
-    })()
 
+      if (isSupabaseConfigured()) {
+        const name = await fetchOrganizationById(entityId)
+        if (!cancelled) setOwnerName(name ?? "—")
+      } else {
+        const repos = getRepositoryInstances()
+        const entity = await repos.entityRepository?.getEntityById(entityId)
+        if (!cancelled) setOwnerName(entity?.name ?? "—")
+      }
+    }
+
+    load()
     return () => {
       cancelled = true
     }

@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { getRepositoryInstances } from "@/lib/services"
+import { createClient } from "@/lib/supabase/client"
 import type {
   CollectionDraft,
   CollectionParticipant,
@@ -31,6 +32,121 @@ import type {
 import type { EntityType } from "@/lib/types"
 import type { User } from "@/lib/types"
 import type { Entity } from "@/lib/types"
+import type { Organization, OrganizationType, Profile } from "@/lib/supabase/database.types"
+
+// ============================================================================
+// SUPABASE HELPERS
+// ============================================================================
+
+function isSupabaseConfigured(): boolean {
+  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+  if (useMockAuth) return false
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return Boolean(
+    url && !url.includes("placeholder") && url.startsWith("https://") &&
+    key && !key.includes("placeholder") && key.length > 20
+  )
+}
+
+/** Map domain entity type to Supabase organization type(s) */
+function entityTypeToOrgTypes(entityType: EntityType): OrganizationType[] {
+  const mapping: Record<EntityType, OrganizationType[]> = {
+    client: ["client"],
+    "self-photographer": ["self_photographer"],
+    agency: ["photography_agency"],
+    "photo-lab": ["lab_low_res_scan"],
+    "hand-print-lab": ["hand_print_lab"],
+    "edition-studio": ["edition_studio"],
+  }
+  return mapping[entityType] ?? []
+}
+
+/** Map Supabase organization type to domain entity type */
+function orgTypeToEntityType(orgType: OrganizationType): EntityType {
+  const mapping: Partial<Record<OrganizationType, EntityType>> = {
+    client: "client",
+    self_photographer: "self-photographer",
+    photography_agency: "agency",
+    lab_low_res_scan: "photo-lab",
+    hand_print_lab: "hand-print-lab",
+    edition_studio: "edition-studio",
+  }
+  return mapping[orgType] ?? "client"
+}
+
+async function fetchOrganizationsByType(orgTypes: OrganizationType[]): Promise<Entity[]> {
+  // Handle empty array - return empty result
+  if (!orgTypes.length) {
+    return []
+  }
+  
+  const supabase = createClient()
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase
+      .from("organizations") as any)
+      .select("id, name, type")
+      .in("type", orgTypes)
+      .order("name")
+    if (error) {
+      console.error("[ParticipantsStepContent] Failed to fetch organizations:", error?.message ?? error)
+      return []
+    }
+    return (data ?? []).map((org: Organization) => ({
+      id: org.id,
+      name: org.name,
+      type: orgTypeToEntityType(org.type),
+    } as Entity))
+  } catch (err) {
+    console.error("[ParticipantsStepContent] Exception fetching organizations:", err)
+    return []
+  }
+}
+
+async function fetchUsersByOrganization(organizationId: string): Promise<User[]> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("profiles") as any)
+    .select("id, email, first_name, last_name, organization_id")
+    .eq("organization_id", organizationId)
+    .order("first_name")
+  if (error) {
+    console.error("[ParticipantsStepContent] Failed to fetch users:", error)
+    return []
+  }
+  return (data ?? []).map((p: Profile) => ({
+    id: p.id,
+    email: p.email ?? "",
+    firstName: p.first_name ?? "",
+    lastName: p.last_name ?? "",
+    entityId: p.organization_id ?? undefined,
+  } as User))
+}
+
+async function fetchUserById(userId: string): Promise<User | null> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("profiles") as any)
+    .select("id, email, first_name, last_name, organization_id")
+    .eq("id", userId)
+    .single()
+  if (error) {
+    console.error("[ParticipantsStepContent] Failed to fetch user:", error)
+    return null
+  }
+  const p = data as Profile | null
+  if (!p) return null
+  return {
+    id: p.id,
+    email: p.email ?? "",
+    firstName: p.first_name ?? "",
+    lastName: p.last_name ?? "",
+    entityId: p.organization_id ?? undefined,
+  } as User
+}
 
 const ROLE_LABELS: Record<ParticipantRole, string> = {
   producer: "Producer",
@@ -82,6 +198,18 @@ export function ParticipantsStepContent({
 }: ParticipantsStepContentProps) {
   const config = draft.config
   const participants = draft.participants
+  
+  // Track the draft's updatedAt to detect when server data has actually changed
+  // We only sync from props when the server has confirmed new data (new updatedAt)
+  const lastSyncedAtRef = React.useRef<string | undefined>(undefined)
+  const participantsRef = React.useRef(participants)
+  
+  // Sync ref with props ONLY when draft has actually been updated on the server
+  // This prevents overwriting local changes with stale props during async updates
+  if (draft.updatedAt !== lastSyncedAtRef.current) {
+    participantsRef.current = participants
+    lastSyncedAtRef.current = draft.updatedAt
+  }
 
   const sections = React.useMemo((): { role: Exclude<ParticipantRole, "producer">; prefilled: boolean }[] => {
     const out: { role: Exclude<ParticipantRole, "producer">; prefilled: boolean }[] = [
@@ -99,7 +227,9 @@ export function ParticipantsStepContent({
 
   const setParticipant = React.useCallback(
     (role: ParticipantRole, update: Partial<CollectionParticipant> | null) => {
-      const next = [...participants]
+      // Use ref to get the latest participants, avoiding stale closure
+      const current = participantsRef.current
+      const next = [...current]
       const idx = next.findIndex((p) => p.role === role)
       if (update === null) {
         if (idx >= 0) next.splice(idx, 1)
@@ -108,26 +238,30 @@ export function ParticipantsStepContent({
       } else {
         next.push({ role, ...update } as CollectionParticipant)
       }
+      // Update the ref immediately for any subsequent rapid calls
+      participantsRef.current = next
       onParticipantsChange(next)
     },
-    [participants, onParticipantsChange]
+    [onParticipantsChange]
   )
 
   const setEntityId = React.useCallback(
     (role: Exclude<ParticipantRole, "producer">, entityId: string) => {
-      const p = getParticipantByRole(participants, role)
+      const current = participantsRef.current
+      const p = getParticipantByRole(current, role)
       setParticipant(role, {
         entityId: entityId || undefined,
         userIds: entityId ? (p?.userIds ?? []) : [],
         editPermissionByUserId: entityId ? (p?.editPermissionByUserId ?? {}) : undefined,
       })
     },
-    [participants, setParticipant]
+    [setParticipant]
   )
 
   const addMember = React.useCallback(
     (role: ParticipantRole, userId: string, entityIdForNew?: string) => {
-      const p = getParticipantByRole(participants, role)
+      const current = participantsRef.current
+      const p = getParticipantByRole(current, role)
       const entityId =
         entityIdForNew ??
         p?.entityId ??
@@ -137,29 +271,31 @@ export function ParticipantsStepContent({
       const nextEdit = { ...(base.editPermissionByUserId ?? {}), [userId]: true }
       setParticipant(role, { ...base, entityId, userIds: nextUserIds, editPermissionByUserId: nextEdit })
     },
-    [participants, setParticipant, config.clientEntityId]
+    [setParticipant, config.clientEntityId]
   )
 
   const removeMember = React.useCallback(
     (role: ParticipantRole, userId: string) => {
-      const p = getParticipantByRole(participants, role)
+      const current = participantsRef.current
+      const p = getParticipantByRole(current, role)
       if (!p?.userIds?.length) return
       const nextUserIds = p.userIds.filter((id) => id !== userId)
       const nextEdit = { ...(p.editPermissionByUserId ?? {}) }
       delete nextEdit[userId]
       setParticipant(role, { ...p, userIds: nextUserIds, editPermissionByUserId: nextEdit })
     },
-    [participants, setParticipant]
+    [setParticipant]
   )
 
   const setEditPermission = React.useCallback(
     (role: ParticipantRole, userId: string, value: boolean) => {
-      const p = getParticipantByRole(participants, role)
+      const current = participantsRef.current
+      const p = getParticipantByRole(current, role)
       if (!p) return
       const nextEdit = { ...(p.editPermissionByUserId ?? {}), [userId]: value }
       setParticipant(role, { ...p, editPermissionByUserId: nextEdit })
     },
-    [participants, setParticipant]
+    [setParticipant]
   )
 
   return (
@@ -209,8 +345,10 @@ function ParticipantSection({
   const entityId = effectiveEntityId(participant, role, draft.config)
   const isPhotographerNoAgency = role === "photographer" && !config.hasAgency
   const isPhotographerWithAgency = role === "photographer" && config.hasAgency
-  const effectiveEntityType: EntityType =
-    isPhotographerWithAgency ? "agency" : ROLE_ENTITY_TYPES[role]
+  
+  // For photographer role, query both agency and self-photographer types
+  const effectiveEntityType: EntityType | EntityType[] =
+    role === "photographer" ? ["agency", "self-photographer"] : ROLE_ENTITY_TYPES[role]
 
   const { entities, users, usersById } = useParticipantData(entityId, effectiveEntityType)
   const selfPhotographerUsers = useUsersFromAllEntitiesOfType(
@@ -375,23 +513,35 @@ function ParticipantSection({
   )
 }
 
-function useParticipantData(entityId: string, entityType: EntityType) {
+function useParticipantData(entityId: string, entityType: EntityType | EntityType[]) {
   const [entities, setEntities] = React.useState<Entity[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const usersById = React.useMemo(() => new Map(users.map((u) => [u.id, u])), [users])
+  const entityTypeKey = Array.isArray(entityType) ? entityType.join(",") : entityType
 
   React.useEffect(() => {
     let cancelled = false
-    const repos = getRepositoryInstances()
-    repos.entityRepository?.getAllEntities().then((all) => {
-      if (cancelled) return
-      const filtered = all.filter((e) => e.type === entityType)
-      setEntities(filtered)
-    })
+    const types = Array.isArray(entityType) ? entityType : [entityType]
+    
+    const load = async () => {
+      if (isSupabaseConfigured()) {
+        const orgTypes = types.flatMap((t) => entityTypeToOrgTypes(t))
+        const fetched = await fetchOrganizationsByType(orgTypes)
+        if (cancelled) return
+        setEntities(fetched)
+      } else {
+        const repos = getRepositoryInstances()
+        const all = await repos.entityRepository?.getAllEntities() ?? []
+        if (cancelled) return
+        const filtered = all.filter((e) => types.includes(e.type))
+        setEntities(filtered)
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }
-  }, [entityType])
+  }, [entityTypeKey])
 
   React.useEffect(() => {
     if (!entityId) {
@@ -399,11 +549,20 @@ function useParticipantData(entityId: string, entityType: EntityType) {
       return
     }
     let cancelled = false
-    const repos = getRepositoryInstances()
-    repos.userRepository?.listUsersByEntityId(entityId).then((list) => {
-      if (cancelled) return
-      setUsers(list ?? [])
-    })
+    
+    const load = async () => {
+      if (isSupabaseConfigured()) {
+        const fetched = await fetchUsersByOrganization(entityId)
+        if (cancelled) return
+        setUsers(fetched)
+      } else {
+        const repos = getRepositoryInstances()
+        const list = await repos.userRepository?.listUsersByEntityId(entityId) ?? []
+        if (cancelled) return
+        setUsers(list)
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }
@@ -421,21 +580,38 @@ function useUsersFromAllEntitiesOfType(entityType: EntityType | null): User[] {
       return
     }
     let cancelled = false
-    const repos = getRepositoryInstances()
-    repos.entityRepository?.getAllEntities().then((all) => {
-      if (cancelled) return
-      const entities = all.filter((e) => e.type === entityType)
-      Promise.all(
-        entities.map((e) => repos.userRepository?.listUsersByEntityId(e.id) ?? Promise.resolve([]))
-      ).then((lists) => {
+    
+    const load = async () => {
+      if (isSupabaseConfigured()) {
+        const orgTypes = entityTypeToOrgTypes(entityType)
+        const entities = await fetchOrganizationsByType(orgTypes)
+        if (cancelled) return
+        const lists = await Promise.all(
+          entities.map((e) => fetchUsersByOrganization(e.id))
+        )
+        if (cancelled) return
+        const byId = new Map<string, User>()
+        for (const list of lists) {
+          for (const u of list) byId.set(u.id, u)
+        }
+        setUsers(Array.from(byId.values()))
+      } else {
+        const repos = getRepositoryInstances()
+        const all = await repos.entityRepository?.getAllEntities() ?? []
+        if (cancelled) return
+        const entities = all.filter((e) => e.type === entityType)
+        const lists = await Promise.all(
+          entities.map((e) => repos.userRepository?.listUsersByEntityId(e.id) ?? Promise.resolve([]))
+        )
         if (cancelled) return
         const byId = new Map<string, User>()
         for (const list of lists) {
           for (const u of list ?? []) byId.set(u.id, u)
         }
         setUsers(Array.from(byId.values()))
-      })
-    })
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }
@@ -446,6 +622,7 @@ function useUsersFromAllEntitiesOfType(entityType: EntityType | null): User[] {
 
 function useUsersByIds(userIds: string[]): Map<string, User> {
   const [byId, setById] = React.useState<Map<string, User>>(new Map())
+  const idsKey = userIds.join(",")
 
   React.useEffect(() => {
     if (!userIds.length) {
@@ -453,24 +630,37 @@ function useUsersByIds(userIds: string[]): Map<string, User> {
       return
     }
     let cancelled = false
-    const repos = getRepositoryInstances()
-    const userRepo = repos.userRepository
-    if (!userRepo) {
-      setById(new Map())
-      return
+    
+    const load = async () => {
+      if (isSupabaseConfigured()) {
+        const results = await Promise.all(userIds.map((id) => fetchUserById(id)))
+        if (cancelled) return
+        const map = new Map<string, User>()
+        results.forEach((u) => {
+          if (u) map.set(u.id, u)
+        })
+        setById(map)
+      } else {
+        const repos = getRepositoryInstances()
+        const userRepo = repos.userRepository
+        if (!userRepo) {
+          setById(new Map())
+          return
+        }
+        const results = await Promise.all(userIds.map((id) => userRepo.getUserById(id)))
+        if (cancelled) return
+        const map = new Map<string, User>()
+        results.forEach((u) => {
+          if (u) map.set(u.id, u)
+        })
+        setById(map)
+      }
     }
-    Promise.all(userIds.map((id) => userRepo.getUserById(id))).then((results) => {
-      if (cancelled) return
-      const map = new Map<string, User>()
-      results.forEach((u) => {
-        if (u) map.set(u.id, u)
-      })
-      setById(map)
-    })
+    load()
     return () => {
       cancelled = true
     }
-  }, [userIds.join(",")])
+  }, [idsKey])
 
   return byId
 }

@@ -71,6 +71,9 @@ export function PublishCollectionDialog({
             "grid gap-6"
           )}
         >
+          <DialogPrimitive.Title className="sr-only">
+            Are you ready to roll?
+          </DialogPrimitive.Title>
           <div className="flex flex-col gap-3">
             <Titles
               type="block"

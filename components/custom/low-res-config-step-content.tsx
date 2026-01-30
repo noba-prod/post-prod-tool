@@ -12,9 +12,11 @@ import { OptionPicker } from "./option-picker"
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { getRepositoryInstances } from "@/lib/services"
+import { createClient } from "@/lib/supabase/client"
 import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
+import type { Organization } from "@/lib/supabase/database.types"
 
 function formatEntityLocation(loc: Location): string {
   const parts = [
@@ -24,6 +26,73 @@ function formatEntityLocation(loc: Location): string {
     loc.country,
   ].filter(Boolean)
   return parts.length ? parts.join(" ") : "—"
+}
+
+// ============================================================================
+// SUPABASE HELPERS
+// ============================================================================
+
+function isSupabaseConfigured(): boolean {
+  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+  if (useMockAuth) return false
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return Boolean(
+    url && !url.includes("placeholder") && url.startsWith("https://") &&
+    key && !key.includes("placeholder") && key.length > 20
+  )
+}
+
+function formatOrgAddress(org: Pick<Organization, "street_address" | "zip_code" | "city" | "country">): string {
+  const parts = [org.street_address, org.zip_code, org.city, org.country].filter(Boolean)
+  return parts.length ? parts.join(" ") : "—"
+}
+
+async function fetchOrganizationById(id: string): Promise<{ name: string; address: string } | null> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("organizations") as any)
+    .select("id, name, street_address, zip_code, city, country")
+    .eq("id", id)
+    .single()
+  if (error) {
+    console.error("[LowResConfigStepContent] Failed to fetch organization:", error)
+    return null
+  }
+  const org = data as Organization | null
+  if (!org) return null
+  return { name: org.name, address: formatOrgAddress(org) }
+}
+
+/** Debounced text input: local state for typing, then debounced onChange. */
+function useDebouncedInput(
+  value: string | undefined,
+  onChange: (value: string | undefined) => void,
+  delay = 500
+) {
+  const [localValue, setLocalValue] = React.useState(value ?? "")
+  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+
+  React.useEffect(() => {
+    setLocalValue(value ?? "")
+  }, [value])
+
+  const handleChange = React.useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue = e.target.value
+      setLocalValue(newValue)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      timeoutRef.current = setTimeout(() => onChange(newValue || undefined), delay)
+    },
+    [onChange, delay]
+  )
+
+  React.useEffect(() => () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+  }, [])
+
+  return { localValue, handleChange }
 }
 
 const SHIPPING_PROVIDER_OPTIONS = [
@@ -41,8 +110,10 @@ export interface LowResConfigStepContentProps {
   onLowResConfigChange: (patch: Partial<Pick<CollectionConfig,
     | "lowResScanDeadlineDate"
     | "lowResScanDeadlineTime"
+    | "lowResShippingOriginAddress"
     | "lowResShippingPickupDate"
     | "lowResShippingPickupTime"
+    | "lowResShippingDestinationAddress"
     | "lowResShippingDeliveryDate"
     | "lowResShippingDeliveryTime"
     | "lowResShippingManaging"
@@ -96,6 +167,11 @@ export function LowResConfigStepContent({
     handprintParticipant?.entityId
   )
 
+  const trackingNumber = useDebouncedInput(
+    c.lowResShippingTracking,
+    (v) => onLowResConfigChange({ lowResShippingTracking: v })
+  )
+
   React.useEffect(() => {
     const eid = labParticipant?.entityId
     if (!eid) {
@@ -104,19 +180,31 @@ export function LowResConfigStepContent({
       return
     }
     let cancelled = false
-    getRepositoryInstances()
-      .entityRepository?.getEntityById(eid)
-      .then((entity) => {
+    const load = async () => {
+      let address = "—"
+      if (isSupabaseConfigured()) {
+        const org = await fetchOrganizationById(eid)
+        if (cancelled) return
+        setLabName(org?.name ?? "—")
+        address = org?.address ?? "—"
+        setLabAddress(address)
+      } else {
+        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
         if (cancelled) return
         setLabName(entity?.name ?? "—")
-        setLabAddress(
-          entity?.location ? formatEntityLocation(entity.location) : "—"
-        )
-      })
+        address = entity?.location ? formatEntityLocation(entity.location) : "—"
+        setLabAddress(address)
+      }
+      // Save origin address (lab address) to config
+      if (address && address !== "—" && address !== c.lowResShippingOriginAddress) {
+        onLowResConfigChange({ lowResShippingOriginAddress: address })
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }
-  }, [labParticipant?.entityId])
+  }, [labParticipant?.entityId, c.lowResShippingOriginAddress, onLowResConfigChange])
 
   React.useEffect(() => {
     const eid = handprintParticipant?.entityId
@@ -125,18 +213,29 @@ export function LowResConfigStepContent({
       return
     }
     let cancelled = false
-    getRepositoryInstances()
-      .entityRepository?.getEntityById(eid)
-      .then((entity) => {
+    const load = async () => {
+      let address = "—"
+      if (isSupabaseConfigured()) {
+        const org = await fetchOrganizationById(eid)
         if (cancelled) return
-        setHandprintLabAddress(
-          entity?.location ? formatEntityLocation(entity.location) : "—"
-        )
-      })
+        address = org?.address ?? "—"
+        setHandprintLabAddress(address)
+      } else {
+        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
+        if (cancelled) return
+        address = entity?.location ? formatEntityLocation(entity.location) : "—"
+        setHandprintLabAddress(address)
+      }
+      // Save destination address (hand print lab address) to config
+      if (address && address !== "—" && address !== c.lowResShippingDestinationAddress) {
+        onLowResConfigChange({ lowResShippingDestinationAddress: address })
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }
-  }, [handprintParticipant?.entityId])
+  }, [handprintParticipant?.entityId, c.lowResShippingDestinationAddress, onLowResConfigChange])
 
   React.useEffect(() => {
     if (!deadlineConstraint?.defaultDate || c.lowResScanDeadlineDate) return
@@ -298,12 +397,8 @@ export function LowResConfigStepContent({
                   <Input
                     placeholder="10320TSO"
                     className="h-10 w-full"
-                    value={c.lowResShippingTracking ?? ""}
-                    onChange={(e) =>
-                      onLowResConfigChange({
-                        lowResShippingTracking: e.target.value || undefined,
-                      })
-                    }
+                    value={trackingNumber.localValue}
+                    onChange={trackingNumber.handleChange}
                   />
                 </FieldContent>
               </Field>

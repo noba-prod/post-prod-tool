@@ -187,6 +187,9 @@ export interface Collection {
   // Check Finals Phase
   check_finals_photographer_check_date: string | null
   check_finals_photographer_check_time: string | null
+  // Lifecycle (collections-logic §5.3, §6)
+  status: string
+  published_at: string | null
   // Timestamps
   created_at: string
   updated_at: string
@@ -248,6 +251,8 @@ export interface CollectionInsert {
   precheck_studio_final_edits_time?: string | null
   check_finals_photographer_check_date?: string | null
   check_finals_photographer_check_time?: string | null
+  status?: string
+  published_at?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -307,6 +312,8 @@ export interface CollectionUpdate {
   precheck_studio_final_edits_time?: string | null
   check_finals_photographer_check_date?: string | null
   check_finals_photographer_check_time?: string | null
+  status?: string
+  published_at?: string | null
   updated_at?: string
 }
 
@@ -344,6 +351,8 @@ export interface Invitation {
   accepted_by_user_id: string | null
   created_at: string
   updated_at: string
+  collection_id: string | null
+  invited_collection_role: CollectionMemberRole | null
 }
 
 export interface InvitationInsert {
@@ -358,6 +367,8 @@ export interface InvitationInsert {
   accepted_by_user_id?: string | null
   created_at?: string
   updated_at?: string
+  collection_id?: string | null
+  invited_collection_role?: CollectionMemberRole | null
 }
 
 export interface InvitationUpdate {
@@ -370,6 +381,8 @@ export interface InvitationUpdate {
   accepted_at?: string | null
   accepted_by_user_id?: string | null
   updated_at?: string
+  collection_id?: string | null
+  invited_collection_role?: CollectionMemberRole | null
 }
 
 // ============================================================================

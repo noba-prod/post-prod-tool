@@ -14,7 +14,57 @@ import { CheckSelection } from "./check-selection"
 import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Separator } from "@/components/ui/separator"
 import { getRepositoryInstances } from "@/lib/services"
+import { createClient } from "@/lib/supabase/client"
 import type { CollectionConfig } from "@/lib/domain/collections"
+import type { Organization, Profile } from "@/lib/supabase/database.types"
+
+// ============================================================================
+// SUPABASE HELPERS
+// ============================================================================
+
+function isSupabaseConfigured(): boolean {
+  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+  if (useMockAuth) return false
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return Boolean(
+    url && !url.includes("placeholder") && url.startsWith("https://") &&
+    key && !key.includes("placeholder") && key.length > 20
+  )
+}
+
+async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[]> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("organizations") as any)
+    .select("id, name")
+    .eq("type", "client")
+    .order("name")
+  if (error) {
+    console.error("[NewCollectionModal] Failed to fetch clients:", error)
+    return []
+  }
+  return (data ?? []).map((org: Pick<Organization, "id" | "name">) => ({ id: org.id, name: org.name }))
+}
+
+async function fetchUsersFromSupabase(organizationId: string): Promise<{ value: string; label: string }[]> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("profiles") as any)
+    .select("id, email, first_name, last_name")
+    .eq("organization_id", organizationId)
+    .order("first_name")
+  if (error) {
+    console.error("[NewCollectionModal] Failed to fetch users:", error)
+    return []
+  }
+  return (data ?? []).map((p: Profile) => ({
+    value: p.id,
+    label: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || p.id,
+  }))
+}
 
 /**
  * New Collection modal — setup form per Figma (node 345-24895) and collections-logic §3.2.
@@ -76,13 +126,19 @@ export function NewCollectionModal({
     if (!open) return
     const load = async () => {
       try {
-        const repos = getRepositoryInstances()
-        const entities = (await repos.entityRepository?.getAllEntities()) ?? []
-        const clients = entities
-          .filter((e) => e.type === "client")
-          .map((e) => ({ id: e.id, name: e.name }))
-        setClientOptions(clients)
-        if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
+        if (isSupabaseConfigured()) {
+          const clients = await fetchClientsFromSupabase()
+          setClientOptions(clients)
+          if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
+        } else {
+          const repos = getRepositoryInstances()
+          const entities = (await repos.entityRepository?.getAllEntities()) ?? []
+          const clients = entities
+            .filter((e) => e.type === "client")
+            .map((e) => ({ id: e.id, name: e.name }))
+          setClientOptions(clients)
+          if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
+        }
       } catch {
         setClientOptions([])
       }
@@ -97,13 +153,18 @@ export function NewCollectionModal({
     }
     const load = async () => {
       try {
-        const repos = getRepositoryInstances()
-        const users =
-          (await repos.userRepository?.listUsersByEntityId(clientEntityId)) ?? []
-        const opts = users.map((u) => ({
-          value: u.id,
-          label: `${u.firstName} ${u.lastName ?? ""}`.trim() || u.email,
-        }))
+        let opts: { value: string; label: string }[] = []
+        if (isSupabaseConfigured()) {
+          opts = await fetchUsersFromSupabase(clientEntityId)
+        } else {
+          const repos = getRepositoryInstances()
+          const users =
+            (await repos.userRepository?.listUsersByEntityId(clientEntityId)) ?? []
+          opts = users.map((u) => ({
+            value: u.id,
+            label: `${u.firstName} ${u.lastName ?? ""}`.trim() || u.email,
+          }))
+        }
         setManagerOptions(opts)
         setSelectedManagerUserId((prev) => {
           if (opts.some((o) => o.value === prev)) return prev
@@ -129,6 +190,7 @@ export function NewCollectionModal({
     const config: CollectionConfig = {
       ...EMPTY_CONFIG,
       name: name.trim(),
+      reference: reference.trim() || undefined,
       clientEntityId: cid,
       managerUserId: selectedManagerUserId.trim() || managerUserId.trim(),
       hasAgency,
@@ -143,6 +205,7 @@ export function NewCollectionModal({
     onSubmit(config, clientName)
   }, [
     name,
+    reference,
     clientEntityId,
     selectedManagerUserId,
     managerUserId,

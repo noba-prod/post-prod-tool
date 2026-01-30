@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { mockAuthAdapter } from "@/lib/auth/mock-adapter"
+import { activateInvitation } from "@/app/actions/auth"
 import { toast } from "sonner"
 import Image from "next/image"
 
@@ -28,23 +29,31 @@ export default function ActivatePage() {
 
     const handleActivation = async () => {
       try {
-        // Get invitation by token
-        const invitation = await mockAuthAdapter.getInvitationByToken(token)
-
-        if (!invitation) {
-          toast.error("Invalid or expired invitation")
+        // Try Supabase flow first (invitations from published collections)
+        const result = await activateInvitation(token)
+        if (result.success) {
+          setSuccess(true)
+          setEmail(result.email ?? null)
+          toast.success("Invitation accepted. You can now sign in.")
+          setTimeout(() => {
+            router.push(`/auth/login?email=${encodeURIComponent(result.email ?? "")}`)
+          }, 2000)
           setLoading(false)
           return
         }
 
-        // Mark email as verified
-        await mockAuthAdapter.markEmailVerified(invitation.email)
+        // Fallback: mock adapter (dev / mock invitations)
+        const invitation = await mockAuthAdapter.getInvitationByToken(token)
+        if (!invitation) {
+          toast.error(result.error ?? "Invalid or expired invitation")
+          setLoading(false)
+          return
+        }
 
+        await mockAuthAdapter.markEmailVerified(invitation.email)
         setSuccess(true)
         setEmail(invitation.email)
         toast.success("Email verified successfully! You can now sign in.")
-
-        // Redirect to login after a brief delay
         setTimeout(() => {
           router.push(`/auth/login?email=${encodeURIComponent(invitation.email)}`)
         }, 2000)

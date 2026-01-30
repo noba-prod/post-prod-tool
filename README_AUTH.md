@@ -126,6 +126,10 @@ Configure SMTP settings in Supabase:
 3. Send invitation email with activation link
 4. User clicks link → activates → verifies email → can request OTP
 
+### Collection invitation email
+
+When a collection is published, the app creates one invitation per participant (in the `invitations` table) and sends a **collection invitation email** to each. The email includes a short message that the recipient has been invited to collaborate on the collection on noba*, and a single **activation link** (the same URL used for "Accept invitation": `{SITE_URL}/auth/activate?token={token}`). Emails are sent via [Resend](https://resend.com). Configure `RESEND_API_KEY` and `RESEND_FROM_EMAIL` in your environment (see `env.example`). If `RESEND_API_KEY` is not set, invitations are still created but no email is sent (useful for local development).
+
 ### Requesting OTP Flow
 
 1. User enters email on `/auth/login`

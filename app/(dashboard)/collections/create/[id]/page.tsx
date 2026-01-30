@@ -29,6 +29,59 @@ import type {
   CollectionConfig,
   ChronologyConstraint,
 } from "@/lib/domain/collections"
+import { createClient } from "@/lib/supabase/client"
+import type { Organization } from "@/lib/supabase/database.types"
+
+// ============================================================================
+// SUPABASE HELPERS
+// ============================================================================
+
+function isSupabaseConfigured(): boolean {
+  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+  if (useMockAuth) return false
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return Boolean(
+    url && !url.includes("placeholder") && url.startsWith("https://") &&
+    key && !key.includes("placeholder") && key.length > 20
+  )
+}
+
+async function fetchOrganizationById(id: string): Promise<{ name: string } | null> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("organizations") as any)
+    .select("id, name")
+    .eq("id", id)
+    .single()
+  if (error) {
+    console.error("[CollectionCreatePage] Failed to fetch organization:", error)
+    return null
+  }
+  const org = data as Organization | null
+  return org ? { name: org.name } : null
+}
+
+async function fetchOrganizationsByIds(ids: string[]): Promise<Record<string, string>> {
+  if (ids.length === 0) return {}
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("organizations") as any)
+    .select("id, name")
+    .in("id", ids)
+  if (error) {
+    console.error("[CollectionCreatePage] Failed to fetch organizations:", error)
+    return {}
+  }
+  const orgs = (data ?? []) as Pick<Organization, "id" | "name">[]
+  const map: Record<string, string> = {}
+  for (const org of orgs) {
+    map[org.id] = org.name
+  }
+  return map
+}
 
 /** UI labels for Creation Template sidebar — map stepId to PHOTO labels (collections-logic §4) */
 const STEP_LABELS: Record<CreationBlockId, string> = {
@@ -155,7 +208,6 @@ export default function CollectionCreatePage({
       setParticipantSummaries([])
       return
     }
-    const repos = getRepositoryInstances()
     const relevant = draft.participants.filter((p) => p.role !== "producer")
     if (relevant.length === 0) {
       setParticipantSummaries([])
@@ -165,16 +217,34 @@ export default function CollectionCreatePage({
       p.role === "client" ? p.entityId ?? draft.config.clientEntityId : p.entityId
     ).filter(Boolean) as string[]
     let cancelled = false
-    Promise.all(
-      entityIds.map((eid) => repos.entityRepository?.getEntityById(eid) ?? Promise.resolve(null))
-    ).then((entities) => {
-      if (cancelled) return
-      const list = relevant.map((p, i) => ({
-        role: ROLE_DISPLAY[p.role] ?? p.role,
-        name: `@${entities[i]?.name ?? "—"}`,
-      }))
-      setParticipantSummaries(list)
-    })
+
+    const load = async () => {
+      if (isSupabaseConfigured()) {
+        const namesMap = await fetchOrganizationsByIds(entityIds)
+        if (cancelled) return
+        const list = relevant.map((p) => {
+          const eid = p.role === "client" ? p.entityId ?? draft.config.clientEntityId : p.entityId
+          return {
+            role: ROLE_DISPLAY[p.role] ?? p.role,
+            name: `@${eid && namesMap[eid] ? namesMap[eid] : "—"}`,
+          }
+        })
+        setParticipantSummaries(list)
+      } else {
+        const repos = getRepositoryInstances()
+        const entities = await Promise.all(
+          entityIds.map((eid) => repos.entityRepository?.getEntityById(eid) ?? Promise.resolve(null))
+        )
+        if (cancelled) return
+        const list = relevant.map((p, i) => ({
+          role: ROLE_DISPLAY[p.role] ?? p.role,
+          name: `@${entities[i]?.name ?? "—"}`,
+        }))
+        setParticipantSummaries(list)
+      }
+    }
+
+    load()
     return () => {
       cancelled = true
     }
@@ -239,6 +309,7 @@ export default function CollectionCreatePage({
 
   const handleDropoffPlanChange = React.useCallback(
     (patch: Partial<Pick<CollectionConfig,
+      | "dropoff_shipping_origin_address"
       | "dropoff_shipping_date"
       | "dropoff_shipping_time"
       | "dropoff_shipping_destination_address"
@@ -260,8 +331,10 @@ export default function CollectionCreatePage({
     (patch: Partial<Pick<CollectionConfig,
       | "lowResScanDeadlineDate"
       | "lowResScanDeadlineTime"
+      | "lowResShippingOriginAddress"
       | "lowResShippingPickupDate"
       | "lowResShippingPickupTime"
+      | "lowResShippingDestinationAddress"
       | "lowResShippingDeliveryDate"
       | "lowResShippingDeliveryTime"
       | "lowResShippingManaging"
@@ -372,7 +445,14 @@ export default function CollectionCreatePage({
     setIsPublishing(true)
     try {
       await service.publishCollection(id)
-      
+
+      // Create and store invitations for all participants (Supabase invitations table)
+      const { createInvitationsForPublishedCollection } = await import("@/lib/invitations")
+      const inviteResult = await createInvitationsForPublishedCollection(id)
+      if (!inviteResult.success && inviteResult.created === 0 && inviteResult.error) {
+        console.warn("[Publish] Invitations could not be created:", inviteResult.error)
+      }
+
       // Get client name for toast
       const clientEntityId = draft.config.clientEntityId
       let clientName = "Client"

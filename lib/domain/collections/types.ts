@@ -67,6 +67,8 @@ export type CreationBlockId = (typeof CREATION_BLOCK_IDS)[number]
 export interface CollectionConfig {
   /** Collection name */
   name: string
+  /** Reference code / identifier */
+  reference?: string
   /** Client entity id */
   clientEntityId: string
   /** Manager (admin) user id — producer / noba */
@@ -109,8 +111,10 @@ export interface CollectionConfig {
   // Low-res scan (Figma node 707-1732747)
   lowResScanDeadlineDate?: string
   lowResScanDeadlineTime?: string
+  lowResShippingOriginAddress?: string
   lowResShippingPickupDate?: string
   lowResShippingPickupTime?: string
+  lowResShippingDestinationAddress?: string
   lowResShippingDeliveryDate?: string
   lowResShippingDeliveryTime?: string
   lowResShippingManaging?: string

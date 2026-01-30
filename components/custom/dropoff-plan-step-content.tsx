@@ -12,9 +12,48 @@ import { InformativeToast } from "./informative-toast"
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { getRepositoryInstances } from "@/lib/services"
+import { createClient } from "@/lib/supabase/client"
 import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
+import type { Organization } from "@/lib/supabase/database.types"
+
+// ============================================================================
+// SUPABASE HELPERS
+// ============================================================================
+
+function isSupabaseConfigured(): boolean {
+  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+  if (useMockAuth) return false
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return Boolean(
+    url && !url.includes("placeholder") && url.startsWith("https://") &&
+    key && !key.includes("placeholder") && key.length > 20
+  )
+}
+
+function formatOrgAddress(org: Pick<Organization, "street_address" | "zip_code" | "city" | "country">): string {
+  const parts = [org.street_address, org.zip_code, org.city, org.country].filter(Boolean)
+  return parts.length ? parts.join(" ") : "—"
+}
+
+async function fetchOrganizationAddress(id: string): Promise<string> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("organizations") as any)
+    .select("id, street_address, zip_code, city, country")
+    .eq("id", id)
+    .single()
+  if (error) {
+    console.error("[DropoffPlanStepContent] Failed to fetch organization:", error)
+    return "—"
+  }
+  const org = data as Organization | null
+  if (!org) return "—"
+  return formatOrgAddress(org)
+}
 
 /** Build one-line address from shooting Location (Figma: "Rua Concepción Arenal, 10 15006 A Coruña Spain") */
 function formatShootingAddress(c: CollectionConfig): string {
@@ -50,6 +89,7 @@ export interface DropoffPlanStepContentProps {
   draft: CollectionDraft
   /** Called when drop-off config fields change */
   onDropoffPlanChange: (patch: Partial<Pick<CollectionConfig,
+    | "dropoff_shipping_origin_address"
     | "dropoff_shipping_date"
     | "dropoff_shipping_time"
     | "dropoff_shipping_destination_address"
@@ -94,6 +134,13 @@ export function DropoffPlanStepContent({
 
   const originAddress = formatShootingAddress(c)
 
+  // Save origin address (shooting address) to config when it changes
+  React.useEffect(() => {
+    if (originAddress && originAddress !== "—" && originAddress !== c.dropoff_shipping_origin_address) {
+      onDropoffPlanChange({ dropoff_shipping_origin_address: originAddress })
+    }
+  }, [originAddress, c.dropoff_shipping_origin_address, onDropoffPlanChange])
+
   React.useEffect(() => {
     const lab = draft.participants.find((p) => p.role === "lab")
     const eid = lab?.entityId
@@ -102,20 +149,28 @@ export function DropoffPlanStepContent({
       return
     }
     let cancelled = false
-    getRepositoryInstances()
-      .entityRepository?.getEntityById(eid)
-      .then((entity) => {
+    const load = async () => {
+      let address = "—"
+      if (isSupabaseConfigured()) {
+        address = await fetchOrganizationAddress(eid)
         if (cancelled) return
-        setLabAddress(
-          entity?.location
-            ? formatEntityLocation(entity.location)
-            : "—"
-        )
-      })
+        setLabAddress(address)
+      } else {
+        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
+        if (cancelled) return
+        address = entity?.location ? formatEntityLocation(entity.location) : "—"
+        setLabAddress(address)
+      }
+      // Save destination address (lab address) to config
+      if (address && address !== "—" && address !== c.dropoff_shipping_destination_address) {
+        onDropoffPlanChange({ dropoff_shipping_destination_address: address })
+      }
+    }
+    load()
     return () => {
       cancelled = true
     }
-  }, [draft.participants])
+  }, [draft.participants, c.dropoff_shipping_destination_address, onDropoffPlanChange])
 
   React.useEffect(() => {
     if (!deliveryConstraint?.defaultDate || c.dropoff_delivery_date) return
