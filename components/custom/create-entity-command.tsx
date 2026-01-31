@@ -41,11 +41,11 @@ interface EntityOptionConfig {
 const ALL_OPTIONS: EntityOptionConfig[] = [
   { id: "collection", label: "Collection" }, // Modal-based: New Collection modal → createDraft → redirect to /collections/create/[id]
   { id: "client", label: "Client", route: "/create/client" },
-  { id: "self-photographer", label: "Self-photographer" }, // Modal-based, no route
+  { id: "self-photographer", label: "Photographer" }, // Modal-based, no route
   { id: "agency", label: "Agency", route: "/create/agency" },
-  { id: "photo-lab", label: "Photo lab", route: "/create/photo-lab" },
-  { id: "edition-studio", label: "Edition studio", route: "/create/edition-studio" },
-  { id: "hand-print-lab", label: "Hand print lab", route: "/create/hand-print-lab" },
+  { id: "photo-lab", label: "Photo Lab", route: "/create/photo-lab" },
+  { id: "edition-studio", label: "Retouch/Post Studio", route: "/create/edition-studio" },
+  { id: "hand-print-lab", label: "Hand Print Lab", route: "/create/hand-print-lab" },
 ]
 
 // =============================================================================
@@ -57,7 +57,7 @@ interface UseCreateEntityOptions {
   allowedOptions?: CreateEntityOption[]
   /** Callback after successful entity creation */
   onCreated?: () => void
-  /** Whether to redirect to /entities after creation (default: true) */
+  /** Whether to redirect to /organizations after creation (default: true) */
   redirectAfterCreate?: boolean
   /** Current user id for New Collection modal (manager / producer) */
   managerUserId?: string
@@ -183,11 +183,11 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
 
       // Redirect to entities page if configured
       if (redirectAfterCreate) {
-        router.push("/entities")
+        router.push("/organizations")
       }
     } catch (error) {
-      console.error("Failed to create self-photographer:", error)
-      toast.error("Failed to create self-photographer", {
+      console.error("Failed to create photographer:", error)
+      toast.error("Failed to create photographer", {
         description: error instanceof Error ? error.message : "An unexpected error occurred",
       })
     } finally {
@@ -254,7 +254,7 @@ interface CreateEntityCommandProps {
   allowedOptions?: CreateEntityOption[]
   /** Callback after successful entity creation */
   onCreated?: () => void
-  /** Whether to redirect to /entities after creation (default: true) */
+  /** Whether to redirect to /organizations after creation (default: true) */
   redirectAfterCreate?: boolean
   /** Custom trigger button (optional) */
   trigger?: React.ReactNode
@@ -365,7 +365,7 @@ export function CreateEntityCommand({
         </PopoverContent>
       </Popover>
 
-      {/* Self-Photographer Creation Modal */}
+      {/* Photographer Creation Modal */}
       <SelfPhotographerCreationForm
         open={selfPhotographerModalOpen}
         onOpenChange={setSelfPhotographerModalOpen}

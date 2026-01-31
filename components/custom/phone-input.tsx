@@ -98,12 +98,17 @@ export function PhoneInput({
   }
 
   return (
-    <div className={cn("flex flex-col gap-3 w-full", className)}>
-      {/* Label */}
+    <div
+      className={cn(
+        "flex flex-col w-full gap-[var(--field-inner-gap,0.5rem)]",
+        className
+      )}
+    >
+      {/* Label - uses --field-inner-gap from FieldGroup so height matches other fields */}
       {label && (
         <Label
           className={cn(
-            "text-sm font-medium leading-snug w-fit",
+            "h-[14px] text-sm font-medium leading-none w-fit",
             disabled ? "text-muted-foreground" : "text-foreground"
           )}
         >
@@ -111,8 +116,8 @@ export function PhoneInput({
         </Label>
       )}
 
-      {/* Inputs row - 8px gap (gap-2) */}
-      <div className="flex gap-2 items-center">
+      {/* Inputs row - same gap as Field (from parent --field-inner-gap) */}
+      <div className="flex items-center gap-[var(--field-inner-gap,0.5rem)]">
         {/* Country Code Combobox */}
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>

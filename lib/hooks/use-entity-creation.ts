@@ -4,11 +4,12 @@ import * as React from "react"
 import { toast } from "sonner"
 
 // Service imports
-import { createEntityCreationService, getRepositoryInstances } from "@/lib/services"
+import { getRepositoryInstances } from "@/lib/services"
 import {
   mapFormToEntityDraft,
   mapEntityToFormData,
   mapEntityToDraft,
+  mapFormToUpdateUserPayload,
 } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import {
@@ -53,12 +54,16 @@ export interface EntityCreationHookState {
   isAdminModalOpen: boolean
   /** New member modal open state */
   isNewMemberModalOpen: boolean
+  /** User ID being edited (opens edit user modal when set) */
+  editingUserId: string | null
   /** Loading state for async operations */
   isCreating: boolean
   /** Loading state for update operations */
   isUpdating: boolean
   /** Loading state for creating team member */
   isCreatingMember: boolean
+  /** Loading state for updating team member */
+  isUpdatingMember: boolean
 }
 
 /**
@@ -111,6 +116,20 @@ export interface EntityCreationActions {
     email: string
     phoneNumber: string
     countryCode: string
+    role: "admin" | "editor" | "viewer"
+  }) => Promise<void>
+  /** Open edit user modal for a team member */
+  openEditUserModal: (userId: string) => void
+  /** Close edit user modal */
+  closeEditUserModal: () => void
+  /** Handle edit user submit (update team member) */
+  handleEditUserSubmit: (userData: {
+    firstName: string
+    lastName: string
+    email: string
+    phoneNumber: string
+    countryCode: string
+    entity: { type: import("@/lib/types").EntityType; name: string } | null
     role: "admin" | "editor" | "viewer"
   }) => Promise<void>
   /** Navigate to a specific step */
@@ -176,6 +195,9 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
   /** New member modal state */
   const [isNewMemberModalOpen, setIsNewMemberModalOpen] = React.useState(false)
 
+  /** Edit user modal - userId being edited, or null */
+  const [editingUserId, setEditingUserId] = React.useState<string | null>(null)
+
   /** Loading state for async operations (create) */
   const [isCreating, setIsCreating] = React.useState(false)
 
@@ -184,6 +206,9 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
 
   /** Loading state for creating team member */
   const [isCreatingMember, setIsCreatingMember] = React.useState(false)
+
+  /** Loading state for updating team member */
+  const [isUpdatingMember, setIsUpdatingMember] = React.useState(false)
 
   // ===========================================================================
   // FORM HYDRATION - Pre-fill form when entering edit mode
@@ -314,7 +339,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
 
   /**
    * Handle saving basic info in edit mode.
-   * Updates the existing entity without recreating.
+   * Updates the existing entity via API (entity lives in Supabase after createOrganizationFromDraft).
    */
   const handleSaveBasicInfo = React.useCallback(async () => {
     if (!basicDraft || !entityId) return
@@ -322,16 +347,44 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     setIsUpdating(true)
 
     try {
-      const service = createEntityCreationService()
-      const result = await service.updateEntityBasicInfo(entityId, basicDraft)
+      const payload: {
+        name?: string
+        email?: string
+        phoneNumber?: string
+        countryCode?: string
+        notes?: string
+        location?: { streetAddress?: string; zipCode?: string; city?: string; country?: string }
+      } = {
+        name: basicDraft.name?.trim(),
+        email: basicDraft.email?.trim() || undefined,
+        phoneNumber: basicFormData?.phoneNumber?.trim() || undefined,
+        countryCode: basicFormData?.countryCode?.trim() || undefined,
+        notes: basicDraft.notes?.trim() || undefined,
+      }
+      if (basicDraft.location) {
+        payload.location = {
+          streetAddress: basicDraft.location.streetAddress?.trim() || undefined,
+          zipCode: basicDraft.location.zipCode?.trim() || undefined,
+          city: basicDraft.location.city?.trim() || undefined,
+          country: basicDraft.location.country?.trim() || undefined,
+        }
+      }
 
-      // Update local entity state
+      const response = await fetch(`/api/organizations/${entityId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string }
+        throw new Error(body.error || "Failed to update entity")
+      }
+
+      const result = (await response.json()) as { entity: Entity }
       setEntity(result.entity)
-
-      // Navigate back to team step
       setCurrentStep("team")
 
-      // Show success toast
       toast.success("Entity information updated", {
         description: `@${result.entity.name} has been updated`,
       })
@@ -343,7 +396,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     } finally {
       setIsUpdating(false)
     }
-  }, [basicDraft, entityId])
+  }, [basicDraft, basicFormData, entityId])
 
   /**
    * Handle creating a new organization (Step 1 -> Next).
@@ -467,8 +520,103 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
   }, [])
 
   /**
+   * Open edit user modal for a team member.
+   */
+  const openEditUserModal = React.useCallback((userId: string) => {
+    setEditingUserId(userId)
+  }, [])
+
+  /**
+   * Close edit user modal.
+   */
+  const closeEditUserModal = React.useCallback(() => {
+    setEditingUserId(null)
+  }, [])
+
+  /**
+   * Handle edit user submit. PATCH /api/users/[id]. On success updates teamMembers; on 404 updates local state for in-memory users.
+   */
+  const handleEditUserSubmit = React.useCallback(async (userData: {
+    firstName: string
+    lastName: string
+    email: string
+    phoneNumber: string
+    countryCode: string
+    entity: { type: import("@/lib/types").EntityType; name: string } | null
+    role: "admin" | "editor" | "viewer"
+  }) => {
+    if (!editingUserId) return
+
+    setIsUpdatingMember(true)
+    try {
+      const formData = {
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        phoneNumber: userData.phoneNumber,
+        countryCode: userData.countryCode,
+        entity: userData.entity && userData.entity.type !== "self-photographer"
+          ? { type: userData.entity.type as import("@/lib/types").StandardEntityType, name: userData.entity.name }
+          : null,
+        role: userData.role,
+      }
+      const payload = mapFormToUpdateUserPayload(formData)
+      const response = await fetch(`/api/users/${editingUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string }
+        // 404: user may exist only in-memory (e.g. added via "Register member" in creation flow)
+        if (response.status === 404) {
+          const repos = getRepositoryInstances()
+          const inMemoryUpdate: Partial<Omit<User, "id" | "entityId">> = {
+            firstName: formData.firstName.trim(),
+            lastName: formData.lastName?.trim() || undefined,
+            email: formData.email.trim(),
+            phoneNumber: [formData.countryCode, formData.phoneNumber].filter(Boolean).join(" ").trim(),
+            role: formData.role,
+          }
+          const updated = repos.userRepository
+            ? await repos.userRepository.updateUser(editingUserId, inMemoryUpdate)
+            : null
+          if (updated) {
+            setTeamMembers((prev) =>
+              prev.map((u) => (u.id === editingUserId ? updated : u))
+            )
+            setEditingUserId(null)
+            toast.success("User updated", {
+              description: `${updated.firstName} ${updated.lastName || ""}`.trim() + " has been updated.",
+            })
+            return
+          }
+        }
+        throw new Error(body.error || "Failed to update user")
+      }
+
+      const result = (await response.json()) as { user: User }
+      setTeamMembers((prev) =>
+        prev.map((u) => (u.id === editingUserId ? result.user : u))
+      )
+      setEditingUserId(null)
+      toast.success("User updated", {
+        description: `${result.user.firstName} ${result.user.lastName || ""}`.trim() + " has been updated.",
+      })
+    } catch (error) {
+      console.error("Failed to update user:", error)
+      toast.error("Failed to update user", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+      })
+    } finally {
+      setIsUpdatingMember(false)
+    }
+  }, [editingUserId])
+
+  /**
    * Handle new team member submit.
-   * Creates a new team member for the existing entity.
+   * Creates the member in Supabase via POST /api/organizations/[id]/members and refreshes the full team list so the admin is never overwritten.
    */
   const handleNewMemberSubmit = React.useCallback(async (userData: {
     firstName: string
@@ -487,47 +635,34 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
 
     setIsCreatingMember(true)
     try {
-      const service = createEntityCreationService()
-      
-      // Create user payload
-      const payload: CreateUserPayload = {
+      const payload = {
         firstName: userData.firstName.trim(),
         lastName: userData.lastName?.trim() || undefined,
         email: userData.email.trim(),
-        phoneNumber: `${userData.countryCode} ${userData.phoneNumber}`.trim(),
-        entityId: entityId,
+        phoneNumber: userData.phoneNumber.trim(),
+        countryCode: userData.countryCode.trim(),
         role: userData.role,
       }
 
-      // Create the team member using the repository directly
-      const repos = getRepositoryInstances()
-      if (!repos.userRepository) {
-        throw new Error("User repository not available")
-      }
-      
-      const newUser = await repos.userRepository.createUser(payload)
-      
-      // Refresh team members list
-      const allUsers = await repos.userRepository.listUsersByEntityId(entityId)
-      setTeamMembers(allUsers)
-      
-      // Optionally refresh entity if needed
-      if (repos.entityRepository) {
-        const updatedEntity = await repos.entityRepository.getEntityById(entityId)
-        if (updatedEntity) {
-          setEntity(updatedEntity)
-        }
+      const response = await fetch(`/api/organizations/${entityId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string }
+        throw new Error(body.error || "Failed to add team member")
       }
 
-      // Close modal
+      const result = (await response.json()) as { user: User; teamMembers: User[] }
+      setTeamMembers(result.teamMembers)
       setIsNewMemberModalOpen(false)
-
-      // Show success toast
       toast.success("Team member added", {
-        description: `${newUser.firstName} ${newUser.lastName || ""}`.trim() + " has been added to the team.",
+        description: `${result.user.firstName} ${result.user.lastName || ""}`.trim() + " has been added to the team.",
       })
     } catch (error) {
-      console.error("Failed to create team member:", error)
+      console.error("Failed to add team member:", error)
       toast.error("Failed to add team member", {
         description: error instanceof Error ? error.message : "An unexpected error occurred",
       })
@@ -554,10 +689,11 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     isBasicInfoValid,
     isAdminModalOpen,
     isNewMemberModalOpen,
+    editingUserId,
     isCreating,
     isUpdating,
     isCreatingMember,
-    isUpdating,
+    isUpdatingMember,
 
     // Derived state
     step1Variant,
@@ -576,6 +712,9 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     openNewMemberModal,
     closeNewMemberModal,
     handleNewMemberSubmit,
+    openEditUserModal,
+    closeEditUserModal,
+    handleEditUserSubmit,
     goToStep,
     handleEditBasicInfo,
   }

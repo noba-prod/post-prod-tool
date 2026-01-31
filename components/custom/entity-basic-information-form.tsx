@@ -6,6 +6,7 @@ import { RowVariants } from "./row-variants"
 import { Titles } from "./titles"
 import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { OptionPicker } from "./option-picker"
 import { PhoneInput } from "./phone-input"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -109,16 +110,14 @@ const COUNTRIES = [
  *    - Entity Type (disabled, auto-selected)
  *    - Entity Name
  * 
- * 2. Location (mandatory for Agency, Photo Lab, Edition Studio, Hand Print Lab)
+ * 2. Location (mandatory for Photo Lab, Retouch/Post Studio, Hand Print Lab; not shown for Agency)
  *    - Street Address
  *    - ZIP Code
  *    - City (combobox)
  *    - Country (combobox)
  * 
  * 3. Additional Information (optional, always visible)
- *    - Email
- *    - Phone Number
- *    - Profile Picture upload
+ *    - Profile Picture upload (Email and Phone hidden for client, hand-print-lab, photo-lab, agency, retouch/post studio)
  *    - Notes
  * 
  * ## Layout
@@ -239,19 +238,22 @@ export function EntityBasicInformationForm({
           <div className="flex flex-col gap-4 w-full">
             <Titles type="form" title="Entity details" showSubtitle={false} />
             <RowVariants variant="2">
-              {/* Entity Type (disabled - read-only display) */}
+              {/* Entity Type - OptionPicker (disabled, single option) */}
               <Field>
-                <FieldLabel htmlFor="entity-type" disabled={true}>
-                  Entity type
-                </FieldLabel>
                 <FieldContent>
-                  <Input
-                    id="entity-type"
-                    type="text"
-                    value={entityTypeToLabel(entityType)}
+                  <OptionPicker
+                    label="Entity type"
+                    value={entityType}
+                    onValueChange={() => {}}
+                    placeholder="Entity type"
+                    options={[
+                      {
+                        value: entityType,
+                        label: entityTypeToLabel(entityType),
+                      },
+                    ]}
+                    searchable={false}
                     disabled={true}
-                    readOnly
-                    className="w-full"
                   />
                 </FieldContent>
               </Field>
@@ -412,45 +414,12 @@ export function EntityBasicInformationForm({
 
           {/* Fields */}
           <FieldGroup>
-            {/* First Row: Email, Phone Number, Upload profile picture (3 columns) */}
-            <RowVariants variant="3">
-              {/* Email */}
-              <Field>
-                <FieldLabel htmlFor="entity-email" disabled={disabled}>
-                  Email
-                </FieldLabel>
-                <FieldContent>
-                  <Input
-                    id="entity-email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => updateFormData({ email: e.target.value })}
-                    placeholder="name@email.com"
-                    disabled={disabled}
-                    readOnly={disabled}
-                  />
-                </FieldContent>
-              </Field>
-
-              {/* Phone Number */}
-              <Field>
-                <FieldContent>
-                  <PhoneInput
-                    label="Phone number"
-                    countryCode={formData.countryCode}
-                    phoneNumber={formData.phoneNumber}
-                    onCountryCodeChange={(code) => updateFormData({ countryCode: code })}
-                    onPhoneNumberChange={(number) => updateFormData({ phoneNumber: number })}
-                    placeholder="649 393 291"
-                    disabled={disabled}
-                  />
-                </FieldContent>
-              </Field>
-
+            {/* Upload profile picture only (Email and Phone hidden for client, hand-print-lab, photo-lab, agency, retouch/post studio) */}
+            <RowVariants variant="1">
               {/* Profile Picture Upload */}
               <Field>
                 <div className="grid w-full items-center gap-1.5">
-                  <Label htmlFor="profile-picture" className={cn("leading-snug w-fit", disabled && "opacity-50")}>
+                  <Label htmlFor="profile-picture" className={cn("h-3.5 leading-snug w-fit", disabled && "opacity-50")}>
                     Upload profile picture
                   </Label>
                 </div>

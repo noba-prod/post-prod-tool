@@ -31,7 +31,7 @@ export function EntityBasicInformationFormDemo() {
             primaryDisabled={!isFormValid}
           >
             <EntityBasicInformationForm
-              entityType="Photo Lab"
+              entityType="photo-lab"
               showLocation={true}
               onDataChange={handleFormDataChange}
               onValidationChange={setIsFormValid}
@@ -53,7 +53,7 @@ export function EntityBasicInformationFormDemo() {
             primaryDisabled={!isFormValid}
           >
             <EntityBasicInformationForm
-              entityType="Client"
+              entityType="client"
               showLocation={false}
               onDataChange={handleFormDataChange}
               onValidationChange={setIsFormValid}

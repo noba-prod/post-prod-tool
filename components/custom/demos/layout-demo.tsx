@@ -78,7 +78,7 @@ export function LayoutDemo() {
                 variant="members" 
                 searchPlaceholder="Search members..."
               />
-              <Tables variant="members" />
+              <Tables variant="team-members" />
             </LayoutSection>
           </Layout>
         </div>

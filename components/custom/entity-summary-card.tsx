@@ -40,8 +40,8 @@ export function EntitySummaryCard({
     >
       <div className="flex flex-col gap-3">
         {/* Header: Name + Type Badge */}
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-zinc-900">{name}</h3>
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <h3 className="text-lg font-semibold text-zinc-900 truncate min-w-0">{name}</h3>
           <Badge variant="secondary" className="text-xs font-medium text-zinc-500">
             {type}
           </Badge>

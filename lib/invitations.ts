@@ -1,8 +1,15 @@
 "use server"
 
-import type { CollectionMemberRole } from "@/lib/supabase/database.types"
+import type { Collection, CollectionMember, CollectionMemberRole, Profile, UserRole } from "@/lib/supabase/database.types"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendInvitationEmail } from "@/lib/email/send-invitation"
+
+/** Delay in ms to stay under Resend rate limit (2 requests per second). */
+const RESEND_RATE_LIMIT_DELAY_MS = 550
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 export interface CreateInvitationParams {
   /** Organization id (e.g. collection's client_id) for RLS and context */
@@ -12,6 +19,8 @@ export interface CreateInvitationParams {
   collectionId?: string
   /** Role to assign in collection_members when invitation is accepted (required when collectionId is set) */
   invitedCollectionRole?: CollectionMemberRole
+  /** Role to assign in profiles when invitation is org-only (platform/team invite). Default viewer. */
+  role?: UserRole
   expiresInDays?: number
 }
 
@@ -25,6 +34,7 @@ export async function createInvitation(params: CreateInvitationParams) {
     email,
     collectionId,
     invitedCollectionRole,
+    role: invitedRole,
     expiresInDays = 7,
   } = params
   const supabase = createAdminClient()
@@ -42,12 +52,12 @@ export async function createInvitation(params: CreateInvitationParams) {
       token,
       status: "pending",
       expires_at: expiresAt.toISOString(),
+      role: invitedRole ?? "viewer",
     }
     if (collectionId) row.collection_id = collectionId
     if (invitedCollectionRole) row.invited_collection_role = invitedCollectionRole
 
-    const { data: invitation, error: inviteError } = await supabase
-      .from("invitations")
+    const { data: invitation, error: inviteError } = await (supabase.from("invitations") as any)
       .insert(row)
       .select()
       .single()
@@ -86,11 +96,12 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
   const supabase = createAdminClient()
 
   try {
-    const { data: collection, error: collError } = await supabase
+    const { data: collectionData, error: collError } = await supabase
       .from("collections")
       .select("id, client_id, name")
       .eq("id", collectionId)
       .single()
+    const collection = collectionData as Pick<Collection, "id" | "client_id" | "name"> | null
 
     if (collError || !collection?.client_id) {
       return {
@@ -102,25 +113,27 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
 
     const organizationId = collection.client_id
 
-    const { data: members, error: membersError } = await supabase
+    const { data: membersData, error: membersError } = await supabase
       .from("collection_members")
       .select("user_id, role")
       .eq("collection_id", collectionId)
+    const members = (membersData ?? []) as Pick<CollectionMember, "user_id" | "role">[]
 
     if (membersError) {
       return { success: false, error: membersError.message, created: 0 }
     }
-    if (!members?.length) {
+    if (!members.length) {
       return { success: true, created: 0, message: "No participants to invite" }
     }
 
     const userIds = [...new Set(members.map((m) => m.user_id))]
-    const { data: profiles, error: profilesError } = await supabase
+    const { data: profilesData, error: profilesError } = await supabase
       .from("profiles")
       .select("id, email")
       .in("id", userIds)
+    const profiles = (profilesData ?? []) as Pick<Profile, "id" | "email">[]
 
-    if (profilesError || !profiles?.length) {
+    if (profilesError || !profiles.length) {
       return {
         success: false,
         error: profilesError?.message ?? "Could not load participant emails",
@@ -154,7 +167,7 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
         invitedCollectionRole: member.role,
         expiresInDays: 7,
       })
-      if (result.success) {
+      if (result.success && result.activationUrl) {
         created++
         const emailResult = await sendInvitationEmail(
           email,
@@ -162,6 +175,7 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
           collectionName
         )
         if (emailResult.sent) sent++
+        await sleep(RESEND_RATE_LIMIT_DELAY_MS)
       }
     }
 

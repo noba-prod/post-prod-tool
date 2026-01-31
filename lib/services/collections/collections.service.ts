@@ -50,16 +50,29 @@ export class CollectionsService {
 
   /**
    * Creates a new collection (draft) from modal config.
+   * When managerUserId and clientEntityId are set, pre-fills client + producer (manager) so the manager appears in the Client section with edit permission on.
    */
   async createCollection(config: CollectionConfig): Promise<Collection> {
     validateCreateConfig(config)
     const id = generateId()
     const now = new Date().toISOString()
+    const participants: import("@/lib/domain/collections").CollectionParticipant[] = []
+    if (config.clientEntityId?.trim()) {
+      participants.push({ role: "client", entityId: config.clientEntityId })
+    }
+    if (config.managerUserId?.trim() && config.clientEntityId?.trim()) {
+      participants.push({
+        role: "producer",
+        entityId: config.clientEntityId,
+        userIds: [config.managerUserId],
+        editPermissionByUserId: { [config.managerUserId]: true },
+      })
+    }
     const collection: Collection = {
       id,
       status: "draft",
       config,
-      participants: [],
+      participants,
       creationData: { completedBlockIds: [] },
       updatedAt: now,
     }
@@ -75,6 +88,17 @@ export class CollectionsService {
     patch: import("@/lib/domain/collections").CollectionUpdatePatch
   ): Promise<Collection | null> {
     return this.repository.update(id, patch)
+  }
+
+  async deleteCollection(id: string): Promise<void> {
+    const collection = await this.repository.getById(id)
+    if (!collection) {
+      throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
+    }
+    if (collection.status !== "draft") {
+      throw new CollectionsServiceError("Only draft collections can be deleted", "INVALID_STATUS")
+    }
+    await this.repository.delete(id)
   }
 
   async listCollections(filters?: ListCollectionsFilters): Promise<Collection[]> {

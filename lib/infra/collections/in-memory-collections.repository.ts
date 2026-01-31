@@ -55,6 +55,10 @@ export class InMemoryCollectionsRepository implements ICollectionsRepository {
     return updated
   }
 
+  async delete(id: string): Promise<void> {
+    store.delete(id)
+  }
+
   async list(filters?: ListCollectionsFilters): Promise<Collection[]> {
     let items = Array.from(store.values())
     if (filters?.status) {

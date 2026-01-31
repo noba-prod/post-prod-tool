@@ -8,7 +8,6 @@ export default function CollectionCreationPage() {
     <CreationTemplate
       title="Create new collection"
       breadcrumbs={[
-        { label: "Home", href: "/" },
         { label: "Collections", href: "/collections" },
         { label: "Create new collection" },
       ]}

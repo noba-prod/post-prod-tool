@@ -181,29 +181,27 @@ export type StandardEntityType = Exclude<EntityType, "self-photographer">
 
 /**
  * Entity types that require a physical location.
- * Required for: agency, photo-lab, edition-studio, hand-print-lab
- * Not required for: client, self-photographer
+ * Required for: photo-lab, edition-studio, hand-print-lab
+ * Not required for: noba, client, self-photographer, agency
  */
-export type EntityTypeWithLocation = 
-  | "agency" 
-  | "photo-lab" 
-  | "edition-studio" 
+export type EntityTypeWithLocation =
+  | "photo-lab"
+  | "edition-studio"
   | "hand-print-lab"
 
 /**
  * Entity types that do NOT require a physical location.
  */
-export type EntityTypeWithoutLocation = "noba" | "client" | "self-photographer"
+export type EntityTypeWithoutLocation = "noba" | "client" | "self-photographer" | "agency"
 
 /**
  * Check if an entity type requires location.
- * Based on domain rules from users-roles-access-model.md:
- * - Requires location: agency, photo-lab, edition-studio, hand-print-lab
- * - Does NOT require location: noba, client, self-photographer
+ * Based on domain rules:
+ * - Requires location: photo-lab, edition-studio, hand-print-lab
+ * - Does NOT require location: noba, client, self-photographer, agency
  */
 export function entityRequiresLocation(type: EntityType): type is EntityTypeWithLocation {
   const typesRequiringLocation: EntityType[] = [
-    "agency",
     "photo-lab",
     "edition-studio",
     "hand-print-lab",
@@ -226,9 +224,9 @@ export const ENTITY_TYPE_DISPLAY_NAMES: Record<EntityType, string> = {
   "client": "Client",
   "agency": "Agency",
   "photo-lab": "Photo Lab",
-  "edition-studio": "Edition Studio",
+  "edition-studio": "Retouch/Post Studio",
   "hand-print-lab": "Hand Print Lab",
-  "self-photographer": "Self-Photographer",
+  "self-photographer": "Photographer",
 }
 
 /**
@@ -254,10 +252,12 @@ export function entityTypeToLabel(type: EntityType): string {
 
 /**
  * Get human-friendly display label for a role.
+ * Returns "Viewer" when role is null/undefined or not in ROLE_DISPLAY_NAMES.
  * @example roleToLabel("admin") // "Admin"
  */
-export function roleToLabel(role: Role): string {
-  return ROLE_DISPLAY_NAMES[role]
+export function roleToLabel(role: Role | undefined | null): string {
+  if (role == null) return "Viewer"
+  return ROLE_DISPLAY_NAMES[role] ?? "Viewer"
 }
 
 /**

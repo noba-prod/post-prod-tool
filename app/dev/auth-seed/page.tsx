@@ -49,7 +49,7 @@ export default function AuthSeedPage() {
         await mockAuthAdapter.markEmailVerified(internalEmail)
         
         const roleDisplay = selectedEntityType === "self-photographer" 
-          ? "admin (self-photographer)" 
+          ? "admin (photographer)" 
           : roleToLabel(selectedRole!)
         
         toast.success(
@@ -188,7 +188,7 @@ export default function AuthSeedPage() {
             {selectedEntityType === "self-photographer" && (
               <Alert>
                 <AlertDescription className="text-sm">
-                  Self-photographer no tiene roles (siempre admin)
+                  Photographer no tiene roles (siempre admin)
                 </AlertDescription>
               </Alert>
             )}
@@ -196,7 +196,7 @@ export default function AuthSeedPage() {
             <Button 
               onClick={handleAddInternal} 
               className="w-full"
-              disabled={selectedEntityType && selectedEntityType !== "self-photographer" && !selectedRole}
+              disabled={Boolean(selectedEntityType && selectedEntityType !== "self-photographer" && !selectedRole)}
             >
               {selectedEntityType 
                 ? `Add User with Entity (${entityTypeToLabel(selectedEntityType)})` 

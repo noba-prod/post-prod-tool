@@ -6,19 +6,24 @@ import { CollectionTemplate } from "@/components/custom/templates/collection-tem
 import type { CollectionTemplateStep } from "@/components/custom/templates/collection-template"
 import { createCollectionsService } from "@/lib/services"
 import { getRepositoryInstances } from "@/lib/services"
+import { useUserContext } from "@/lib/contexts/user-context"
 import {
   getViewStepDefinitions,
   configToViewStepsInput,
   viewStepsWithStatusFromCollection,
+  resolveUserForPermission,
+  canUserEditStep,
 } from "@/lib/domain/collections"
+import type { StepId, UserForPermission, CollectionDraft } from "@/lib/domain/collections"
 
 /**
  * Maps view-mode steps (with status and deadlines from collection) to CollectionTemplateStep.
- * Reuses the same structure as the demo; steps are derived from collection config
- * (digital only / digital + edition / hand print only / handprint + different lab / etc.).
+ * Adds canEdit per step from current user's permission (collections-logic §8, §9).
  */
 function viewStepsToTemplateSteps(
-  withStatus: ReturnType<typeof viewStepsWithStatusFromCollection>
+  withStatus: ReturnType<typeof viewStepsWithStatusFromCollection>,
+  collection: CollectionDraft | null,
+  userForPermission: UserForPermission | null
 ): CollectionTemplateStep[] {
   return withStatus.map((step) => ({
     id: step.id,
@@ -37,6 +42,10 @@ function viewStepsToTemplateSteps(
     inactive: step.inactive,
     annotation: step.annotation,
     attention: step.attention,
+    canEdit:
+      userForPermission && collection
+        ? canUserEditStep(userForPermission, step.id as StepId, collection)
+        : false,
   }))
 }
 
@@ -47,6 +56,7 @@ export default function CollectionViewPage({
 }) {
   const { id } = React.use(params)
   const router = useRouter()
+  const { user, isNobaUser } = useUserContext()
   const [loading, setLoading] = React.useState(true)
   const [collection, setCollection] = React.useState<Awaited<
     ReturnType<ReturnType<typeof createCollectionsService>["getCollectionById"]>
@@ -55,6 +65,11 @@ export default function CollectionViewPage({
   const [photographerName, setPhotographerName] = React.useState<string | undefined>(undefined)
 
   const service = React.useMemo(() => createCollectionsService(), [])
+
+  const userForPermission = React.useMemo(() => {
+    if (!collection || !user?.id) return null
+    return resolveUserForPermission(user.id, isNobaUser, collection)
+  }, [collection, user?.id, isNobaUser])
 
   React.useEffect(() => {
     if (!id) {
@@ -135,7 +150,7 @@ export default function CollectionViewPage({
   const viewStepsConfig = configToViewStepsInput(collection.config)
   const definitions = getViewStepDefinitions(viewStepsConfig)
   const stepsWithStatus = viewStepsWithStatusFromCollection(definitions, collection.config)
-  const steps = viewStepsToTemplateSteps(stepsWithStatus)
+  const steps = viewStepsToTemplateSteps(stepsWithStatus, collection, userForPermission)
 
   const stageStatus =
     collection.status === "in_progress" ? "in-progress" : "upcoming"

@@ -155,9 +155,11 @@ export function ShootingSetupStepContent({
           <Titles type="form" title="Location" showSubtitle={false} />
           <RowVariants variant="1">
             <Field>
-              <FieldLabel>Street address</FieldLabel>
+              <FieldLabel htmlFor="shooting-street-address">Street address</FieldLabel>
               <FieldContent>
                 <Input
+                  id="shooting-street-address"
+                  type="text"
                   value={c.shootingStreetAddress ?? ""}
                   onChange={(e) =>
                     onShootingSetupChange({
@@ -172,9 +174,11 @@ export function ShootingSetupStepContent({
           </RowVariants>
           <RowVariants variant="3">
             <Field>
-              <FieldLabel>ZIP code</FieldLabel>
+              <FieldLabel htmlFor="shooting-zip-code">ZIP code</FieldLabel>
               <FieldContent>
                 <Input
+                  id="shooting-zip-code"
+                  type="text"
                   value={c.shootingZipCode ?? ""}
                   onChange={(e) =>
                     onShootingSetupChange({

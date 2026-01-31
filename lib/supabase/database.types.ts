@@ -190,6 +190,11 @@ export interface Collection {
   // Lifecycle (collections-logic §5.3, §6)
   status: string
   published_at: string | null
+  // noba* internal users (owner + members)
+  noba_user_ids: string[]
+  noba_edit_permission_by_user_id: Record<string, boolean>
+  // Edit permission by user id per participant role (Edit permission switch; optional until migration 012)
+  participant_edit_permissions?: Record<string, Record<string, boolean>>
   // Timestamps
   created_at: string
   updated_at: string
@@ -253,6 +258,9 @@ export interface CollectionInsert {
   check_finals_photographer_check_time?: string | null
   status?: string
   published_at?: string | null
+    noba_user_ids?: string[]
+  noba_edit_permission_by_user_id?: Record<string, boolean>
+  participant_edit_permissions?: Record<string, Record<string, boolean>>
   created_at?: string
   updated_at?: string
 }
@@ -314,6 +322,9 @@ export interface CollectionUpdate {
   check_finals_photographer_check_time?: string | null
   status?: string
   published_at?: string | null
+  noba_user_ids?: string[]
+  noba_edit_permission_by_user_id?: Record<string, boolean>
+  participant_edit_permissions?: Record<string, Record<string, boolean>>
   updated_at?: string
 }
 

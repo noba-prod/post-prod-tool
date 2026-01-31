@@ -136,7 +136,7 @@ export default function TestFlowPage() {
       setUserCreated(true)
       
       const roleDisplay = selectedEntityType === "self-photographer" 
-        ? "admin (self-photographer has no roles)" 
+        ? "admin (photographer has no roles)" 
         : roleToLabel(selectedRole!)
       
       toast.success(
@@ -318,7 +318,7 @@ export default function TestFlowPage() {
               </Select>
               {selectedEntityType === "self-photographer" && (
                 <p className="text-xs text-muted-foreground">
-                  Self-photographer no tiene roles (siempre admin)
+                  Photographer no tiene roles (siempre admin)
                 </p>
               )}
             </div>

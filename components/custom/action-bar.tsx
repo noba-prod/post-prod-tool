@@ -13,6 +13,8 @@ interface ActionBarProps {
   showPrimary?: boolean
   /** Show secondary button */
   showSecondary?: boolean
+  /** Secondary button variant (default | destructive) */
+  secondaryVariant?: "default" | "destructive"
   /** Primary button disabled state */
   primaryDisabled?: boolean
   /** Secondary button disabled state */
@@ -42,6 +44,7 @@ export function ActionBar({
   secondaryLabel = "Secondary",
   showPrimary = true,
   showSecondary = true,
+  secondaryVariant = "default",
   primaryDisabled = false,
   secondaryDisabled = false,
   onPrimaryClick,
@@ -58,7 +61,7 @@ export function ActionBar({
       {/* Secondary button */}
       {showSecondary && (
         <Button
-          variant="secondary"
+          variant={secondaryVariant === "destructive" ? "destructive" : "secondary"}
           size="lg"
           onClick={onSecondaryClick}
           disabled={secondaryDisabled}

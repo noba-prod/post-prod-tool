@@ -16,7 +16,7 @@ const demoParticipants = [
   { role: "Photographer", name: "@tomhaser", count: 1 },
   { role: "Lab (low-res)", name: "@revealcoruña", count: 3 },
   { role: "Hand print lab (LR to HR)", name: "@reveladospacosl", count: 2 },
-  { role: "Edition studio", name: "@retoquesfotograficosmariloles", count: 1 },
+  { role: "Retouch/Post Studio", name: "@retoquesfotograficosmariloles", count: 1 },
 ]
 
 /**

@@ -88,6 +88,11 @@ export class LocalStorageCollectionsRepository implements ICollectionsRepository
     return updated
   }
 
+  async delete(id: string): Promise<void> {
+    const items = readAll().filter((c) => c.id !== id)
+    writeAll(items)
+  }
+
   async list(filters?: ListCollectionsFilters): Promise<Collection[]> {
     let items = readAll()
     if (filters?.status) {

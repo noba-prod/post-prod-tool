@@ -8,6 +8,15 @@ import { EntityBasicInformationForm } from "@/components/custom/entity-basic-inf
 import { SelfPhotographerForm } from "@/components/custom/self-photographer-form"
 import { UserCreationForm } from "@/components/custom/user-creation-form"
 import { ModalWindow } from "@/components/custom/modal-window"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
@@ -24,7 +33,7 @@ import { formatDistanceToNow } from "date-fns"
 // PAGE COMPONENT
 // =============================================================================
 
-export default function EntityDetailPage() {
+export default function OrganizationDetailPage() {
   const params = useParams()
   const router = useRouter()
   const userContext = useUserContext()
@@ -49,6 +58,10 @@ export default function EntityDetailPage() {
   const [isEditUserModalOpen, setIsEditUserModalOpen] = React.useState(false)
   const [editingUserId, setEditingUserId] = React.useState<string | null>(null)
   const [isUpdatingUser, setIsUpdatingUser] = React.useState(false)
+
+  // Delete entity confirmation dialog
+  const [isDeleteEntityDialogOpen, setIsDeleteEntityDialogOpen] = React.useState(false)
+  const [isDeletingEntity, setIsDeletingEntity] = React.useState(false)
 
   // Fetch entity data
   const fetchEntityData = React.useCallback(async () => {
@@ -157,7 +170,7 @@ export default function EntityDetailPage() {
         }
       }
 
-      const response = await fetch(`/api/entities/${entityId}`, {
+      const response = await fetch(`/api/organizations/${entityId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -165,7 +178,7 @@ export default function EntityDetailPage() {
 
       if (!response.ok) {
         const errorBody = (await response.json()) as { error?: string }
-        throw new Error(errorBody.error || "Failed to update entity")
+        throw new Error(errorBody.error || "Failed to update organization")
       }
 
       const result = (await response.json()) as { entity: import("@/lib/types").Entity }
@@ -174,13 +187,13 @@ export default function EntityDetailPage() {
       const updatedData = await fetchEntityData()
       setEntity(updatedData)
       
-      toast.success("Entity information updated", {
+      toast.success("Organization information updated", {
         description: `${result.entity.name} has been updated successfully.`,
       })
     } catch (error) {
-      console.error("Failed to update entity:", error)
-      toast.error("Failed to update entity", {
-        description: error instanceof Error ? error.message : "An error occurred while updating the entity.",
+      console.error("Failed to update organization:", error)
+      toast.error("Failed to update organization", {
+        description: error instanceof Error ? error.message : "An error occurred while updating the organization.",
       })
     } finally {
       setIsSavingBasicInfo(false)
@@ -196,7 +209,7 @@ export default function EntityDetailPage() {
     console.log("handleOpenNewMemberModal called, entityId:", entityId)
     if (!entityId) {
       toast.error("Cannot add member", {
-        description: "Entity must be loaded before adding team members.",
+        description: "Organization must be loaded before adding team members.",
       })
       return
     }
@@ -231,7 +244,7 @@ export default function EntityDetailPage() {
           : null,
       }
       const payload = mapFormToUserPayload(userFormData)
-      const response = await fetch(`/api/entities/${entityId}/members`, {
+      const response = await fetch(`/api/organizations/${entityId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -368,7 +381,7 @@ export default function EntityDetailPage() {
     if (!entity?.entity) {
       return (
         <div className="w-full py-12 text-center text-muted-foreground">
-          No entity data available
+          No organization data available
         </div>
       )
     }
@@ -475,6 +488,31 @@ export default function EntityDetailPage() {
     }
   )
 
+  // Delete entity: confirm then call API and redirect
+  const handleConfirmDeleteEntity = React.useCallback(async () => {
+    if (!entityId || !entity?.entity) return
+    setIsDeletingEntity(true)
+    try {
+      const res = await fetch(`/api/organizations/${entityId}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to delete organization")
+      }
+      setIsDeleteEntityDialogOpen(false)
+      toast.success("Organization deleted", {
+        description: `${entity.entity.name} has been deleted.`,
+      })
+      router.push("/organizations")
+    } catch (error) {
+      console.error("Delete entity error:", error)
+      toast.error("Failed to delete organization", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+      })
+    } finally {
+      setIsDeletingEntity(false)
+    }
+  }, [entityId, entity?.entity, router])
+
   // Map entity data to ViewEntityData
   const viewEntityData = React.useMemo(() => {
     if (!entity) {
@@ -498,11 +536,11 @@ export default function EntityDetailPage() {
       type: entityTypeToLabel(entity.entity.type),
       rawType: entity.entity.type,
       teamMembers: entity.teamMembers.length,
-      collections: 0, // TODO: Fetch collections count when available
+      collections: entity.collectionsList?.length ?? 0,
       lastUpdate,
       entity: entity.entity,
       teamMembersList: entity.teamMembers.length > 0 ? entity.teamMembers : undefined,
-      collectionsList: undefined, // TODO: Fetch collections when available
+      collectionsList: entity.collectionsList?.length ? entity.collectionsList : undefined,
       adminUser: entity.adminUser,
     }
   }, [entity])
@@ -512,15 +550,15 @@ export default function EntityDetailPage() {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
-          <h1 className="text-2xl font-semibold">Invalid entity ID</h1>
+          <h1 className="text-2xl font-semibold">Invalid organization ID</h1>
           <p className="text-sm text-muted-foreground">
-            The entity ID is missing from the URL.
+            The organization ID is missing from the URL.
           </p>
           <button
-            onClick={() => router.push("/entities")}
+            onClick={() => router.push("/organizations")}
             className="mt-4 px-4 py-2 text-sm font-medium text-primary hover:underline"
           >
-            Back to Entities
+            Back to Organizations
           </button>
         </div>
       </div>
@@ -531,7 +569,7 @@ export default function EntityDetailPage() {
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">Loading entity...</p>
+        <p className="text-sm text-muted-foreground">Loading organization...</p>
       </div>
     )
   }
@@ -541,15 +579,15 @@ export default function EntityDetailPage() {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
-          <h1 className="text-2xl font-semibold">Entity not found</h1>
+          <h1 className="text-2xl font-semibold">Organization not found</h1>
           <p className="text-sm text-muted-foreground">
-            The entity you're looking for doesn't exist or has been removed.
+            The organization you're looking for doesn't exist or has been removed.
           </p>
           <button
-            onClick={() => router.push("/entities")}
+            onClick={() => router.push("/organizations")}
             className="mt-4 px-4 py-2 text-sm font-medium text-primary hover:underline"
           >
-            Back to Entities
+            Back to Organizations
           </button>
         </div>
       </div>
@@ -561,8 +599,7 @@ export default function EntityDetailPage() {
     <>
       <ViewTemplate
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Entities", href: "/entities" },
+          { label: "Organizations", href: "/organizations" },
           { label: entity.entity.name },
         ]}
         sections={sections}
@@ -573,10 +610,7 @@ export default function EntityDetailPage() {
           // Optional: handle section changes
           console.log("Section changed:", sectionId)
         }}
-        onDelete={() => {
-          // TODO: Handle delete
-          console.log("Delete clicked")
-        }}
+        onDelete={() => setIsDeleteEntityDialogOpen(true)}
         navBarProps={{
           variant: "noba",
           userName: "Martin Becerra",
@@ -618,6 +652,41 @@ export default function EntityDetailPage() {
           onCancel={handleCloseEditUserModal}
         />
       )}
+
+      {/* Delete Entity confirmation dialog */}
+      <Dialog open={isDeleteEntityDialogOpen} onOpenChange={setIsDeleteEntityDialogOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold leading-none">
+              <span className="text-primary">Delete </span>
+              <span className="text-lime-500">
+                @{(entity?.entity?.name ?? "organization").toLowerCase().replace(/\s+/g, "")}
+              </span>
+            </DialogTitle>
+            <DialogDescription>
+              This action can&apos;t be undone. If you delete this{" "}
+              {entity?.entity?.type ? entityTypeToLabel(entity.entity.type) : "organization"}
+              , it might affect other collections in progress.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-start gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setIsDeleteEntityDialogOpen(false)}
+              disabled={isDeletingEntity}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDeleteEntity}
+              disabled={isDeletingEntity}
+            >
+              {isDeletingEntity ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

@@ -85,6 +85,18 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     return mapDbCollectionToDomain(row as DbCollection, await this.fetchMembers(id))
   }
 
+  async delete(id: string): Promise<void> {
+    const supabase = createClient()
+    const memTbl = supabase.from("collection_members") as ReturnType<typeof supabase.from>
+    await memTbl.delete().eq("collection_id", id)
+    const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
+    const { error } = await tbl.delete().eq("id", id)
+    if (error) {
+      console.error("[SupabaseCollectionsRepository] delete error:", error)
+      throw error
+    }
+  }
+
   async list(filters?: ListCollectionsFilters): Promise<Collection[]> {
     const supabase = createClient()
     let idsToFilter: string[] | null = null
@@ -93,8 +105,9 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
         .from("collection_members") as ReturnType<typeof supabase.from>)
         .select("collection_id")
         .eq("user_id", filters.createdByUserId)
-      idsToFilter = (memberRows ?? []).map((r: { collection_id: string }) => r.collection_id)
-      if (idsToFilter.length === 0) return []
+      const ids = (memberRows ?? []).map((r: { collection_id: string }) => r.collection_id)
+      if (ids.length === 0) return []
+      idsToFilter = ids
     }
 
     let query = (supabase.from("collections") as ReturnType<typeof supabase.from>)

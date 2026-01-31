@@ -39,6 +39,14 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     reference: row.reference ?? undefined,
     clientEntityId: row.client_id,
     managerUserId,
+    nobaUserIds: Array.isArray((row as { noba_user_ids?: unknown }).noba_user_ids)
+      ? ((row as { noba_user_ids: string[] }).noba_user_ids)
+      : undefined,
+    nobaEditPermissionByUserId:
+      (row as { noba_edit_permission_by_user_id?: unknown }).noba_edit_permission_by_user_id != null &&
+      typeof (row as { noba_edit_permission_by_user_id: Record<string, boolean> }).noba_edit_permission_by_user_id === "object"
+        ? (row as { noba_edit_permission_by_user_id: Record<string, boolean> }).noba_edit_permission_by_user_id
+        : undefined,
     hasAgency: row.photographer_collaborates_with_agency,
     hasLowResLab: row.low_res_to_high_res_digital,
     hasHandprint: row.low_res_to_high_res_hand_print,
@@ -97,7 +105,20 @@ const DB_ROLE_TO_DOMAIN: Record<CollectionMemberRole, ParticipantRole | null> = 
   print_technician: "handprint_lab",
 }
 
+/** Stored edit permissions: role -> userId -> boolean. New users default to true. */
+function getEditPermissionByUserId(
+  role: ParticipantRole,
+  userIds: string[],
+  stored: Record<string, Record<string, boolean>>
+): Record<string, boolean> {
+  const forRole = stored[role] ?? {}
+  return Object.fromEntries(userIds.map((uid) => [uid, forRole[uid] ?? true]))
+}
+
 function buildParticipants(row: DbCollection, members: CollectionMember[]): CollectionParticipant[] {
+  const storedEdit =
+    (row as { participant_edit_permissions?: Record<string, Record<string, boolean>> })
+      .participant_edit_permissions ?? {}
   const byRole = new Map<CollectionMemberRole, CollectionMember[]>()
   for (const m of members) {
     const list = byRole.get(m.role) ?? []
@@ -107,57 +128,72 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
   const participants: CollectionParticipant[] = []
   if (row.client_id) {
     const clientMembers = byRole.get("manager") ?? []
+    const userIds = clientMembers.map((m) => m.user_id)
     participants.push({
       role: "client",
       entityId: row.client_id,
-      userIds: clientMembers.map((m) => m.user_id),
+      userIds,
+      editPermissionByUserId: getEditPermissionByUserId("client", userIds, storedEdit),
     })
   }
   if (row.photographer_id) {
     const photoMembers = byRole.get("photographer") ?? []
+    const userIds = photoMembers.map((m) => m.user_id)
     participants.push({
       role: "photographer",
       entityId: row.photographer_id,
-      userIds: photoMembers.map((m) => m.user_id),
+      userIds,
+      editPermissionByUserId: getEditPermissionByUserId("photographer", userIds, storedEdit),
     })
   }
   if (row.lab_low_res_id) {
     const labMembers = byRole.get("lab_technician") ?? []
+    const userIds = labMembers.map((m) => m.user_id)
     participants.push({
       role: "lab",
       entityId: row.lab_low_res_id,
-      userIds: labMembers.map((m) => m.user_id),
+      userIds,
+      editPermissionByUserId: getEditPermissionByUserId("lab", userIds, storedEdit),
     })
   }
   if (row.edition_studio_id) {
     const editorMembers = byRole.get("editor") ?? []
+    const userIds = editorMembers.map((m) => m.user_id)
     participants.push({
       role: "edition_studio",
       entityId: row.edition_studio_id,
-      userIds: editorMembers.map((m) => m.user_id),
+      userIds,
+      editPermissionByUserId: getEditPermissionByUserId("edition_studio", userIds, storedEdit),
     })
   }
   if (row.hand_print_lab_id) {
     const printMembers = byRole.get("print_technician") ?? []
+    const userIds = printMembers.map((m) => m.user_id)
     participants.push({
       role: "handprint_lab",
       entityId: row.hand_print_lab_id,
-      userIds: printMembers.map((m) => m.user_id),
+      userIds,
+      editPermissionByUserId: getEditPermissionByUserId("handprint_lab", userIds, storedEdit),
     })
   }
   const managerMembers = byRole.get("manager") ?? []
   if (managerMembers.length > 0) {
-    const managerUserId = managerMembers[0].user_id
+    const managerUserIds = managerMembers.map((m) => m.user_id)
+    const editPermissionByUserId = getEditPermissionByUserId("producer", managerUserIds, storedEdit)
     const alreadyClient = participants.some((p) => p.role === "client")
     if (!alreadyClient) {
       participants.push({
         role: "producer",
-        userIds: managerMembers.map((m) => m.user_id),
+        entityId: row.client_id ?? undefined,
+        userIds: managerUserIds,
+        editPermissionByUserId,
       })
     } else {
       participants.push({
         role: "producer",
-        userIds: managerMembers.map((m) => m.user_id),
+        entityId: row.client_id ?? undefined,
+        userIds: managerUserIds,
+        editPermissionByUserId,
       })
     }
   }
@@ -249,12 +285,15 @@ function deriveCompletedBlockIds(
     completed.push("edition_config")
   }
   
-  // Check finals: needs all four fields
-  const hasCheckFinals = 
-    !!config.checkFinalsPhotographerDueDate?.trim() &&
-    !!config.checkFinalsPhotographerDueTime?.trim() &&
-    !!config.clientFinalsDeadline?.trim() &&
-    !!config.clientFinalsDeadlineTime?.trim()
+  // Check finals: client deadline always; photographer date/time only when that block is shown (not digital-only without edition)
+  const isPhotographerCheckRedundant = !config.hasHandprint && !config.hasEditionStudio
+  const hasCheckFinalsClient =
+    !!config.clientFinalsDeadline?.trim() && !!config.clientFinalsDeadlineTime?.trim()
+  const hasCheckFinals =
+    hasCheckFinalsClient &&
+    (isPhotographerCheckRedundant ||
+      (!!config.checkFinalsPhotographerDueDate?.trim() &&
+        !!config.checkFinalsPhotographerDueTime?.trim()))
   if (hasCheckFinals) {
     completed.push("check_finals")
   }
@@ -362,6 +401,17 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     check_finals_photographer_check_time: conf.checkFinalsPhotographerDueTime ?? null,
     status: c.status ?? "draft",
     published_at: c.publishedAt ?? null,
+    noba_user_ids: conf.nobaUserIds ?? [],
+    noba_edit_permission_by_user_id: (conf.nobaEditPermissionByUserId ?? {}) as Record<string, boolean>,
+    participant_edit_permissions: (() => {
+      const out: Record<string, Record<string, boolean>> = {}
+      for (const p of c.participants) {
+        if (p.editPermissionByUserId && Object.keys(p.editPermissionByUserId).length > 0) {
+          out[p.role] = { ...p.editPermissionByUserId }
+        }
+      }
+      return out
+    })(),
   }
 }
 
@@ -429,6 +479,8 @@ export function mapDomainPatchToDbUpdate(
     if (conf.editionStudioDueTime !== undefined) u.precheck_studio_final_edits_time = conf.editionStudioDueTime ?? null
     if (conf.checkFinalsPhotographerDueDate !== undefined) u.check_finals_photographer_check_date = isoToDbDate(conf.checkFinalsPhotographerDueDate)
     if (conf.checkFinalsPhotographerDueTime !== undefined) u.check_finals_photographer_check_time = conf.checkFinalsPhotographerDueTime ?? null
+    if (conf.nobaUserIds !== undefined) u.noba_user_ids = conf.nobaUserIds
+    if (conf.nobaEditPermissionByUserId !== undefined) u.noba_edit_permission_by_user_id = conf.nobaEditPermissionByUserId
   }
   if (patch.participants) {
     const photographerId = patch.participants.find((p) => p.role === "photographer")?.entityId
@@ -439,6 +491,14 @@ export function mapDomainPatchToDbUpdate(
     u.lab_low_res_id = labId ?? null
     u.edition_studio_id = editionStudioId ?? null
     u.hand_print_lab_id = handprintLabId ?? null
+    // Persist edit permission by user id per role (Edit permission switch)
+    const participant_edit_permissions: Record<string, Record<string, boolean>> = {}
+    for (const p of patch.participants) {
+      if (p.editPermissionByUserId && Object.keys(p.editPermissionByUserId).length > 0) {
+        participant_edit_permissions[p.role] = { ...p.editPermissionByUserId }
+      }
+    }
+    u.participant_edit_permissions = participant_edit_permissions
   }
   u.updated_at = new Date().toISOString()
   return u

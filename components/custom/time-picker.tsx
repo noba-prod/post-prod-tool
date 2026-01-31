@@ -52,7 +52,7 @@ export function TimePicker({
   value,
   onValueChange,
   placeholder = "Select a slot",
-  timeSlots = DEFAULT_TIME_SLOTS,
+  timeSlots = [...DEFAULT_TIME_SLOTS],
   disabled = false,
   className,
 }: TimePickerProps) {

@@ -13,6 +13,16 @@ import { LrToHrSetupStepContent } from "@/components/custom/lr-to-hr-setup-step-
 import { EditionConfigStepContent } from "@/components/custom/edition-config-step-content"
 import { CheckFinalsStepContent } from "@/components/custom/check-finals-step-content"
 import { PublishCollectionDialog } from "@/components/custom/publish-collection-dialog"
+import { NewCollectionModal } from "@/components/custom/new-collection-modal"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { createCollectionsService } from "@/lib/services"
 import { getRepositoryInstances } from "@/lib/services"
 import {
@@ -22,7 +32,7 @@ import {
   isCreationStepContentComplete,
   getChronologyConstraints,
   derivePublishedStatus,
-} from "@/lib/domain/collections"
+} from "@/lib/domain/collections/workflow"
 import type {
   CreationBlockId,
   CollectionParticipant,
@@ -31,6 +41,7 @@ import type {
 } from "@/lib/domain/collections"
 import { createClient } from "@/lib/supabase/client"
 import type { Organization } from "@/lib/supabase/database.types"
+import { useUserContext } from "@/lib/contexts/user-context"
 
 // ============================================================================
 // SUPABASE HELPERS
@@ -83,6 +94,19 @@ async function fetchOrganizationsByIds(ids: string[]): Promise<Record<string, st
   return map
 }
 
+/** Resolve manager user from Supabase when in-memory repo doesn't have them (e.g. client user). */
+async function fetchProfileEntityId(userId: string): Promise<string | null> {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("profiles") as any)
+    .select("organization_id")
+    .eq("id", userId)
+    .maybeSingle()
+  if (error || !data) return null
+  return (data as { organization_id: string | null }).organization_id ?? null
+}
+
 /** UI labels for Creation Template sidebar — map stepId to PHOTO labels (collections-logic §4) */
 const STEP_LABELS: Record<CreationBlockId, string> = {
   participants: "Participants",
@@ -107,8 +131,8 @@ const ROLE_DISPLAY: Record<string, string> = {
   photographer: "Photographer",
   agency: "Agency",
   lab: "Lab",
-  handprint_lab: "Hand print lab",
-  edition_studio: "Edition studio",
+  handprint_lab: "Hand Print Lab",
+  edition_studio: "Retouch/Post Studio",
 }
 
 const PLACEHOLDER = (
@@ -135,6 +159,11 @@ export default function CollectionCreatePage({
   const [activeStep, setActiveStep] = React.useState<CreationBlockId | "">("")
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false)
   const [isPublishing, setIsPublishing] = React.useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false)
+  const [isDeleting, setIsDeleting] = React.useState(false)
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = React.useState(false)
+  const [isSavingSettings, setIsSavingSettings] = React.useState(false)
+  const { user } = useUserContext()
   const [participantSummaries, setParticipantSummaries] = React.useState<
     { role: string; name: string }[]
   >([])
@@ -172,23 +201,28 @@ export default function CollectionCreatePage({
     if (hasClient && hasProducer) return
 
     if (!hasProducer && draft.config.managerUserId) {
-      getRepositoryInstances()
-        .userRepository?.getUserById(draft.config.managerUserId)
+      const managerUserId = draft.config.managerUserId
+      Promise.resolve(getRepositoryInstances().userRepository?.getUserById(managerUserId))
         .then((user) => {
-          if (!user?.entityId) return
+          const entityId = user?.entityId ?? null
+          return entityId != null ? Promise.resolve(entityId) : fetchProfileEntityId(managerUserId)
+        })
+        .then((entityId) => {
+          if (!entityId) return null
           const next: CollectionParticipant[] = [...draft.participants]
           if (!next.some((p) => p.role === "client") && draft.config.clientEntityId) {
             next.push({ role: "client", entityId: draft.config.clientEntityId })
           }
           next.push({
             role: "producer",
-            entityId: user.entityId,
-            userIds: [draft.config.managerUserId],
-            editPermissionByUserId: { [draft.config.managerUserId]: true },
+            entityId,
+            userIds: [managerUserId],
+            editPermissionByUserId: { [managerUserId]: true },
           })
-          service.updateCollection(id, { participants: next }).then((updated) => {
-            if (updated) setDraft(updated)
-          })
+          return service.updateCollection(id, { participants: next })
+        })
+        .then((updated) => {
+          if (updated) setDraft(updated)
         })
       return
     }
@@ -281,7 +315,22 @@ export default function CollectionCreatePage({
   const handleParticipantsChange = React.useCallback(
     (participants: CollectionParticipant[]) => {
       if (!draft || !id) return
+      // Optimistic update so Edit permission switch reflects immediately
+      setDraft({ ...draft, participants })
       service.updateCollection(id, { participants }).then((updated) => {
+        if (updated) setDraft(updated)
+      })
+    },
+    [draft, id, service]
+  )
+
+  const handleConfigChange = React.useCallback(
+    (patch: Partial<CollectionConfig>) => {
+      if (!draft || !id) return
+      const nextConfig = { ...draft.config, ...patch }
+      // Optimistic update so Edit permission switch reflects immediately (noba section)
+      setDraft({ ...draft, config: nextConfig })
+      service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
@@ -300,6 +349,8 @@ export default function CollectionCreatePage({
       | "shootingCountry"
     >>) => {
       if (!draft || !id) return
+      const nextConfig = { ...draft.config, ...patch }
+      setDraft({ ...draft, config: nextConfig })
       service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
@@ -488,11 +539,50 @@ export default function CollectionCreatePage({
     }
   }, [draft, id, service, router, isPublishing])
 
-  /** Delete collection draft (sidebar). */
+  /** Open delete confirmation dialog (sidebar trash icon). */
   const handleDeleteCollection = React.useCallback(() => {
-    if (!draft || !id) return
-    // TODO: implement delete draft then router.push("/collections")
-  }, [draft, id])
+    setIsDeleteConfirmOpen(true)
+  }, [])
+
+  /** Confirm delete draft and redirect. */
+  const handleConfirmDeleteCollection = React.useCallback(async () => {
+    if (!id || !service) return
+    setIsDeleting(true)
+    try {
+      await service.deleteCollection(id)
+      toast.success("Collection deleted.")
+      setIsDeleteConfirmOpen(false)
+      router.push("/collections")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete collection"
+      toast.error(message)
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [id, service, router])
+
+  /** Open collection settings modal (sidebar settings icon). */
+  const handleSettingsCollection = React.useCallback(() => {
+    setIsSettingsModalOpen(true)
+  }, [])
+
+  /** Save collection config from settings modal. */
+  const handleSettingsSubmit = React.useCallback(
+    (config: CollectionConfig) => {
+      if (!id || !draft) return
+      setIsSavingSettings(true)
+      service
+        .updateCollection(id, { config })
+        .then((updated) => {
+          if (updated) setDraft(updated)
+          setIsSettingsModalOpen(false)
+          toast.success("Collection settings saved.")
+        })
+        .catch(() => toast.error("Failed to save settings."))
+        .finally(() => setIsSavingSettings(false))
+    },
+    [id, draft, service]
+  )
 
   const blocks = React.useMemo(() => {
     if (!draft || steps.length === 0) return []
@@ -552,7 +642,7 @@ export default function CollectionCreatePage({
           : isDropoffPlan
             ? participantSummaries.filter((p) => {
                 const roles = ["Client", "Photographer", "Lab"]
-                if (draft.config.handprintIsDifferentLab) roles.push("Hand print lab")
+                if (draft.config.handprintIsDifferentLab) roles.push("Hand Print Lab")
                 return roles.includes(p.role)
               })
             : isLowResConfig
@@ -565,11 +655,11 @@ export default function CollectionCreatePage({
                   )
                 : isLrToHrStep
                   ? participantSummaries.filter((p) =>
-                      ["Client", "Lab", "Hand print lab"].includes(p.role)
+                      ["Client", "Lab", "Hand Print Lab"].includes(p.role)
                     )
                   : isEditionConfig
                     ? participantSummaries.filter((p) =>
-                        ["Client", "Photographer", "Edition studio"].includes(p.role)
+                        ["Client", "Photographer", "Retouch/Post Studio"].includes(p.role)
                       )
                     : isCheckFinals
                       ? participantSummaries.filter((p) =>
@@ -592,6 +682,7 @@ export default function CollectionCreatePage({
             <ParticipantsStepContent
               draft={draft}
               onParticipantsChange={handleParticipantsChange}
+              onConfigChange={handleConfigChange}
             />
           ) : isShootingSetup ? (
             <ShootingSetupStepContent
@@ -745,7 +836,6 @@ export default function CollectionCreatePage({
       <CreationTemplate
         title={draft.config.name || "Create collection"}
         breadcrumbs={[
-          { label: "Home", href: "/" },
           { label: "Collections", href: "/collections" },
           { label: draft.config.name || "Create collection" },
         ]}
@@ -770,6 +860,7 @@ export default function CollectionCreatePage({
           .map((s) => s.stepId)}
         onSidebarItemClick={(stepId) => setActiveStep(stepId as CreationBlockId)}
         onDeleteCollection={handleDeleteCollection}
+        onSettingsCollection={handleSettingsCollection}
         onPublishCollection={handlePublish}
         publishCollectionDisabled={
           !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
@@ -792,6 +883,45 @@ export default function CollectionCreatePage({
           isPublishing
         }
         onPublish={handleConfirmPublish}
+      />
+
+      {/* Delete collection confirmation */}
+      <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete collection?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this draft. You cannot undo this action.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => setIsDeleteConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="lg"
+              onClick={handleConfirmDeleteCollection}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Collection settings modal (main characteristics) */}
+      <NewCollectionModal
+        open={isSettingsModalOpen}
+        onOpenChange={setIsSettingsModalOpen}
+        managerUserId={user?.id ?? draft.config.managerUserId ?? ""}
+        initialConfig={draft.config}
+        onSubmit={handleSettingsSubmit}
+        isSubmitting={isSavingSettings}
       />
     </>
   )

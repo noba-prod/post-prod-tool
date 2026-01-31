@@ -128,8 +128,8 @@ export function SelfPhotographerCreationForm({
     <ModalWindow
       open={open}
       onOpenChange={onOpenChange}
-      title="Create Self-Photographer"
-      subtitle="Create a new self-photographer entity and its admin user"
+      title="Create Photographer"
+      subtitle="Create a new photographer entity and its admin user"
       primaryLabel={isSubmitting ? "Creating..." : "Create photographer"}
       secondaryLabel="Cancel"
       showSecondary={false}
@@ -230,7 +230,7 @@ export function SelfPhotographerCreationForm({
 
             {/* Row 3: Entity Type (disabled) | Role (disabled) */}
             <RowVariants variant="2">
-              {/* Entity Type (fixed to Self-Photographer) */}
+              {/* Entity Type (fixed to Photographer) */}
               <Field>
                 <FieldLabel htmlFor="sp-entity-type" disabled={true}>
                   Entity type

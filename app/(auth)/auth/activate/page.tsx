@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,7 @@ import { activateInvitation } from "@/app/actions/auth"
 import { toast } from "sonner"
 import Image from "next/image"
 
-export default function ActivatePage() {
+function ActivateContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams.get("token") || ""
@@ -136,5 +136,26 @@ export default function ActivatePage() {
         </div>
       </div>
     </div>
+  )
+}
+
+const ActivateFallback = () => (
+  <div className="min-h-screen flex items-center justify-center p-8 bg-background">
+    <Card className="w-full max-w-md">
+      <CardContent className="pt-6">
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+)
+
+export default function ActivatePage() {
+  return (
+    <Suspense fallback={<ActivateFallback />}>
+      <ActivateContent />
+    </Suspense>
   )
 }

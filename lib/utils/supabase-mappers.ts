@@ -2,6 +2,7 @@ import type { Organization, OrganizationType, Profile } from "@/lib/supabase/dat
 import type { Entity, EntityType, Role, User } from "@/lib/types"
 
 const organizationTypeToEntityType: Record<OrganizationType, EntityType> = {
+  noba: "noba",
   client: "client",
   photography_agency: "agency",
   self_photographer: "self-photographer",

@@ -27,6 +27,7 @@ import { getRepositoryInstances } from "@/lib/services"
 import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
+import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
 
 interface CreationBlockParticipant {
   role: string
@@ -86,9 +87,11 @@ interface CreationTemplateProps {
   onSidebarItemClick?: (id: string) => void
   /** When create-collection: callback when Delete collection is clicked */
   onDeleteCollection?: () => void
-  /** When create-collection and Check Finals active: callback when Publish collection is clicked */
+  /** When create-collection: callback when Settings (collection config) is clicked */
+  onSettingsCollection?: () => void
+  /** When create-collection: callback when Publish collection is clicked */
   onPublishCollection?: () => void
-  /** When create-collection and Check Finals active: disable Publish until draft is complete */
+  /** When create-collection: disable Publish until draft is complete */
   publishCollectionDisabled?: boolean
   /** NavBar props */
   navBarProps?: {
@@ -110,8 +113,7 @@ interface CreationTemplateProps {
 export function CreationTemplate({
   title = "Create new entity",
   breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Entities", href: "/entities" },
+    { label: "Organizations", href: "/organizations" },
     { label: "Create Entity" },
   ],
   sidebarVariant = "create-entity",
@@ -126,6 +128,7 @@ export function CreationTemplate({
   completedStepIds,
   onSidebarItemClick,
   onDeleteCollection,
+  onSettingsCollection,
   onPublishCollection,
   publishCollectionDisabled = true,
   navBarProps,
@@ -210,18 +213,17 @@ export function CreationTemplate({
     setIsUpdatingCompany(true)
     try {
       const repos = getRepositoryInstances()
-      if (!repos.entityRepository) {
-        throw new Error("Entity repository not available")
-      }
-
-      // Convert form data to entity draft
       const draft = mapFormToEntityDraft(companyFormData)
 
-      // Update entity
-      const updatedEntity = await repos.entityRepository.updateEntity(userContext.entity.id, draft)
+      // Update entity: try in-memory repo first (mock auth); if null, update in Supabase (real auth)
+      let updatedEntity =
+        repos.entityRepository
+          ? await repos.entityRepository.updateEntity(userContext.entity.id, draft)
+          : null
 
       if (!updatedEntity) {
-        throw new Error("Failed to update entity")
+        const result = await updateOrganizationFromDraft(userContext.entity.id, draft)
+        updatedEntity = result.entity
       }
 
       // Dispatch session-changed event to refresh UserContext
@@ -417,6 +419,7 @@ export function CreationTemplate({
                   onItemClick={onSidebarItemClick}
                   onDelete={onDeleteCollection}
                   deleteLabel="Delete collection"
+                  onSettingsCollection={onSettingsCollection}
                   onPublish={onPublishCollection}
                   publishDisabled={publishCollectionDisabled}
                 />

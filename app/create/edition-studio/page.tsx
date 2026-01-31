@@ -63,6 +63,7 @@ export default function EditionStudioCreationPage() {
                 role: roleToLabel(member.role) as "Admin" | "Editor" | "Viewer",
                 collections: 0,
               }))}
+              onEditUser={creation.openEditUserModal}
               onDelete={(id) => {
                 console.log("Delete member:", id)
               }}
@@ -75,7 +76,7 @@ export default function EditionStudioCreationPage() {
         </LayoutSection>
       </Layout>
     ),
-    [creation.teamMembers, creation.openNewMemberModal]
+    [creation.teamMembers, creation.openNewMemberModal, creation.openEditUserModal]
   )
 
   // ==========================================================================
@@ -103,11 +104,10 @@ export default function EditionStudioCreationPage() {
   return (
     <>
       <CreationTemplate
-        title="Create new edition studio"
+        title="Create new Retouch/Post Studio"
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Entities", href: "/entities" },
-          { label: "Create new edition studio" },
+          { label: "Organizations", href: "/organizations" },
+          { label: "Create new Retouch/Post Studio" },
         ]}
         sidebarItems={[
           { id: "step-1", label: "Basic information" },
@@ -191,6 +191,27 @@ export default function EditionStudioCreationPage() {
           }}
           onCancel={creation.closeNewMemberModal}
           primaryLabel="Register member"
+          secondaryLabel="Cancel"
+        />
+      )}
+
+      {/* Edit User Modal (creation flow) */}
+      {creation.entity && creation.editingUserId && (
+        <UserCreationForm
+          open={!!creation.editingUserId}
+          onOpenChange={(open) => {
+            if (!open) creation.closeEditUserModal()
+          }}
+          mode="edit"
+          entity={{
+            type: creation.entityType,
+            name: creation.entity.name,
+          }}
+          initialUserData={creation.teamMembers.find((u) => u.id === creation.editingUserId) ?? undefined}
+          disabled={false}
+          onSubmit={creation.handleEditUserSubmit}
+          onCancel={creation.closeEditUserModal}
+          primaryLabel={creation.isUpdatingMember ? "Saving..." : "Save changes"}
           secondaryLabel="Cancel"
         />
       )}

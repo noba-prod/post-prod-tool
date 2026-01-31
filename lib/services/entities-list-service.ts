@@ -13,7 +13,7 @@ import type { OrganizationType, Profile } from "@/lib/supabase/database.types"
 export interface EntityListItem {
   id: string
   name: string
-  /** Display label for entity type (e.g., "Photo Lab", "Self-Photographer") */
+  /** Display label for entity type (e.g., "Photo Lab", "Photographer") */
   type: string
   /** Raw entity type for filtering */
   rawType: EntityType
@@ -36,6 +36,7 @@ export interface EntityListItem {
  * Aggregates data from entity and user repositories.
  */
 const organizationTypeToEntityType: Record<OrganizationType, EntityType> = {
+  noba: "noba",
   client: "client",
   photography_agency: "agency",
   self_photographer: "self-photographer",
@@ -55,7 +56,7 @@ function getEntityTypeLabel(entityType: EntityType): string {
   return entityTypeToLabel(entityType)
 }
 
-type EntitiesApiResponse = {
+export type EntitiesApiResponse = {
   organizations: Array<{
     id: string
     name: string
@@ -69,15 +70,66 @@ type EntitiesApiResponse = {
   debug?: Record<string, unknown>
 }
 
+/**
+ * Maps raw GET /api/organizations response to EntityListItem[].
+ * Used when you already have the API response and want to avoid a second fetch.
+ */
+export function mapOrganizationsApiToEntities(data: EntitiesApiResponse): EntityListItem[] {
+  if (!data.organizations || data.organizations.length === 0) {
+    return []
+  }
+
+  const profilesByOrganization = new Map<string, typeof data.profiles[0][]>()
+  for (const profile of data.profiles || []) {
+    if (!profile.organization_id) continue
+    const existing = profilesByOrganization.get(profile.organization_id) || []
+    existing.push(profile)
+    profilesByOrganization.set(profile.organization_id, existing)
+  }
+
+  const collectionsCountByOrganization = new Map<string, number>()
+  for (const collection of data.collections || []) {
+    const existing = collectionsCountByOrganization.get(collection.client_id) || 0
+    collectionsCountByOrganization.set(collection.client_id, existing + 1)
+  }
+
+  return data.organizations.map((organization) => {
+    const entityType = mapOrganizationTypeToEntityType(organization.type)
+    const typeLabel = getEntityTypeLabel(entityType)
+    const organizationProfiles = profilesByOrganization.get(organization.id) || []
+    const admins = organizationProfiles.filter((profile) => profile.role === "admin")
+
+    let adminDisplay = "No admin"
+    if (admins.length > 0) {
+      const admin = admins[0]
+      const adminName = [admin.first_name, admin.last_name].filter(Boolean).join(" ").trim()
+      if (adminName) {
+        adminDisplay = adminName
+      }
+    }
+
+    return {
+      id: organization.id,
+      name: organization.name,
+      type: typeLabel,
+      rawType: entityType,
+      admin: adminDisplay,
+      adminUserId: admins.length > 0 ? admins[0].id : null,
+      teamMembers: organizationProfiles.length,
+      collections: collectionsCountByOrganization.get(organization.id) || 0,
+    }
+  })
+}
+
 export class EntitiesListService {
 
   /**
    * Retrieves all entities with computed display columns.
-   * 
+   *
    * @returns Array of entities with admin name, team member count, etc.
    */
   async listEntities(): Promise<EntityListItem[]> {
-    const response = await fetch("/api/entities", {
+    const response = await fetch("/api/organizations", {
       method: "GET",
       cache: "no-store",
     })
@@ -96,50 +148,6 @@ export class EntitiesListService {
     }
 
     const data = (await response.json()) as EntitiesApiResponse
-
-    if (!data.organizations || data.organizations.length === 0) {
-      return []
-    }
-
-    const profilesByOrganization = new Map<string, Profile[]>()
-    for (const profile of data.profiles || []) {
-      if (!profile.organization_id) continue
-      const existing = profilesByOrganization.get(profile.organization_id) || []
-      existing.push(profile)
-      profilesByOrganization.set(profile.organization_id, existing)
-    }
-
-    const collectionsCountByOrganization = new Map<string, number>()
-    for (const collection of data.collections || []) {
-      const existing = collectionsCountByOrganization.get(collection.client_id) || 0
-      collectionsCountByOrganization.set(collection.client_id, existing + 1)
-    }
-
-    return data.organizations.map((organization) => {
-      const entityType = mapOrganizationTypeToEntityType(organization.type)
-      const typeLabel = getEntityTypeLabel(entityType)
-      const organizationProfiles = profilesByOrganization.get(organization.id) || []
-      const admins = organizationProfiles.filter((profile) => profile.role === "admin")
-
-      let adminDisplay = "No admin"
-      if (admins.length > 0) {
-        const admin = admins[0]
-        const adminName = [admin.first_name, admin.last_name].filter(Boolean).join(" ").trim()
-        if (adminName) {
-          adminDisplay = adminName
-        }
-      }
-
-      return {
-        id: organization.id,
-        name: organization.name,
-        type: typeLabel,
-        rawType: entityType,
-        admin: adminDisplay,
-        adminUserId: admins.length > 0 ? admins[0].id : null,
-        teamMembers: organizationProfiles.length,
-        collections: collectionsCountByOrganization.get(organization.id) || 0,
-      }
-    })
+    return mapOrganizationsApiToEntities(data)
   }
 }

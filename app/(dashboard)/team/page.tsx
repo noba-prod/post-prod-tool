@@ -8,6 +8,15 @@ import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
 import { UserCreationForm, type UserFormData } from "@/components/custom/user-creation-form"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import type { TeamMember } from "@/components/custom/tables"
@@ -15,7 +24,9 @@ import { useUserContext } from "@/lib/contexts/user-context"
 import { getRepositoryInstances } from "@/lib/services"
 import { roleToLabel } from "@/lib/types"
 import { toast } from "sonner"
-import type { CreateUserPayload } from "@/lib/types"
+import type { CreateUserPayload, User } from "@/lib/types"
+import { mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
+import { createTeamMemberInvitation } from "@/app/actions/team-invite"
 
 // ============================================================================
 // CONSTANTS
@@ -49,6 +60,14 @@ export default function TeamPage() {
   const [isNewMemberModalOpen, setIsNewMemberModalOpen] = useState(false)
   const [isCreatingMember, setIsCreatingMember] = useState(false)
   
+  // Modal state for view/edit team member (row or name click)
+  const [isUserDetailModalOpen, setIsUserDetailModalOpen] = useState(false)
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [memberUserData, setMemberUserData] = useState<User | null>(null)
+  const [loadingMemberData, setLoadingMemberData] = useState(false)
+  const [isUpdatingMember, setIsUpdatingMember] = useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+  
   // Filters state
   const [filters, setFilters] = useState<Filters>({
     role: null,
@@ -78,13 +97,13 @@ export default function TeamPage() {
             name: `${u.firstName} ${u.lastName || ""}`.trim(),
             email: u.email,
             phone: u.phoneNumber,
-            role: roleToLabel(u.role),
+            role: roleToLabel(u.role) as TeamMember["role"],
             collections: 0,
           }))
           setTeamMembers(mappedMembers)
         } else {
           // Supabase: query profiles by same organization_id via API
-          const res = await fetch(`/api/entities/${organizationId}`)
+          const res = await fetch(`/api/organizations/${organizationId}`)
           if (!res.ok) {
             const err = await res.json().catch(() => ({}))
             console.warn("Failed to load team members:", err.error || res.status)
@@ -98,7 +117,7 @@ export default function TeamPage() {
             name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
             email: u.email,
             phone: u.phoneNumber ?? "",
-            role: roleToLabel(u.role as "admin" | "editor" | "viewer"),
+            role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
             collections: 0,
           }))
           setTeamMembers(mappedMembers)
@@ -193,7 +212,7 @@ export default function TeamPage() {
           name: `${u.firstName} ${u.lastName || ""}`.trim(),
           email: u.email,
           phone: u.phoneNumber,
-          role: roleToLabel(u.role),
+          role: roleToLabel(u.role) as TeamMember["role"],
           collections: 0,
         }))
         setTeamMembers(mappedMembers)
@@ -204,8 +223,26 @@ export default function TeamPage() {
         return
       }
 
-      // Supabase: create member via API (profiles table, same organization_id)
-      const res = await fetch(`/api/entities/${organizationId}/members`, {
+      // noba* (internal org): send platform invitation email; user joins when they accept
+      const isNobaOrg = entity.name?.trim() === "noba*"
+      if (isNobaOrg) {
+        const inviteResult = await createTeamMemberInvitation(
+          organizationId,
+          userData.email.trim(),
+          userData.role as "admin" | "editor" | "viewer"
+        )
+        if (!inviteResult.success) {
+          throw new Error(inviteResult.error)
+        }
+        setIsNewMemberModalOpen(false)
+        toast.success("Invitation sent", {
+          description: inviteResult.message,
+        })
+        return
+      }
+
+      // Supabase: other orgs – create member via API (profiles table, same organization_id)
+      const res = await fetch(`/api/organizations/${organizationId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -227,7 +264,7 @@ export default function TeamPage() {
         name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
         email: u.email,
         phone: u.phoneNumber ?? "",
-        role: roleToLabel(u.role as "admin" | "editor" | "viewer"),
+        role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
         collections: 0,
       }))
       setTeamMembers(mappedMembers)
@@ -246,7 +283,7 @@ export default function TeamPage() {
     }
   }, [userContext.user?.entityId, userContext.entity])
 
-  // Handle delete (remove member from organization)
+  // Handle delete (remove member from organization). No in-function confirm; use delete confirm dialog when invoked from modal.
   const handleDelete = useCallback(async (id: string) => {
     const organizationId = userContext.user?.entityId
     if (!organizationId) {
@@ -256,9 +293,6 @@ export default function TeamPage() {
 
     const member = teamMembers.find((m) => m.id === id)
     const name = member?.name || "this member"
-    if (!window.confirm(`Remove ${name} from the team? They will no longer have access to this organization.`)) {
-      return
-    }
 
     try {
       if (USE_MOCK_AUTH) {
@@ -278,7 +312,7 @@ export default function TeamPage() {
           name: `${u.firstName} ${u.lastName || ""}`.trim(),
           email: u.email,
           phone: u.phoneNumber,
-          role: roleToLabel(u.role),
+          role: roleToLabel(u.role) as TeamMember["role"],
           collections: 0,
         }))
         setTeamMembers(mappedMembers)
@@ -286,7 +320,7 @@ export default function TeamPage() {
         return
       }
 
-      const res = await fetch(`/api/entities/${organizationId}/members/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/organizations/${organizationId}/members/${id}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data.error ?? "Failed to remove member")
@@ -297,7 +331,7 @@ export default function TeamPage() {
         name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
         email: u.email,
         phone: u.phoneNumber ?? "",
-        role: roleToLabel(u.role as "admin" | "editor" | "viewer"),
+        role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
         collections: 0,
       }))
       setTeamMembers(mappedMembers)
@@ -309,6 +343,21 @@ export default function TeamPage() {
       })
     }
   }, [userContext.user?.entityId, teamMembers])
+
+  // Close member detail modal (defined before handleConfirmDeleteFromModal so it can be used there)
+  const handleCloseUserDetailModal = useCallback(() => {
+    setIsUserDetailModalOpen(false)
+    setSelectedMemberId(null)
+    setMemberUserData(null)
+  }, [])
+
+  // Confirm delete from modal: run delete then close modals
+  const handleConfirmDeleteFromModal = useCallback(async () => {
+    if (!selectedMemberId) return
+    await handleDelete(selectedMemberId)
+    handleCloseUserDetailModal()
+    setIsDeleteConfirmOpen(false)
+  }, [selectedMemberId, handleDelete, handleCloseUserDetailModal])
 
   // Filter team members
   const filteredMembers = React.useMemo(() => {
@@ -332,15 +381,132 @@ export default function TeamPage() {
     return result
   }, [teamMembers, filters])
 
-  // Navigate to team member profile page when row or name is clicked
+  // Open modal with team member data when row or name is clicked (no navigation)
   const handleEditUser = useCallback(
-    (memberId: string) => {
-      router.push(`/team/${memberId}`)
+    async (memberId: string) => {
+      setSelectedMemberId(memberId)
+      setIsUserDetailModalOpen(true)
+      setMemberUserData(null)
+      setLoadingMemberData(true)
+      try {
+        if (USE_MOCK_AUTH) {
+          const repos = getRepositoryInstances()
+          if (!repos.userRepository) {
+            setMemberUserData(null)
+            return
+          }
+          const u = await repos.userRepository.getUserById(memberId)
+          if (u && userContext.user?.entityId && u.entityId === userContext.user.entityId) {
+            setMemberUserData(u)
+          } else {
+            setMemberUserData(null)
+          }
+        } else {
+          const res = await fetch(`/api/users/${memberId}`)
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            if (res.status === 404) setMemberUserData(null)
+            else toast.error("Failed to load member", { description: data.error ?? "Unknown error" })
+            return
+          }
+          const data = await res.json()
+          setMemberUserData(data.user)
+        }
+      } catch (error) {
+        console.error("Failed to load member:", error)
+        toast.error("Failed to load member", {
+          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        })
+        setMemberUserData(null)
+      } finally {
+        setLoadingMemberData(false)
+      }
     },
-    [router]
+    [userContext.user?.entityId]
   )
 
-  // Permissions based on user role
+  // If load finished and no member data (e.g. 404), close modal
+  useEffect(() => {
+    if (!loadingMemberData && isUserDetailModalOpen && selectedMemberId && !memberUserData) {
+      toast.error("Member not found", { description: "The team member could not be loaded." })
+      handleCloseUserDetailModal()
+    }
+  }, [loadingMemberData, isUserDetailModalOpen, selectedMemberId, memberUserData, handleCloseUserDetailModal])
+
+  // Update team member from modal (admin only)
+  const handleUpdateMemberFromModal = useCallback(
+    async (userData: UserFormData) => {
+      if (!selectedMemberId || !userContext.user?.entityId) return
+      setIsUpdatingMember(true)
+      try {
+        const formDataForPayload = {
+          ...userData,
+          entity: userData.entity && userData.entity.type !== "self-photographer"
+            ? { type: userData.entity.type as import("@/lib/types").StandardEntityType, name: userData.entity.name }
+            : null,
+        }
+        const payload = mapFormToUpdateUserPayload(formDataForPayload)
+        if (USE_MOCK_AUTH) {
+          const repos = getRepositoryInstances()
+          if (!repos.userRepository) throw new Error("User repository not available")
+          const updated = await repos.userRepository.updateUser(selectedMemberId, payload)
+          if (updated) {
+            const users = await repos.userRepository.listUsersByEntityId(userContext.user.entityId!)
+            const mapped: TeamMember[] = users.map((u) => ({
+              id: u.id,
+              name: `${u.firstName} ${u.lastName || ""}`.trim(),
+              email: u.email,
+              phone: u.phoneNumber,
+              role: roleToLabel(u.role) as TeamMember["role"],
+              collections: 0,
+            }))
+            setTeamMembers(mapped)
+            handleCloseUserDetailModal()
+            toast.success("User updated", {
+              description: `${updated.firstName} ${updated.lastName ?? ""}`.trim() + " has been updated.",
+            })
+          } else throw new Error("User not found")
+        } else {
+          const res = await fetch(`/api/users/${selectedMemberId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(data.error ?? "Failed to update user")
+          const listRes = await fetch(`/api/organizations/${userContext.user.entityId}`)
+          if (listRes.ok) {
+            const listData = await listRes.json()
+            const users = listData.teamMembers ?? []
+            const mapped: TeamMember[] = users.map((u: { id: string; firstName: string; lastName?: string; email: string; phoneNumber: string; role: string }) => ({
+              id: u.id,
+              name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+              email: u.email,
+              phone: u.phoneNumber ?? "",
+              role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
+              collections: 0,
+            }))
+            setTeamMembers(mapped)
+          }
+          handleCloseUserDetailModal()
+          toast.success("User updated", {
+            description: `${data.user?.firstName ?? ""} ${data.user?.lastName ?? ""}`.trim() + " has been updated.",
+          })
+        }
+      } catch (error) {
+        console.error("Failed to update user:", error)
+        toast.error("Failed to update user", {
+          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        })
+      } finally {
+        setIsUpdatingMember(false)
+      }
+    },
+    [selectedMemberId, userContext.user?.entityId, handleCloseUserDetailModal]
+  )
+
+  // Permissions based on user role: only admin can edit; editor/viewer can only view
+  const isAdmin = userContext.user?.role === "admin"
   const canManageTeam = userContext.user?.role === "admin" || userContext.user?.role === "editor"
   const canDelete = userContext.user?.role === "admin" || userContext.user?.role === "editor"
 
@@ -448,6 +614,52 @@ export default function TeamPage() {
           primaryLabel="Register member"
           secondaryLabel="Cancel"
         />
+      )}
+
+      {/* View/Edit Team Member Modal (row or name click): admin can edit/delete, editor/viewer view only */}
+      {userContext.entity && (
+        <UserCreationForm
+          open={isUserDetailModalOpen}
+          onOpenChange={(open) => {
+            if (!open) handleCloseUserDetailModal()
+          }}
+          mode="edit"
+          entity={{
+            type: userContext.entity.type,
+            name: userContext.entity.name,
+          }}
+          initialUserData={memberUserData ?? undefined}
+          disabled={!isAdmin}
+          onSubmit={handleUpdateMemberFromModal}
+          onCancel={handleCloseUserDetailModal}
+          onDeleteClick={isAdmin ? () => setIsDeleteConfirmOpen(true) : undefined}
+          primaryLabel="Save changes"
+          secondaryLabel="Cancel"
+        />
+      )}
+      {/* Delete team member confirmation (admin only) */}
+      <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <DialogContent showCloseButton={true}>
+          <DialogHeader>
+            <DialogTitle>
+              Delete {memberUserData ? `${memberUserData.firstName} ${memberUserData.lastName ?? ""}`.trim() || "this member" : "this member"}?
+            </DialogTitle>
+            <DialogDescription>This action can&apos;t be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter showCloseButton={false} className="sm:justify-start">
+            <Button variant="secondary" size="lg" onClick={() => setIsDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="lg" onClick={handleConfirmDeleteFromModal}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {isUserDetailModalOpen && loadingMemberData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/[0.36]" aria-hidden="true">
+          <p className="text-sm text-muted-foreground bg-background px-4 py-2 rounded-lg">Loading...</p>
+        </div>
       )}
     </MainTemplate>
   )

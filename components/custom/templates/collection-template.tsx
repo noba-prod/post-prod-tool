@@ -33,6 +33,8 @@ export interface CollectionTemplateStep {
   annotation?: string
   /** When true, step requires attention (e.g. red exclamation). */
   attention?: boolean
+  /** When true, current user has edit rights for this step (OWNER mode); otherwise VIEWER (collections-logic §8). */
+  canEdit?: boolean
 }
 
 export type CollectionStageStatus = "upcoming" | "in-progress" | "in-transit" | "done" | "delivered"
@@ -237,15 +239,23 @@ export function CollectionTemplate({
         open={openStepId !== null}
         onOpenChange={(open) => !open && setOpenStepId(null)}
         title={openStep?.title ?? "Step"}
-        subtitle="Contextual information for this step."
+        subtitle={openStep?.canEdit ? "You can edit and perform actions in this step (OWNER)." : "You can view this step only; edits and downloads are not available (VIEWER)."}
         showSubtitle={true}
-        showPrimary={false}
+        showPrimary={openStep?.canEdit ?? false}
         showSecondary={true}
+        primaryLabel={openStep?.canEdit ? "Actions" : undefined}
         secondaryLabel="Close"
         onSecondaryClick={() => setOpenStepId(null)}
       >
-        <div className="px-5 pb-5 text-sm text-muted-foreground">
-          Step context will be shown here. Content is not implemented in this template.
+        <div className="px-5 pb-5 space-y-4 text-sm text-muted-foreground">
+          {openStep?.canEdit ? (
+            <>
+              <p>Action block (buttons, inputs, uploads, confirmations) will appear here for step owners.</p>
+              <p className="text-xs">Download URLs are only available to owners (collections-logic §8).</p>
+            </>
+          ) : (
+            <p>Curated information for this step. Download links and actions are not available in VIEWER mode.</p>
+          )}
         </div>
       </ModalWindow>
 

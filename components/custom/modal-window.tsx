@@ -33,6 +33,8 @@ interface ModalWindowProps {
   showPrimary?: boolean
   /** Show secondary button */
   showSecondary?: boolean
+  /** Secondary button variant (default | destructive) */
+  secondaryVariant?: "default" | "destructive"
   /** Primary button disabled */
   primaryDisabled?: boolean
   /** Secondary button disabled */
@@ -95,6 +97,7 @@ function ModalWindow({
   secondaryLabel = "Secondary",
   showPrimary = true,
   showSecondary = true,
+  secondaryVariant = "default",
   primaryDisabled = false,
   secondaryDisabled = false,
   onPrimaryClick,
@@ -158,19 +161,22 @@ function ModalWindow({
             {children}
           </div>
 
-          {/* Footer: Fixed at bottom */}
-          <div className="border-t border-border p-5 shrink-0">
-            <ActionBar
-              primaryLabel={primaryLabel}
-              secondaryLabel={secondaryLabel}
-              showPrimary={showPrimary}
-              showSecondary={showSecondary}
-              primaryDisabled={primaryDisabled}
-              secondaryDisabled={secondaryDisabled}
-              onPrimaryClick={onPrimaryClick}
-              onSecondaryClick={onSecondaryClick}
-            />
-          </div>
+          {/* Footer: Fixed at bottom (hidden when no actions) */}
+          {(showPrimary || showSecondary) && (
+            <div className="border-t border-border p-5 shrink-0">
+              <ActionBar
+                primaryLabel={primaryLabel}
+                secondaryLabel={secondaryLabel}
+                showPrimary={showPrimary}
+                showSecondary={showSecondary}
+                secondaryVariant={secondaryVariant}
+                primaryDisabled={primaryDisabled}
+                secondaryDisabled={secondaryDisabled}
+                onPrimaryClick={onPrimaryClick}
+                onSecondaryClick={onSecondaryClick}
+              />
+            </div>
+          )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

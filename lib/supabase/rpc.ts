@@ -7,7 +7,7 @@ import { createClient } from "./server"
 export async function checkEmailAllowed(email: string) {
   const supabase = await createClient()
   
-  const { data, error } = await supabase.rpc("check_email_precheck", {
+  const { data, error } = await (supabase.rpc as any)("check_email_precheck", {
     check_email: email,
   })
 

@@ -217,7 +217,7 @@ export function SelfPhotographerForm({
 
           {/* Row 3: Entity Type (disabled) | Role (disabled) */}
           <RowVariants variant="2">
-            {/* Entity Type (fixed to Self-Photographer) */}
+            {/* Entity Type (fixed to Photographer) */}
             <Field>
               <FieldLabel htmlFor="sp-entity-type" disabled={true}>
                 Entity type

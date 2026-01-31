@@ -29,5 +29,7 @@ export interface ICollectionsRepository {
 
   update(id: string, patch: CollectionUpdatePatch): Promise<Collection | null>
 
+  delete(id: string): Promise<void>
+
   list(filters?: ListCollectionsFilters): Promise<Collection[]>
 }

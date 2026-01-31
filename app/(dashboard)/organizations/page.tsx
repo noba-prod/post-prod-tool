@@ -18,7 +18,7 @@ import { useUserContext } from "@/lib/contexts/user-context"
 // Service imports
 import { createEntitiesListService, createEntityCreationService } from "@/lib/services"
 import { getRepositoryInstances } from "@/lib/services/factories/entity-creation-service.factory"
-import { mapUserToFormData, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
+import { mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 
 // ============================================================================
 // TOAST ON NAVIGATION - Check for pending toast on page load
@@ -47,10 +47,10 @@ function consumePendingToast(): PendingToast | null {
 }
 
 // ============================================================================
-// ENTITY OPTIONS (excludes Collection for entities page)
+// ORGANIZATION OPTIONS (excludes Collection for organizations page)
 // ============================================================================
 
-const ENTITIES_PAGE_OPTIONS: Array<"client" | "self-photographer" | "agency" | "photo-lab" | "edition-studio" | "hand-print-lab"> = [
+const ORGANIZATIONS_PAGE_OPTIONS: Array<"client" | "self-photographer" | "agency" | "photo-lab" | "edition-studio" | "hand-print-lab"> = [
   "client",
   "self-photographer",
   "agency",
@@ -72,14 +72,14 @@ interface Filters {
 // PAGE COMPONENT
 // ============================================================================
 
-export default function EntitiesPage() {
+export default function OrganizationsPage() {
   const router = useRouter()
   const authAdapter = useAuthAdapter()
   const userContext = useUserContext()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   
-  // Entities data from repository
+  // Organizations data from repository
   const [entities, setEntities] = useState<Entity[]>([])
   const [loadingEntities, setLoadingEntities] = useState(false)
   
@@ -99,42 +99,42 @@ export default function EntitiesPage() {
   const [loadingEditData, setLoadingEditData] = useState(false)
 
   // Permission (for form disabled state)
-  // Get from user context - viewers cannot create anything
   const userRole = userContext.user?.role || "admin"
   const canEdit = userRole === "admin" || userRole === "editor"
-  const canCreate = userRole === "admin" || userRole === "editor" // viewers cannot create
+  const canCreate = userRole === "admin" || userRole === "editor"
 
-  // Load entities from repository
+  // Load organizations from repository (exclude noba* — product owners)
   const loadEntities = useCallback(async () => {
     setLoadingEntities(true)
     try {
       const service = createEntitiesListService()
       const items = await service.listEntities()
       
-      // Map EntityListItem to Entity type expected by Tables component
-      const mappedEntities: Entity[] = items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        type: item.type as Entity["type"],
-        admin: item.admin,
-        adminUserId: item.adminUserId,
-        teamMembers: item.teamMembers,
-        collections: item.collections,
-      }))
+      const mappedEntities: Entity[] = items
+        .filter((item) => item.name?.trim() !== "noba*")
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          type: item.type as Entity["type"],
+          admin: item.admin,
+          adminUserId: item.adminUserId,
+          teamMembers: item.teamMembers,
+          collections: item.collections,
+        }))
       
       setEntities(mappedEntities)
     } catch (error) {
-      console.error("Failed to load entities:", error)
+      console.error("Failed to load organizations:", error)
     } finally {
       setLoadingEntities(false)
     }
   }, [])
 
-  // Route guard: Check if user can access Entities section
+  // Route guard: Check if user can access Organizations section
   useEffect(() => {
     if (!userContext.loading && !userContext.canAccessEntities) {
       toast.error("Access Denied", {
-        description: "You don't have access to the Entities section. Only noba users can access this page.",
+        description: "You don't have access to the Organizations section. Only noba users can access this page.",
       })
       router.push("/collections")
     }
@@ -151,49 +151,36 @@ export default function EntitiesPage() {
       setSession(currentSession)
       setLoading(false)
       
-      // Only load entities if user has access
       if (userContext.canAccessEntities) {
         loadEntities()
       }
       
-      // Check for pending toast (from navbar creation flow)
       const pendingToast = consumePendingToast()
       if (pendingToast) {
         if (pendingToast.type === "success") {
-          toast.success(pendingToast.title, {
-            description: pendingToast.description,
-          })
+          toast.success(pendingToast.title, { description: pendingToast.description })
         } else {
-          toast.error(pendingToast.title, {
-            description: pendingToast.description,
-          })
+          toast.error(pendingToast.title, { description: pendingToast.description })
         }
       }
     }
     checkSession()
   }, [router, authAdapter, loadEntities, userContext.canAccessEntities])
 
-  // Handle filter changes
   const handleFilterChange = (filterId: string, value: string) => {
     if (filterId === "type") {
-      setFilters(prev => ({
-        ...prev,
-        type: prev.type === value ? null : value,
-      }))
+      setFilters(prev => ({ ...prev, type: prev.type === value ? null : value }))
     }
   }
 
-  // Handle search changes
   const handleSearchChange = (value: string) => {
     setFilters(prev => ({ ...prev, search: value }))
   }
 
-  // Handle view details
   const handleViewDetails = (id: string) => {
-    router.push(`/entities/${id}`)
+    router.push(`/organizations/${id}`)
   }
 
-  // Handle edit admin user
   const handleEditAdminUser = useCallback(async (userId: string, entityId: string) => {
     setEditingAdminUserId(userId)
     setEditingEntityId(entityId)
@@ -201,12 +188,9 @@ export default function EntitiesPage() {
     setLoadingEditData(true)
     
     try {
-      // Fetch user and entity data
       const { userRepository, entityRepository } = getRepositoryInstances()
       if (!userRepository || !entityRepository) {
-        toast.error("Failed to load repositories", {
-          description: "Repository instances are not available.",
-        })
+        toast.error("Failed to load repositories", { description: "Repository instances are not available." })
         setIsEditAdminModalOpen(false)
         return
       }
@@ -217,9 +201,7 @@ export default function EntitiesPage() {
       ])
 
       if (!user || !entity) {
-        toast.error("Failed to load user data", {
-          description: "The user or entity could not be found.",
-        })
+        toast.error("Failed to load user data", { description: "The user or organization could not be found." })
         setIsEditAdminModalOpen(false)
         setEditingAdminUserId(null)
         setEditingEntityId(null)
@@ -229,7 +211,7 @@ export default function EntitiesPage() {
       setEditingUserData(user)
       setEditingEntityData(entity)
     } catch (error) {
-      console.error("Failed to fetch user/entity data:", error)
+      console.error("Failed to fetch user/organization data:", error)
       toast.error("Failed to load data", {
         description: error instanceof Error ? error.message : "An error occurred while loading user data.",
       })
@@ -241,7 +223,6 @@ export default function EntitiesPage() {
     }
   }, [])
 
-  // Handle close edit admin modal
   const handleCloseEditAdminModal = useCallback(() => {
     setIsEditAdminModalOpen(false)
     setEditingAdminUserId(null)
@@ -250,7 +231,6 @@ export default function EntitiesPage() {
     setEditingEntityData(null)
   }, [])
 
-  // Handle update admin user
   const handleUpdateAdminUser = useCallback(async (userData: {
     firstName: string
     lastName: string
@@ -265,7 +245,6 @@ export default function EntitiesPage() {
     setIsUpdatingAdmin(true)
     try {
       const service = createEntityCreationService()
-      // Convert to UserFormData format (entity type must be StandardEntityType for UserFormData)
       const userFormData: import("@/lib/utils/form-mappers").UserFormData = {
         firstName: userData.firstName,
         lastName: userData.lastName,
@@ -278,17 +257,11 @@ export default function EntitiesPage() {
         role: userData.role,
       }
       const payload = mapFormToUpdateUserPayload(userFormData)
-      
       await service.updateUser(editingAdminUserId, payload)
-      
-      // Refresh entities list
       await loadEntities()
-      
-      // Close modal
       setIsEditAdminModalOpen(false)
       setEditingAdminUserId(null)
       setEditingEntityId(null)
-      
       toast.success("User updated successfully", {
         description: `${userData.firstName} ${userData.lastName || ""}`.trim() + " has been updated.",
       })
@@ -302,34 +275,26 @@ export default function EntitiesPage() {
     }
   }, [editingAdminUserId, loadEntities])
 
-  // Handle entity created - refresh the list
   const handleEntityCreated = useCallback(() => {
     loadEntities()
   }, [loadEntities])
 
-  // Filter entities
   const filteredEntities = React.useMemo(() => {
     let result = [...entities]
-
-    // Apply type filter
     if (filters.type) {
-      result = result.filter(e => e.type.toLowerCase().replace(/\s+/g, "-") === filters.type)
+      result = result.filter(e => (e.type ?? "").toLowerCase().replace(/\s+/g, "-") === filters.type)
     }
-
-    // Apply search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase()
-      result = result.filter(e => 
-        e.name.toLowerCase().includes(searchLower) ||
-        e.type.toLowerCase().includes(searchLower) ||
-        e.admin.toLowerCase().includes(searchLower)
+      result = result.filter(e =>
+        (e.name ?? "").toLowerCase().includes(searchLower) ||
+        (e.type ?? "").toLowerCase().includes(searchLower) ||
+        (e.admin ?? "").toLowerCase().includes(searchLower)
       )
     }
-
     return result
   }, [entities, filters])
 
-  // Show loading state
   if (loading || userContext.loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -338,7 +303,6 @@ export default function EntitiesPage() {
     )
   }
 
-  // Route guard: Don't render content if user doesn't have access
   if (!userContext.canAccessEntities) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -347,31 +311,25 @@ export default function EntitiesPage() {
     )
   }
 
-  if (!session) {
-    return null
-  }
+  if (!session) return null
 
   return (
-    <MainTemplate title="Entities">
+    <MainTemplate title="Organizations">
       <Layout padding="none" showSeparators={false}>
         <LayoutSection>
-          {/* Custom filter bar with CreateEntityCommand */}
           <div className="flex items-center justify-between w-full h-10">
-            {/* Left side: FilterBar without action button */}
             <div className="flex-1">
               <FilterBar
                 variant="entities"
                 onSearchChange={handleSearchChange}
                 onFilterChange={handleFilterChange}
-                searchPlaceholder="Search entities..."
+                searchPlaceholder="Search organizations..."
                 showAction={false}
               />
             </div>
-            
-            {/* Right side: CreateEntityCommand (excludes Collection) */}
             <CreateEntityCommand
-              allowedOptions={ENTITIES_PAGE_OPTIONS}
-              buttonLabel="New entity"
+              allowedOptions={ORGANIZATIONS_PAGE_OPTIONS}
+              buttonLabel="New organization"
               popoverAlign="end"
               redirectAfterCreate={false}
               onCreated={handleEntityCreated}
@@ -382,7 +340,7 @@ export default function EntitiesPage() {
         <LayoutSection>
           {loadingEntities ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-sm text-muted-foreground">Loading entities...</p>
+              <p className="text-sm text-muted-foreground">Loading organizations...</p>
             </div>
           ) : (
             <>
@@ -394,14 +352,11 @@ export default function EntitiesPage() {
               />
               {filteredEntities.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <p className="text-lg font-medium text-muted-foreground">
-                    No entities found
-                  </p>
+                  <p className="text-lg font-medium text-muted-foreground">No organizations found</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {entities.length === 0 
-                      ? "Create your first entity to get started"
-                      : "Try adjusting your filters"
-                    }
+                    {entities.length === 0
+                      ? "Create your first organization to get started"
+                      : "Try adjusting your filters"}
                   </p>
                 </div>
               )}
@@ -410,16 +365,12 @@ export default function EntitiesPage() {
         </LayoutSection>
       </Layout>
 
-      {/* Edit Admin User Modal */}
       {isEditAdminModalOpen && editingAdminUserId && editingEntityId && editingUserData && editingEntityData && (
         <UserCreationForm
           open={isEditAdminModalOpen}
           onOpenChange={handleCloseEditAdminModal}
           mode="edit"
-          entity={{
-            type: editingEntityData.type,
-            name: editingEntityData.name,
-          }}
+          entity={{ type: editingEntityData.type, name: editingEntityData.name }}
           initialUserData={editingUserData}
           disabled={!canEdit}
           onSubmit={handleUpdateAdminUser}

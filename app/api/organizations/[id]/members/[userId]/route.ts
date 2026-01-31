@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import type { Profile } from "@/lib/supabase/database.types"
 import { mapProfilesToUsers } from "@/lib/utils/supabase-mappers"
 
-async function getSessionProfile() {
+async function getSessionProfile(): Promise<{
+  session: { user: { id: string } } | null
+  profile: Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
+  error: string | null
+}> {
   const supabase = await createClient()
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
 
@@ -11,11 +16,13 @@ async function getSessionProfile() {
     return { session: null, profile: null, error: sessionError?.message || "No session" }
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profileData, error: profileError } = await supabase
     .from("profiles")
     .select("id,is_internal,organization_id,role")
     .eq("id", sessionData.session.user.id)
     .maybeSingle()
+
+  const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
 
   return {
     session: sessionData.session,
@@ -25,7 +32,7 @@ async function getSessionProfile() {
 }
 
 /**
- * DELETE /api/entities/[id]/members/[userId]
+ * DELETE /api/organizations/[id]/members/[userId]
  * Removes a user from the organization (sets organization_id to null).
  * Requires caller to be admin or editor of the same organization.
  */
@@ -60,11 +67,12 @@ export async function DELETE(
   }
 
   const adminClient = createAdminClient()
-  const { data: targetProfile, error: targetError } = await adminClient
+  const { data: targetProfileData, error: targetError } = await adminClient
     .from("profiles")
     .select("id,organization_id")
     .eq("id", targetUserId)
     .maybeSingle()
+  const targetProfile = targetProfileData as Pick<Profile, "id" | "organization_id"> | null
 
   if (targetError) {
     return NextResponse.json({ error: targetError.message }, { status: 500 })
@@ -81,8 +89,7 @@ export async function DELETE(
     )
   }
 
-  const { error: updateError } = await adminClient
-    .from("profiles")
+  const { error: updateError } = await (adminClient.from("profiles") as any)
     .update({ organization_id: null })
     .eq("id", targetUserId)
 
@@ -93,10 +100,11 @@ export async function DELETE(
     )
   }
 
-  const { data: remainingProfiles, error: listError } = await adminClient
+  const { data: remainingProfilesData, error: listError } = await adminClient
     .from("profiles")
     .select("*")
     .eq("organization_id", organizationId)
+  const remainingProfiles = remainingProfilesData as Profile[] | null
 
   if (listError) {
     return NextResponse.json({ error: listError.message }, { status: 500 })

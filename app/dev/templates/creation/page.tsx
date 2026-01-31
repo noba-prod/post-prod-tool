@@ -31,8 +31,7 @@ export default function CreationTemplatePage() {
       {view === "basic" ? (
         <CreationTemplate
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Entities", href: "/entities" },
+            { label: "Organizations", href: "/organizations" },
             { label: "Create Entity" },
           ]}
           sidebarItems={[
@@ -53,8 +52,7 @@ export default function CreationTemplatePage() {
       ) : (
         <CreationTemplate
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Entities", href: "/entities" },
+            { label: "Organizations", href: "/organizations" },
             { label: "Create Client" },
           ]}
           sidebarItems={[

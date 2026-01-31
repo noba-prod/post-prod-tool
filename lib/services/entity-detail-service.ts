@@ -5,6 +5,20 @@ import type { Entity, User } from "@/lib/types"
 // =============================================================================
 
 /**
+ * Collection item returned for entity detail (collections where entity is invited).
+ */
+export interface EntityDetailCollectionItem {
+  id: string
+  name: string
+  status: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
+  clientName: string
+  location: string
+  startDate: string
+  endDate: string
+  participants: number
+}
+
+/**
  * Result of fetching entity details with team members.
  */
 export interface EntityDetailResult {
@@ -16,6 +30,8 @@ export interface EntityDetailResult {
   adminUser: User | null
   /** All admin users (in case of multiple admins) */
   adminUsers: User[]
+  /** Collections where this entity is invited (client or participant), all statuses */
+  collectionsList?: EntityDetailCollectionItem[]
 }
 
 /**
@@ -56,7 +72,7 @@ export class EntityDetailService {
    * ```
    */
   async getEntityWithTeamMembers(entityId: string): Promise<EntityDetailResult> {
-    const response = await fetch(`/api/entities/${entityId}`, {
+    const response = await fetch(`/api/organizations/${entityId}`, {
       method: "GET",
       cache: "no-store",
     })

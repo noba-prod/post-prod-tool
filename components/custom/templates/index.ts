@@ -5,7 +5,7 @@ export { CreationTemplate } from "./creation-template"
 export type { CreationTemplateProps, CreationBlock } from "./creation-template"
 
 export { ViewTemplate } from "./view-template"
-export type { ViewTemplateProps, ViewBlock } from "./view-template"
+export type { ViewTemplateProps } from "./view-template"
 
 export { CollectionTemplate } from "./collection-template"
 export type {

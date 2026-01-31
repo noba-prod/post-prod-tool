@@ -34,7 +34,8 @@ import { ModalWindow } from "../modal-window"
 import { getRepositoryInstances } from "@/lib/services"
 import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
-import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
+import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
+import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
 
 // =============================================================================
 // SECTION CONFIGURATION
@@ -85,7 +86,6 @@ export const DEFAULT_SECTIONS: Omit<ViewSection, "content">[] = [
   {
     id: "collections",
     label: "Collections",
-    subtitle: "View collections associated with this entity",
     icon: LayoutGrid,
   },
 ]
@@ -273,8 +273,7 @@ export interface ViewTemplateProps {
  */
 export function ViewTemplate({
   breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Entities", href: "/entities" },
+    { label: "Organizations", href: "/organizations" },
     { label: "View Entity" },
   ],
   sections,
@@ -366,18 +365,17 @@ export function ViewTemplate({
     setIsUpdatingCompany(true)
     try {
       const repos = getRepositoryInstances()
-      if (!repos.entityRepository) {
-        throw new Error("Entity repository not available")
-      }
-
-      // Convert form data to entity draft
       const draft = mapFormToEntityDraft(companyFormData)
 
-      // Update entity
-      const updatedEntity = await repos.entityRepository.updateEntity(userContext.entity.id, draft)
+      // Update entity: try in-memory repo first (mock auth); if null, update in Supabase (real auth)
+      let updatedEntity =
+        repos.entityRepository
+          ? await repos.entityRepository.updateEntity(userContext.entity.id, draft)
+          : null
 
       if (!updatedEntity) {
-        throw new Error("Failed to update entity")
+        const result = await updateOrganizationFromDraft(userContext.entity.id, draft)
+        updatedEntity = result.entity
       }
 
       // Dispatch session-changed event to refresh UserContext
@@ -839,71 +837,9 @@ export function ViewTemplate({
                               />
                             )
                           ) : (
-                            // Show example collections when empty for validation
-                            collectionsView === "Gallery" ? (
-                              <CollectionsGrid items={[
-                                {
-                                  status: "draft",
-                                  collectionName: "Example Collection 1",
-                                  clientName: `@${entity.name.toLowerCase()}`,
-                                  location: "Madrid, Spain",
-                                  startDate: "dec 4, 2025",
-                                  endDate: "dec 14, 2025",
-                                },
-                                {
-                                  status: "in-progress",
-                                  collectionName: "Example Collection 2",
-                                  clientName: `@${entity.name.toLowerCase()}`,
-                                  location: "Barcelona, Spain",
-                                  startDate: "jan 1, 2026",
-                                  endDate: "jan 15, 2026",
-                                },
-                                {
-                                  status: "completed",
-                                  collectionName: "Example Collection 3",
-                                  clientName: `@${entity.name.toLowerCase()}`,
-                                  location: "Paris, France",
-                                  startDate: "nov 1, 2025",
-                                  endDate: "nov 10, 2025",
-                                },
-                              ]} />
-                            ) : (
-                              <Tables
-                                variant="collections"
-                                collectionsData={[
-                                  {
-                                    id: "example-1",
-                                    name: "Example Collection 1",
-                                    status: "draft",
-                                    client: entity.name,
-                                    starting: "Dec 4, 2025",
-                                    location: "Madrid, Spain",
-                                    participants: 0,
-                                  },
-                                  {
-                                    id: "example-2",
-                                    name: "Example Collection 2",
-                                    status: "in-progress",
-                                    client: entity.name,
-                                    starting: "Jan 1, 2026",
-                                    location: "Barcelona, Spain",
-                                    participants: 5,
-                                  },
-                                  {
-                                    id: "example-3",
-                                    name: "Example Collection 3",
-                                    status: "completed",
-                                    client: entity.name,
-                                    starting: "Nov 1, 2025",
-                                    location: "Paris, France",
-                                    participants: 8,
-                                  },
-                                ]}
-                                onSettings={(id) => {
-                                  console.log("Settings for collection:", id)
-                                }}
-                              />
-                            )
+                            <div className="w-full py-12 text-center text-muted-foreground">
+                              No collections associated with this entity yet
+                            </div>
                           )}
                         </LayoutSection>
                       </Layout>

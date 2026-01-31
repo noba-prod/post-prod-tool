@@ -19,14 +19,14 @@ export async function GET(request: Request) {
         { status: 401 }
       )
     }
-    console.warn("Entities debug: no session, allowing debug fetch")
+    console.warn("Organizations debug: no session, allowing debug fetch")
   }
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey || serviceKey === "placeholder-service-key") {
     return NextResponse.json(
       {
-        error: "Missing SUPABASE_SERVICE_ROLE_KEY for entities fetch",
+        error: "Missing SUPABASE_SERVICE_ROLE_KEY for organizations fetch",
       },
       { status: 500 }
     )
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     if (profileError) {
-      console.error("Entities debug: failed to load profile", profileError)
+      console.error("Organizations debug: failed to load profile", profileError)
     } else {
       profileData = profileRow
     }
@@ -58,22 +58,22 @@ export async function GET(request: Request) {
   const adminClient = createAdminClient()
   const [organizationsResult, profilesResult, collectionsResult] = await Promise.all([
     adminClient.from("organizations").select("id,name,type").order("name", { ascending: true }),
-    adminClient.from("profiles").select("id,organization_id,first_name,last_name,role"),
+    adminClient.from("profiles").select("id,organization_id,first_name,last_name,email,role,is_internal"),
     adminClient.from("collections").select("id,client_id"),
   ])
 
   if (organizationsResult.error) {
-    console.error("Entities debug: organizations error", organizationsResult.error)
+    console.error("Organizations debug: organizations error", organizationsResult.error)
     return NextResponse.json({ error: organizationsResult.error.message }, { status: 500 })
   }
 
   if (profilesResult.error) {
-    console.error("Entities debug: profiles error", profilesResult.error)
+    console.error("Organizations debug: profiles error", profilesResult.error)
     return NextResponse.json({ error: profilesResult.error.message }, { status: 500 })
   }
 
   if (collectionsResult.error) {
-    console.error("Entities debug: collections error", collectionsResult.error)
+    console.error("Organizations debug: collections error", collectionsResult.error)
     return NextResponse.json({ error: collectionsResult.error.message }, { status: 500 })
   }
 
@@ -82,7 +82,7 @@ export async function GET(request: Request) {
   const collections = collectionsResult.data || []
 
   if (debugEnabled) {
-    console.info("Entities debug snapshot", {
+    console.info("Organizations debug snapshot", {
       userId,
       profile: profileData || null,
       organizationsCount: organizations.length,

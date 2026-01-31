@@ -37,6 +37,7 @@ export {
   isCreationStepContentComplete,
   isDraftComplete,
   isParticipantsStepComplete,
+  resolveUserForPermission,
 } from "./workflow"
 
 export type { ChronologyConstraint, ChronologyConstraintsResult } from "./workflow"

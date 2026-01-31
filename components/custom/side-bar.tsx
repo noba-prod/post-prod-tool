@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ContextualMenu } from "./contextual-menu"
 import { EntitySummaryCard } from "./entity-summary-card"
 import { CollectionSummaryCard } from "./collection-summary-card"
-import { Trash2, LucideIcon } from "lucide-react"
+import { Trash2, Settings, LucideIcon } from "lucide-react"
 
 interface SideBarMenuItem {
   id: string
@@ -90,9 +90,11 @@ interface SideBarCreateCollectionProps extends SideBarBaseProps {
   completedItems?: string[]
   /** Delete button label */
   deleteLabel?: string
-  /** When on Check Finals step: call when Publish collection is clicked */
+  /** Call when Settings (collection config) icon is clicked */
+  onSettingsCollection?: () => void
+  /** Call when Publish collection is clicked */
   onPublish?: () => void
-  /** When on Check Finals step: disable Publish button until draft is complete */
+  /** Disable Publish button until draft is complete */
   publishDisabled?: boolean
 }
 
@@ -191,8 +193,7 @@ export function SideBar(props: SideBarProps) {
   }
 
   if (type === "create-collection") {
-    const { items, collection, completedItems = [], deleteLabel = "Delete collection", onDelete, onPublish, publishDisabled = true } = props
-    const isCheckFinalsActive = items.length > 0 && activeId === items[items.length - 1]?.id
+    const { items, collection, completedItems = [], deleteLabel = "Delete collection", onDelete, onSettingsCollection, onPublish, publishDisabled = true } = props
     return (
       <div className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}>
         {/* Content - scrollable area */}
@@ -214,41 +215,38 @@ export function SideBar(props: SideBarProps) {
           </div>
         </div>
 
-        {/* Footer - collection summary + actions (per Figma 716-1739275: Check Finals = icon delete + Publish) */}
+        {/* Footer - collection summary + 3 actions (Figma 763-45815): destructive icon, settings icon, Publish primary, gap-2 */}
         <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0">
           <CollectionSummaryCard {...collection} />
-          {isCheckFinalsActive && onPublish != null ? (
-            <div className="flex items-center gap-3 w-full">
-              <Button
-                variant="secondary"
-                size="icon"
-                className="h-10 w-10 shrink-0 rounded-xl"
-                onClick={onDelete}
-                aria-label={deleteLabel}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="default"
-                size="lg"
-                className="flex-1 rounded-xl min-w-0"
-                onClick={onPublish}
-                disabled={publishDisabled}
-              >
-                Publish collection
-              </Button>
-            </div>
-          ) : (
+          <div className="flex items-center gap-2 w-full">
             <Button
-              variant="secondary"
-              size="lg"
-              className="w-full rounded-xl gap-2"
+              variant="destructive"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-xl"
               onClick={onDelete}
+              aria-label={deleteLabel}
             >
               <Trash2 className="w-4 h-4" />
-              {deleteLabel}
             </Button>
-          )}
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-xl"
+              onClick={onSettingsCollection}
+              aria-label="Collection settings"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="default"
+              size="lg"
+              className="flex-1 rounded-xl min-w-0"
+              onClick={onPublish}
+              disabled={publishDisabled}
+            >
+              Publish
+            </Button>
+          </div>
         </div>
       </div>
     )

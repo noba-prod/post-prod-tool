@@ -93,7 +93,7 @@ const sampleEntities: Entity[] = [
   { id: "4", name: "Photo LUX", type: "Photo Agency" },
   { id: "5", name: "Reveal Coruña", type: "Printer Lab" },
   { id: "6", name: "Mango", type: "Client" },
-  { id: "7", name: "Studio Madrid", type: "Edition Studio" },
+  { id: "7", name: "Studio Madrid", type: "Retouch/Post Studio" },
   { id: "8", name: "Snapshot Creations", type: "Photo Agency" },
   { id: "9", name: "Loewe", type: "Client" },
 ]

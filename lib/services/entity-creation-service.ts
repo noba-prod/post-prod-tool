@@ -272,7 +272,7 @@ export class EntityCreationService {
 
     if (errors.length > 0) {
       throw new EntityCreationError(
-        "Self-photographer validation failed",
+        "Photographer validation failed",
         "VALIDATION_FAILED",
         errors
       )

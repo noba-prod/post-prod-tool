@@ -99,9 +99,10 @@ export default function ViewTemplatePage() {
     "client": "Client",
     "agency": "Agency",
     "photo-lab": "Photo Lab",
-    "edition-studio": "Edition Studio",
+    "edition-studio": "Retouch/Post Studio",
     "hand-print-lab": "Hand Print Lab",
     "self-photographer": "Photographer",
+    "noba": "noba*",
   }[entityType]), [entityType])
 
   // Create admin user for self-photographer or get first admin from team members
@@ -250,15 +251,14 @@ export default function ViewTemplatePage() {
             size="sm"
             onClick={() => setEntityType(type)}
           >
-            {type === "self-photographer" ? "Self-Photo" : type.charAt(0).toUpperCase() + type.slice(1).replace("-", " ")}
+            {type === "self-photographer" ? "Photographer" : type.charAt(0).toUpperCase() + type.slice(1).replace("-", " ")}
           </Button>
         ))}
       </div>
 
       <ViewTemplate
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Entities", href: "/entities" },
+          { label: "Organizations", href: "/organizations" },
           { label: entityDisplayName },
         ]}
         sections={sections}

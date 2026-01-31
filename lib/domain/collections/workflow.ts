@@ -361,12 +361,16 @@ export function isCreationStepContentComplete(
     }
 
     case "check_finals": {
-      // Check Finals: all fields of the block must be completed before Publish is enabled.
-      // Photographer check finals: Date + Time. Client approve finals: Date + Time.
-      const hasPhotographerDate = !!c.checkFinalsPhotographerDueDate?.trim()
-      const hasPhotographerTime = !!c.checkFinalsPhotographerDueTime?.trim()
+      // Check Finals: Photographer check finals (Date + Time) and Client approve finals (Date + Time).
+      // When digital + no edition studio, photographer check is redundant (they check at LR to HR time); only client deadline required.
+      const isPhotographerCheckRedundant = !c.hasHandprint && !c.hasEditionStudio
       const hasClientDeadline = !!c.clientFinalsDeadline?.trim()
       const hasClientDeadlineTime = !!c.clientFinalsDeadlineTime?.trim()
+      if (isPhotographerCheckRedundant) {
+        return hasClientDeadline && hasClientDeadlineTime
+      }
+      const hasPhotographerDate = !!c.checkFinalsPhotographerDueDate?.trim()
+      const hasPhotographerTime = !!c.checkFinalsPhotographerDueTime?.trim()
       return (
         hasPhotographerDate &&
         hasPhotographerTime &&
@@ -436,6 +440,30 @@ export function canUserEditStep(
   const owners = getStepOwner(stepId, draft)
   if (!owners.includes(user.role)) return false
   return user.hasEditPermission
+}
+
+// =============================================================================
+// RESOLVE CURRENT USER FOR PERMISSION (collections-logic §8, §9)
+// Builds UserForPermission from collection participants/config and whether user is internal (noba).
+// =============================================================================
+
+export function resolveUserForPermission(
+  userId: string,
+  isInternal: boolean,
+  draft: CollectionDraft
+): UserForPermission {
+  if (isInternal) {
+    const hasEdit =
+      draft.config.nobaEditPermissionByUserId?.[userId] ?? true
+    return { role: "producer", hasEditPermission: hasEdit }
+  }
+  for (const p of draft.participants) {
+    if (p.userIds?.includes(userId)) {
+      const hasEdit = p.editPermissionByUserId?.[userId] ?? false
+      return { role: p.role, hasEditPermission: hasEdit }
+    }
+  }
+  return { role: "client", hasEditPermission: false }
 }
 
 // =============================================================================

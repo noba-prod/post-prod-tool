@@ -24,8 +24,10 @@ import {
 } from "@/components/ui/table"
 import { getRepositoryInstances } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
+import { useUserContext } from "@/lib/contexts/user-context"
 import type {
   CollectionDraft,
+  CollectionConfig,
   CollectionParticipant,
   ParticipantRole,
 } from "@/lib/domain/collections"
@@ -52,6 +54,7 @@ function isSupabaseConfigured(): boolean {
 /** Map domain entity type to Supabase organization type(s) */
 function entityTypeToOrgTypes(entityType: EntityType): OrganizationType[] {
   const mapping: Record<EntityType, OrganizationType[]> = {
+    noba: ["noba"],
     client: ["client"],
     "self-photographer": ["self_photographer"],
     agency: ["photography_agency"],
@@ -65,6 +68,7 @@ function entityTypeToOrgTypes(entityType: EntityType): OrganizationType[] {
 /** Map Supabase organization type to domain entity type */
 function orgTypeToEntityType(orgType: OrganizationType): EntityType {
   const mapping: Partial<Record<OrganizationType, EntityType>> = {
+    noba: "noba",
     client: "client",
     self_photographer: "self-photographer",
     photography_agency: "agency",
@@ -154,8 +158,8 @@ const ROLE_LABELS: Record<ParticipantRole, string> = {
   photographer: "Photographer",
   agency: "Agency",
   lab: "Lab",
-  handprint_lab: "Hand print lab",
-  edition_studio: "Edition studio",
+  handprint_lab: "Hand Print Lab",
+  edition_studio: "Retouch/Post Studio",
 }
 
 const ROLE_ENTITY_TYPES: Record<Exclude<ParticipantRole, "producer">, EntityType> = {
@@ -170,6 +174,8 @@ const ROLE_ENTITY_TYPES: Record<Exclude<ParticipantRole, "producer">, EntityType
 export interface ParticipantsStepContentProps {
   draft: CollectionDraft
   onParticipantsChange: (participants: CollectionParticipant[]) => void
+  /** Called when config is updated (e.g. nobaUserIds for noba* section). */
+  onConfigChange?: (patch: Partial<CollectionConfig>) => void
   className?: string
 }
 
@@ -194,6 +200,7 @@ function effectiveEntityId(
 export function ParticipantsStepContent({
   draft,
   onParticipantsChange,
+  onConfigChange,
   className,
 }: ParticipantsStepContentProps) {
   const config = draft.config
@@ -300,6 +307,10 @@ export function ParticipantsStepContent({
 
   return (
     <div className={cn("flex flex-col gap-6", className)}>
+      <NobaSection
+        draft={draft}
+        onConfigChange={onConfigChange}
+      />
       {sections.map(({ role, prefilled }) => (
         <ParticipantSection
           key={role}
@@ -309,10 +320,215 @@ export function ParticipantsStepContent({
           prefilled={prefilled}
           onEntitySelect={(entityId) => setEntityId(role, entityId)}
           onAddMember={(userId, entityIdForNew) => addMember(role, userId, entityIdForNew)}
-          onRemoveMember={(userId) => removeMember(role, userId)}
-          onEditPermissionChange={(userId, value) => setEditPermission(role, userId, value)}
+          onRemoveMember={(userId, roleOverride) =>
+            removeMember(roleOverride ?? role, userId)
+          }
+          onEditPermissionChange={(userId, value, roleOverride) =>
+            setEditPermission(roleOverride ?? role, userId, value)
+          }
         />
       ))}
+    </div>
+  )
+}
+
+// =============================================================================
+// NOBA* SECTION — Owner (current user) + noba members with Edit permission
+// =============================================================================
+
+/** Fetches all noba team members (users belonging to organization with type "noba") for the New member overlay. */
+function useInternalUsers(): User[] {
+  const [users, setUsers] = React.useState<User[]>([])
+  React.useEffect(() => {
+    let cancelled = false
+    fetch("/api/organizations", { method: "GET", cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (data: {
+          organizations?: Array<{ id: string; name: string; type: string }>
+          profiles?: Array<{
+            id: string
+            first_name: string | null
+            last_name: string | null
+            email?: string | null
+            organization_id: string | null
+            is_internal?: boolean
+          }>
+        } | null) => {
+          if (cancelled || !data?.profiles) return
+          const orgs = data.organizations ?? []
+          const nobaOrgIds = new Set(
+            orgs.filter((o) => o.type === "noba").map((o) => o.id)
+          )
+          // Noba team members = profiles whose organization is noba; fallback to is_internal if no noba org
+          const nobaTeam =
+            nobaOrgIds.size > 0
+              ? data.profiles.filter(
+                  (p) => p.organization_id != null && nobaOrgIds.has(p.organization_id)
+                )
+              : data.profiles.filter((p) => p.is_internal === true)
+          setUsers(
+            nobaTeam.map((p) => ({
+              id: p.id,
+              firstName: p.first_name ?? "",
+              lastName: p.last_name ?? undefined,
+              email: p.email ?? "",
+              phoneNumber: "",
+              entityId: p.organization_id ?? "",
+              role: "viewer" as const,
+            }))
+          )
+        }
+      )
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return users
+}
+
+interface NobaSectionProps {
+  draft: CollectionDraft
+  onConfigChange?: (patch: Partial<CollectionConfig>) => void
+}
+
+function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
+  const { user: currentUser } = useUserContext()
+  const config = draft.config
+  const [addOpen, setAddOpen] = React.useState(false)
+  const ownerId = currentUser?.id ?? ""
+  const extraIds = config.nobaUserIds ?? []
+  const nobaUserIds = React.useMemo(() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    if (ownerId && !seen.has(ownerId)) {
+      seen.add(ownerId)
+      out.push(ownerId)
+    }
+    for (const id of extraIds) {
+      if (!seen.has(id)) {
+        seen.add(id)
+        out.push(id)
+      }
+    }
+    return out
+  }, [ownerId, extraIds])
+  const editByUserId = config.nobaEditPermissionByUserId ?? {}
+  const usersById = useUsersByIds(nobaUserIds)
+  const memberUsers = React.useMemo(
+    () =>
+      nobaUserIds
+        .map((id) => usersById.get(id))
+        .filter((u): u is User => u != null),
+    [nobaUserIds, usersById]
+  )
+  const internalUsers = useInternalUsers()
+
+  const handleAdd = React.useCallback(
+    (u: User) => {
+      if (!onConfigChange) return
+      const next = [...(config.nobaUserIds ?? []), u.id].filter((id) => id !== ownerId)
+      onConfigChange({
+        nobaUserIds: next,
+        nobaEditPermissionByUserId: { ...(config.nobaEditPermissionByUserId ?? {}), [u.id]: true },
+      })
+      setAddOpen(false)
+    },
+    [onConfigChange, config.nobaUserIds, config.nobaEditPermissionByUserId, ownerId]
+  )
+
+  const handleRemove = React.useCallback(
+    (userId: string) => {
+      if (!onConfigChange || userId === ownerId) return
+      const next = (config.nobaUserIds ?? []).filter((id) => id !== userId)
+      const nextEdit = { ...(config.nobaEditPermissionByUserId ?? {}) }
+      delete nextEdit[userId]
+      onConfigChange({ nobaUserIds: next, nobaEditPermissionByUserId: nextEdit })
+    },
+    [onConfigChange, config.nobaUserIds, config.nobaEditPermissionByUserId, ownerId]
+  )
+
+  const handleEditPermission = React.useCallback(
+    (userId: string, value: boolean) => {
+      if (!onConfigChange) return
+      onConfigChange({
+        nobaEditPermissionByUserId: { ...(config.nobaEditPermissionByUserId ?? {}), [userId]: value },
+      })
+    },
+    [onConfigChange, config.nobaEditPermissionByUserId]
+  )
+
+  return (
+    <div className="flex flex-col gap-4 p-4 bg-background border border-border rounded-xl w-full">
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-base font-semibold text-foreground">noba*</span>
+        <Button
+          variant="secondary"
+          onClick={() => setAddOpen(true)}
+          className="h-10 gap-2 rounded-xl"
+        >
+          <Plus className="h-4 w-4" />
+          New member
+        </Button>
+      </div>
+      {memberUsers.length > 0 && (
+        <div className="border border-border rounded-xl overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="bg-sidebar h-12">Name</TableHead>
+                <TableHead className="bg-sidebar h-12">Email</TableHead>
+                <TableHead className="bg-sidebar h-12">Phone</TableHead>
+                <TableHead className="bg-sidebar h-12">Edit permission</TableHead>
+                <TableHead className="bg-sidebar h-12 w-[85px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {memberUsers.map((u) => (
+                <TableRow key={u.id} className="h-[52px]">
+                  <TableCell className="font-medium">
+                    {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
+                    {u.id === ownerId && (
+                      <span className="ml-2 text-xs text-muted-foreground">(owner)</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground truncate max-w-[120px]">
+                    {u.email}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground truncate max-w-[120px]">
+                    {u.phoneNumber ?? "—"}
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={editByUserId[u.id] ?? (u.id === ownerId)}
+                      onCheckedChange={(v) => handleEditPermission(u.id, !!v)}
+                    />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {u.id !== ownerId && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemove(u.id)}
+                        className="h-10 w-10"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <AddMemberOverlay
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        users={internalUsers}
+        existingIds={new Set(nobaUserIds)}
+        onSelect={handleAdd}
+      />
     </div>
   )
 }
@@ -325,8 +541,10 @@ interface ParticipantSectionProps {
   onEntitySelect: (entityId: string) => void
   /** When adding photographer without agency, pass entityId as second arg so participant is set in one update */
   onAddMember: (userId: string, entityIdForNew?: string) => void
-  onRemoveMember: (userId: string) => void
-  onEditPermissionChange: (userId: string, value: boolean) => void
+  /** roleOverride: when showing producer (manager) in Client section, pass "producer" so the correct participant is updated */
+  onRemoveMember: (userId: string, roleOverride?: ParticipantRole) => void
+  /** roleOverride: when showing producer (manager) in Client section, pass "producer" so edit permission is applied to producer */
+  onEditPermissionChange: (userId: string, value: boolean, roleOverride?: ParticipantRole) => void
 }
 
 function ParticipantSection({
@@ -364,7 +582,44 @@ function ParticipantSection({
     return users
   }, [isPhotographerNoAgency, isPhotographerWithAgency, users, selfPhotographerUsers])
 
-  const memberUserIds = participant?.userIds ?? []
+  // Client section: show manager (from producer participant) in the same table with edit permission on by default
+  const producerParticipant = role === "client" ? getParticipantByRole(draft.participants, "producer") : undefined
+  const clientEntityId = role === "client" ? (config.clientEntityId ?? entityId) : ""
+  const producerSameEntity =
+    role === "client" &&
+    producerParticipant?.entityId &&
+    clientEntityId &&
+    producerParticipant.entityId === clientEntityId
+
+  const memberUserIds = React.useMemo(() => {
+    const fromRole = participant?.userIds ?? []
+    if (!producerSameEntity || !producerParticipant?.userIds?.length) return fromRole
+    const seen = new Set(fromRole)
+    const merged = [...fromRole]
+    for (const id of producerParticipant.userIds) {
+      if (!seen.has(id)) {
+        seen.add(id)
+        merged.push(id)
+      }
+    }
+    return merged
+  }, [participant?.userIds, producerSameEntity, producerParticipant?.userIds])
+
+  const editByUserId = React.useMemo(() => {
+    const fromRole = participant?.editPermissionByUserId ?? {}
+    if (!producerSameEntity || !producerParticipant?.editPermissionByUserId) return fromRole
+    return { ...fromRole, ...producerParticipant.editPermissionByUserId }
+  }, [participant?.editPermissionByUserId, producerSameEntity, producerParticipant?.editPermissionByUserId])
+
+  /** For Client section: which participant "owns" this userId (so edit/remove update the right one) */
+  const memberSourceRole = React.useMemo((): Record<string, ParticipantRole> => {
+    if (role !== "client") return {}
+    const out: Record<string, ParticipantRole> = {}
+    for (const id of participant?.userIds ?? []) out[id] = "client"
+    if (producerSameEntity) for (const id of producerParticipant?.userIds ?? []) out[id] = "producer"
+    return out
+  }, [role, participant?.userIds, producerSameEntity, producerParticipant?.userIds])
+
   const usersByIdsResolved = useUsersByIds(memberUserIds)
   const memberUsers = React.useMemo(
     () =>
@@ -373,7 +628,6 @@ function ParticipantSection({
         .filter((u): u is User => u != null),
     [memberUserIds, usersById, usersByIdsResolved]
   )
-  const editByUserId = participant?.editPermissionByUserId ?? {}
 
   const entityOptions = React.useMemo(
     () => entities.map((e) => ({ value: e.id, label: e.name })),
@@ -396,6 +650,7 @@ function ParticipantSection({
     [isPhotographerNoAgency, onAddMember]
   )
 
+  // Edit permission: allow toggling for Client (and other non-photographer) members so they have edit power over milestones for their entity once published.
   const isEditLockedForUser = React.useCallback(
     (u: User) => {
       if (isPhotographerNoAgency) return true
@@ -470,7 +725,9 @@ function ParticipantSection({
                   <TableCell>
                     <Switch
                       checked={!!editByUserId[u.id]}
-                      onCheckedChange={(v) => onEditPermissionChange(u.id, !!v)}
+                      onCheckedChange={(v) =>
+                        onEditPermissionChange(u.id, !!v, memberSourceRole[u.id])
+                      }
                       disabled={isEditLockedForUser(u)}
                     />
                   </TableCell>
@@ -478,7 +735,7 @@ function ParticipantSection({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => onRemoveMember(u.id)}
+                      onClick={() => onRemoveMember(u.id, memberSourceRole[u.id])}
                       className="h-10 w-10"
                     >
                       <Trash2 className="size-4" />

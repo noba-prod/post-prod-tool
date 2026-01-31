@@ -37,6 +37,8 @@ interface OptionPickerProps {
   placeholder?: string
   /** Options to display */
   options: Option[]
+  /** Whether to show search input (false = command box without search) */
+  searchable?: boolean
   /** Whether the picker is disabled */
   disabled?: boolean
   /** Additional class names */
@@ -55,6 +57,7 @@ export function OptionPicker({
   onValueChange,
   placeholder = "Select an option",
   options,
+  searchable = true,
   disabled = false,
   className,
 }: OptionPickerProps) {
@@ -117,7 +120,7 @@ export function OptionPicker({
           style={triggerWidth != null ? { width: triggerWidth } : undefined}
         >
           <Command>
-            <CommandInput placeholder="Search..." />
+            {searchable && <CommandInput placeholder="Search..." />}
             <CommandList>
               <CommandEmpty>No option found.</CommandEmpty>
               <CommandGroup>

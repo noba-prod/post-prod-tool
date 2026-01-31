@@ -73,6 +73,10 @@ export interface CollectionConfig {
   clientEntityId: string
   /** Manager (admin) user id — producer / noba */
   managerUserId: string
+  /** noba* internal user ids (owner + additional members). Owner = user creating the collection; others added via "New member". */
+  nobaUserIds?: string[]
+  /** Edit permission by user id for noba* members (milestone edit power once published). */
+  nobaEditPermissionByUserId?: Record<string, boolean>
   /** Photographer collaborates with an agency (collections-logic §4.1 Agency Logic) */
   hasAgency: boolean
   /** Low-res lab involved (doc: Lab low-res appears when handprint marked — we treat as explicit flag for step/participant visibility) */

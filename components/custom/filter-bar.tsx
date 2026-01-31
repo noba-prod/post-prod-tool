@@ -84,9 +84,9 @@ const ENTITY_TYPES = [
   { value: "client", label: "Client" },
   { value: "photographer", label: "Photographer" },
   { value: "agency", label: "Agency" },
-  { value: "photo-lab", label: "Photo lab" },
-  { value: "hand-print-lab", label: "Hand print lab" },
-  { value: "edition-studio", label: "Edition studio" },
+  { value: "photo-lab", label: "Photo Lab" },
+  { value: "hand-print-lab", label: "Hand Print Lab" },
+  { value: "edition-studio", label: "Retouch/Post Studio" },
 ]
 
 // Componente FilterButton con Popover
@@ -357,6 +357,8 @@ export function FilterBar({
       showSearch: false,
       showViewTabs: true,
       showAction: false,
+      actionLabel: "Button",
+      actionIcon: <Circle className="size-4" />,
       viewLabels: ["Gallery", "List"] as [string, string],
     },
     members: {
@@ -365,13 +367,15 @@ export function FilterBar({
       showAction: true,
       actionLabel: "New member",
       actionIcon: <Plus className="size-4" />,
+      viewLabels: viewLabels,
     },
     entities: {
       showSearch: true,
       showViewTabs: false,
       showAction: true,
-      actionLabel: "New entity",
+      actionLabel: "New organization",
       actionIcon: <Plus className="size-4" />,
+      viewLabels: viewLabels,
     },
   }
 

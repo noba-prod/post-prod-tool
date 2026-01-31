@@ -46,6 +46,8 @@ function mapEntityTypeToOrganizationType(type: EntityType): OrganizationType {
 
 function mapOrganizationTypeToEntityType(type: OrganizationType): EntityType {
   switch (type) {
+    case "noba":
+      return "noba"
     case "client":
       return "client"
     case "photography_agency":
@@ -58,6 +60,8 @@ function mapOrganizationTypeToEntityType(type: OrganizationType): EntityType {
       return "hand-print-lab"
     case "self_photographer":
       return "self-photographer"
+    default:
+      throw new Error(`Unsupported organization type: ${type}`)
   }
 }
 
@@ -167,7 +171,7 @@ export async function createOrganizationFromDraft({
 
   const { data: organization, error } = await adminSupabase
     .from("organizations")
-    .insert(insertPayload)
+    .insert(insertPayload as never)
     .select("*")
     .single()
 
@@ -175,34 +179,88 @@ export async function createOrganizationFromDraft({
     throw new Error(error?.message || "Failed to create organization")
   }
 
+  const org = organization as Organization
   if (profilePicture) {
     const publicUrl = await uploadOrganizationProfilePicture(
       adminSupabase,
-      organization.id,
+      org.id,
       profilePicture
     )
 
-    if (publicUrl) {
-      const { data: updatedOrg } = await adminSupabase
-        .from("organizations")
-        .update({ profile_picture_url: publicUrl })
-        .eq("id", organization.id)
+      if (publicUrl) {
+        const { data: updatedOrg } = await adminSupabase
+          .from("organizations")
+          .update({ profile_picture_url: publicUrl } as never)
+          .eq("id", org.id)
         .select("*")
         .single()
 
       if (updatedOrg) {
+        const updated = updatedOrg as Organization
         return {
-          entityId: updatedOrg.id,
-          entity: mapOrganizationToEntity(updatedOrg),
+          entityId: updated.id,
+          entity: mapOrganizationToEntity(updated),
         }
       }
     }
   }
 
   return {
-    entityId: organization.id,
-    entity: mapOrganizationToEntity(organization),
+    entityId: org.id,
+    entity: mapOrganizationToEntity(org),
   }
+}
+
+/**
+ * Updates an existing organization in Supabase from entity draft (basic info).
+ * Used when the user edits company details and the entity comes from Supabase (not in-memory).
+ */
+export async function updateOrganizationFromDraft(
+  organizationId: string,
+  draft: CreateEntityDraftPayload
+): Promise<{ entity: Entity }> {
+  const adminSupabase = createAdminClient()
+
+  const trimmedName = draft.name?.trim()
+  if (!trimmedName) {
+    throw new Error("Organization name is required")
+  }
+
+  const phoneTrimmed = draft.phoneNumber?.trim()
+  const prefix = phoneTrimmed ? phoneTrimmed.split(/\s+/)[0] || null : null
+  const phone = phoneTrimmed
+    ? phoneTrimmed
+        .split(/\s+/)
+        .slice(1)
+        .join(" ")
+        .trim() || null
+    : null
+
+  const updatePayload: Database["public"]["Tables"]["organizations"]["Update"] = {
+    name: trimmedName,
+    email: draft.email?.trim() || null,
+    phone,
+    prefix,
+    notes: draft.notes?.trim() || null,
+    street_address: draft.location?.streetAddress?.trim() || null,
+    zip_code: draft.location?.zipCode?.trim() || null,
+    city: draft.location?.city?.trim() || null,
+    country: draft.location?.country?.trim() || null,
+    updated_at: new Date().toISOString(),
+  }
+
+  const { data: organization, error } = await adminSupabase
+    .from("organizations")
+    .update(updatePayload as never)
+    .eq("id", organizationId)
+    .select("*")
+    .single()
+
+  if (error || !organization) {
+    throw new Error(error?.message || "Failed to update organization")
+  }
+
+  return { entity: mapOrganizationToEntity(organization as Organization) }
 }
 
 export async function createAdminForOrganization({
@@ -240,7 +298,7 @@ export async function createAdminForOrganization({
 
   const { data: profile, error: profileError } = await adminSupabase
     .from("profiles")
-    .upsert(profilePayload, { onConflict: "id" })
+    .upsert(profilePayload as never, { onConflict: "id" })
     .select("*")
     .single()
 

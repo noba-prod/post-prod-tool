@@ -150,10 +150,15 @@ export function CheckFinalsStepContent({
     onCheckFinalsChange,
   ])
 
+  // Digital flow + no edition studio: photographer does LR and HR, so "Photographer check finals" is redundant (they check at same time as LR to HR). Only show Client approve finals.
+  const isPhotographerCheckRedundant =
+    !c.hasHandprint && !c.hasEditionStudio
+
   return (
     <div className={cn("flex flex-col gap-5 w-full", className)}>
       <Forms
         variant="horizontal-flow"
+        showFirstBlock={!isPhotographerCheckRedundant}
         firstTitle="Photographer check finals"
         firstContent={
           <>

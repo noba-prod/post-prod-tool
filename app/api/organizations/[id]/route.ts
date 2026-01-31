@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { mapOrganizationToEntity, mapProfilesToUsers } from "@/lib/utils/supabase-mappers"
 import { parsePhoneNumber } from "@/lib/utils/form-mappers"
+import type { Profile, Organization } from "@/lib/supabase/database.types"
 
 type EntityUpdatePayload = {
   name?: string
@@ -27,15 +28,16 @@ async function getSessionProfile() {
     return { session: null, profile: null, error: sessionError?.message || "No session" }
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profileData, error: profileError } = await supabase
     .from("profiles")
     .select("id,is_internal,organization_id,role")
     .eq("id", sessionData.session.user.id)
     .maybeSingle()
 
+  const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
   return {
     session: sessionData.session,
-    profile: profile,
+    profile,
     error: profileError?.message || null,
   }
 }
@@ -79,6 +81,7 @@ export async function GET(
     return NextResponse.json({ error: "Entity not found" }, { status: 404 })
   }
 
+  const org = organization as Organization
   const { data: profiles, error: profilesError } = await adminClient
     .from("profiles")
     .select("*")
@@ -88,16 +91,97 @@ export async function GET(
     return NextResponse.json({ error: profilesError.message }, { status: 500 })
   }
 
-  const entity = mapOrganizationToEntity(organization)
-  const teamMembers = mapProfilesToUsers(profiles || [])
+  const entity = mapOrganizationToEntity(org)
+  const teamMembers = mapProfilesToUsers((profiles || []) as Profile[])
   const adminUsers = teamMembers.filter((user) => user.role === "admin")
   const adminUser = adminUsers.length > 0 ? adminUsers[0] : null
+
+  // Collections where this entity is invited (client or participant: photographer, lab, edition studio, handprint lab)
+  const { data: collectionsRows } = await adminClient
+    .from("collections")
+    .select("id, name, status, client_id, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
+    .or(
+      `client_id.eq.${organizationId},photographer_id.eq.${organizationId},lab_low_res_id.eq.${organizationId},edition_studio_id.eq.${organizationId},hand_print_lab_id.eq.${organizationId}`
+    )
+    .order("updated_at", { ascending: false })
+
+  const collectionsList: Array<{
+    id: string
+    name: string
+    status: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
+    clientName: string
+    location: string
+    startDate: string
+    endDate: string
+    participants: number
+  }> = []
+
+  if (collectionsRows && collectionsRows.length > 0) {
+    const clientIds = [...new Set((collectionsRows as { client_id: string }[]).map((c) => c.client_id))]
+    const { data: clientOrgs } = await adminClient
+      .from("organizations")
+      .select("id, name")
+      .in("id", clientIds)
+    const clientNameById = new Map<string, string>()
+    for (const org of clientOrgs || []) {
+      clientNameById.set((org as { id: string; name: string }).id, (org as { id: string; name: string }).name)
+    }
+
+    const collectionIds = (collectionsRows as { id: string }[]).map((c) => c.id)
+    const { data: memberCounts } = await adminClient
+      .from("collection_members")
+      .select("collection_id")
+    const participantsByCollectionId = new Map<string, number>()
+    for (const cid of collectionIds) {
+      const count = (memberCounts || []).filter((m: { collection_id: string }) => m.collection_id === cid).length
+      participantsByCollectionId.set(cid, count)
+    }
+
+    const formatDate = (d: string | null): string => {
+      if (!d) return "—"
+      try {
+        return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toLowerCase()
+      } catch {
+        return d
+      }
+    }
+
+    const normalizeStatus = (s: string): "draft" | "upcoming" | "in-progress" | "completed" | "canceled" => {
+      if (s === "in_progress") return "in-progress"
+      if (["draft", "upcoming", "completed", "canceled"].includes(s)) return s as "draft" | "upcoming" | "completed" | "canceled"
+      return "draft"
+    }
+
+    for (const row of collectionsRows as Array<{
+      id: string
+      name: string
+      status: string
+      client_id: string
+      shooting_start_date: string | null
+      shooting_end_date: string | null
+      shooting_city: string | null
+      shooting_country: string | null
+    }>) {
+      const location = [row.shooting_city, row.shooting_country].filter(Boolean).join(", ") || "—"
+      collectionsList.push({
+        id: row.id,
+        name: row.name,
+        status: normalizeStatus(row.status),
+        clientName: clientNameById.get(row.client_id) || "—",
+        location,
+        startDate: formatDate(row.shooting_start_date),
+        endDate: formatDate(row.shooting_end_date),
+        participants: participantsByCollectionId.get(row.id) ?? 0,
+      })
+    }
+  }
 
   return NextResponse.json({
     entity,
     teamMembers,
     adminUsers,
     adminUser,
+    collectionsList,
   })
 }
 
@@ -169,9 +253,9 @@ export async function PATCH(
   }
 
   const adminClient = createAdminClient()
-  const { data: organization, error: updateError } = await adminClient
+  const { data: organizationData, error: updateError } = await adminClient
     .from("organizations")
-    .update(update)
+    .update(update as never)
     .eq("id", organizationId)
     .select("*")
     .maybeSingle()
@@ -180,9 +264,49 @@ export async function PATCH(
     return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
-  if (!organization) {
+  if (!organizationData) {
     return NextResponse.json({ error: "Entity not found" }, { status: 404 })
   }
 
-  return NextResponse.json({ entity: mapOrganizationToEntity(organization) })
+  const updatedOrg = organizationData as Organization
+  return NextResponse.json({ entity: mapOrganizationToEntity(updatedOrg) })
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const resolvedParams = await params
+  const { session, profile, error } = await getSessionProfile()
+  if (!session || !profile) {
+    return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
+  }
+
+  const organizationId = resolvedParams.id
+  const isInternal = Boolean(profile.is_internal)
+  const canEditSameOrg =
+    profile.organization_id === organizationId &&
+    (profile.role === "admin" || profile.role === "editor")
+
+  if (!isInternal && !canEditSameOrg) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  const adminClient = createAdminClient()
+  const { error: deleteError } = await adminClient
+    .from("organizations")
+    .delete()
+    .eq("id", organizationId)
+
+  if (deleteError) {
+    if (deleteError.code === "23503") {
+      return NextResponse.json(
+        { error: "Cannot delete entity: it is referenced by other data (e.g. collections, team members)." },
+        { status: 400 }
+      )
+    }
+    return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  }
+
+  return new NextResponse(null, { status: 204 })
 }

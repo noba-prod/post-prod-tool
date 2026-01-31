@@ -18,6 +18,7 @@ import { toast } from "sonner"
 import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
+import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
 
 interface MainTemplateProps {
   /** Page title */
@@ -136,11 +137,14 @@ export function MainTemplate({
       // Convert form data to entity draft
       const draft = mapFormToEntityDraft(companyFormData)
 
-      // Update entity
-      const updatedEntity = await repos.entityRepository.updateEntity(userContext.entity.id, draft)
+      // Update entity: try in-memory repo first (mock auth); if null, update in Supabase (real auth)
+      let updatedEntity = repos.entityRepository
+        ? await repos.entityRepository.updateEntity(userContext.entity.id, draft)
+        : null
 
       if (!updatedEntity) {
-        throw new Error("Failed to update entity")
+        const result = await updateOrganizationFromDraft(userContext.entity.id, draft)
+        updatedEntity = result.entity
       }
 
       // Dispatch session-changed event to refresh UserContext

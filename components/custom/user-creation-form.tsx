@@ -4,10 +4,10 @@ import * as React from "react"
 import { ModalWindow } from "./modal-window"
 import { Layout, LayoutSection } from "./layout"
 import { RowVariants } from "./row-variants"
-import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel, FieldContent, FieldDescription } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { PhoneInput } from "./phone-input"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { OptionPicker } from "./option-picker"
 
 // Import domain types and helpers
 import type { Role, EntityType, User } from "@/lib/types"
@@ -63,10 +63,16 @@ interface UserCreationFormProps {
   onSubmit?: (data: UserFormData) => void
   /** Callback when form is cancelled */
   onCancel?: () => void
+  /** Callback when Delete is clicked (shows Delete as secondary destructive button; admin only) */
+  onDeleteClick?: () => void
   /** Primary action label */
   primaryLabel?: string
   /** Secondary action label */
   secondaryLabel?: string
+  /** Show primary button (default: true when not disabled, false when view-only) */
+  showPrimary?: boolean
+  /** Show secondary button (default: false; set true for Cancel in edit mode, or Delete when onDeleteClick) */
+  showSecondary?: boolean
 }
 
 // ============================================================================
@@ -105,13 +111,22 @@ export function UserCreationForm({
   disabled = false,
   onSubmit,
   onCancel,
+  onDeleteClick,
   primaryLabel,
   secondaryLabel = "Cancel",
+  showPrimary: showPrimaryProp,
+  showSecondary: showSecondaryProp,
 }: UserCreationFormProps) {
   // Determine title and primary label based on mode
   const title = mode === "edit" ? "Edit user" : (isAdminUser ? "New Admin User" : "Create User")
   const defaultPrimaryLabel = mode === "edit" ? "Save changes" : (isAdminUser ? "Create admin user" : "Register member")
   const finalPrimaryLabel = primaryLabel || defaultPrimaryLabel
+  // View-only: hide action buttons; edit mode: show Cancel or Delete (when onDeleteClick) as secondary
+  const showPrimary = showPrimaryProp ?? !disabled
+  const showSecondary = showSecondaryProp ?? (mode === "edit" && !disabled)
+  const useDeleteAsSecondary = Boolean(mode === "edit" && onDeleteClick)
+  const finalSecondaryLabel = useDeleteAsSecondary ? "Delete" : (secondaryLabel ?? "Cancel")
+  const secondaryVariant = useDeleteAsSecondary ? "destructive" : "default"
 
   // Parse initialUserData if provided (for edit mode)
   const parsedInitialData = React.useMemo(() => {
@@ -164,6 +179,41 @@ export function UserCreationForm({
     }
   }, [mode, initialUserData, entity])
 
+  // Email uniqueness check (create mode only)
+  const [emailAlreadyExists, setEmailAlreadyExists] = React.useState(false)
+  const emailCheckTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  React.useEffect(() => {
+    if (mode === "edit" || disabled) {
+      setEmailAlreadyExists(false)
+      return
+    }
+    const email = formData.email.trim()
+    if (!email) {
+      setEmailAlreadyExists(false)
+      return
+    }
+    if (emailCheckTimeoutRef.current) {
+      clearTimeout(emailCheckTimeoutRef.current)
+      emailCheckTimeoutRef.current = null
+    }
+    emailCheckTimeoutRef.current = setTimeout(async () => {
+      emailCheckTimeoutRef.current = null
+      try {
+        const res = await fetch(`/api/users/check-email?email=${encodeURIComponent(email)}`)
+        const data = (await res.json()) as { exists?: boolean }
+        setEmailAlreadyExists(Boolean(data.exists))
+      } catch {
+        setEmailAlreadyExists(false)
+      }
+    }, 400)
+    return () => {
+      if (emailCheckTimeoutRef.current) {
+        clearTimeout(emailCheckTimeoutRef.current)
+      }
+    }
+  }, [formData.email, mode, disabled])
+
   // Reset form when modal closes
   React.useEffect(() => {
     if (!open) {
@@ -199,9 +249,10 @@ export function UserCreationForm({
       formData.email.trim() !== "" &&
       formData.phoneNumber.trim() !== "" &&
       formData.entity !== null &&
-      formData.role !== null
+      formData.role !== null &&
+      !emailAlreadyExists
     )
-  }, [formData])
+  }, [formData, emailAlreadyExists])
 
   // Handlers
   const handleSubmit = () => {
@@ -231,11 +282,13 @@ export function UserCreationForm({
           : "Add a new member to the entity"
       }
       primaryLabel={finalPrimaryLabel}
-      secondaryLabel={secondaryLabel}
-      showSecondary={false}
+      secondaryLabel={finalSecondaryLabel}
+      showPrimary={showPrimary}
+      showSecondary={showSecondary}
+      secondaryVariant={secondaryVariant}
       primaryDisabled={!isFormValid || disabled}
       onPrimaryClick={handleSubmit}
-      onSecondaryClick={handleCancel}
+      onSecondaryClick={useDeleteAsSecondary ? onDeleteClick : handleCancel}
       width="644px"
     >
       <Layout padding="md" showSeparators={false}>
@@ -290,7 +343,7 @@ export function UserCreationForm({
             {/* Row 2: Email | Phone Number */}
             <RowVariants variant="2">
               {/* Email */}
-              <Field>
+              <Field data-invalid={emailAlreadyExists ? "true" : undefined}>
                 <FieldLabel htmlFor="user-email">
                   Email
                 </FieldLabel>
@@ -308,7 +361,13 @@ export function UserCreationForm({
                     placeholder="Write email address"
                     required
                     disabled={disabled || mode === "edit"}
+                    aria-invalid={emailAlreadyExists}
                   />
+                  {emailAlreadyExists && (
+                    <FieldDescription className="text-xs text-destructive">
+                      A user with this email already exists.
+                    </FieldDescription>
+                  )}
                 </FieldContent>
               </Field>
 
@@ -334,64 +393,39 @@ export function UserCreationForm({
 
             {/* Row 3: Entity | Role */}
             <RowVariants variant="2">
-              {/* Entity (disabled select) */}
+              {/* Entity - Option Picker (disabled, single option) */}
               <Field>
-                <FieldLabel htmlFor="user-entity" disabled={true}>
-                  {formData.entity ? entityTypeToLabel(formData.entity.type) : "Entity"}
-                </FieldLabel>
                 <FieldContent>
-                  <Select
-                    value={formData.entity ? "selected" : ""}
-                    disabled={true || disabled}
-                  >
-                    <SelectTrigger id="user-entity" className="w-full">
-                      <SelectValue
-                        placeholder={
-                          formData.entity
-                            ? formData.entity.name
-                            : "Entity will be selected from context"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="selected">
-                          {formData.entity?.name || "No entity selected"}
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <OptionPicker
+                    label={formData.entity ? entityTypeToLabel(formData.entity.type) : "Organization"}
+                    value={formData.entity?.name ?? ""}
+                    onValueChange={() => {}}
+                    placeholder="Entity will be selected from context"
+                    options={
+                      formData.entity
+                        ? [{ value: formData.entity.name, label: formData.entity.name }]
+                        : []
+                    }
+                    searchable={false}
+                    disabled={true}
+                  />
                 </FieldContent>
               </Field>
 
-              {/* Role */}
+              {/* Role - Option Picker (command box without search) */}
               <Field>
-                <FieldLabel htmlFor="user-role" disabled={isAdminUser}>
-                  Role
-                </FieldLabel>
                 <FieldContent>
-                  <Select
+                  <OptionPicker
+                    label="Role"
                     value={formData.role}
-                    onValueChange={(value: Role) =>
-                      setFormData((prev) => ({ ...prev, role: value }))
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, role: value as Role }))
                     }
-                    disabled={isAdminUser || disabled || mode === "edit"}
-                  >
-                    <SelectTrigger id="user-role" className="w-full">
-                      <SelectValue placeholder="Select a role">
-                        {roleToLabel(formData.role)}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {ALL_ROLES.map((role) => (
-                          <SelectItem key={role} value={role}>
-                            {roleToLabel(role)}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select a role"
+                    options={ALL_ROLES.map((r) => ({ value: r, label: roleToLabel(r) }))}
+                    searchable={false}
+                    disabled={isAdminUser || disabled}
+                  />
                 </FieldContent>
               </Field>
             </RowVariants>

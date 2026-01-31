@@ -61,7 +61,7 @@ export interface EditionConfigStepContentProps {
 
 /**
  * Pre-check & Edition block content per Figma node 714-1736413 and collections-logic §10.7, §10.8.
- * One form with two modules: Edition request (Photographer — due date/time, owner) and Final edits (Edition studio — due date/time, owner).
+ * One form with two modules: Edition request (Photographer — due date/time, owner) and Final edits (Retouch/Post Studio — due date/time, owner).
  */
 export function EditionConfigStepContent({
   draft,
@@ -224,7 +224,7 @@ export function EditionConfigStepContent({
             </RowVariants>
             <EntitySelected
               label="Owner"
-              entityType="Edition studio"
+              entityType="Retouch/Post Studio"
               value={editionStudioName}
               locked
             />

@@ -15,17 +15,16 @@ import { ChevronDownIcon, XIcon, CheckIcon } from "lucide-react"
 
 const Combobox = ComboboxPrimitive.Root
 
-function ComboboxValue({ className, ...props }: ComboboxPrimitive.Value.Props) {
+function ComboboxValue(props: ComboboxPrimitive.Value.Props) {
   return (
-    <ComboboxPrimitive.Value
-      data-slot="combobox-value"
+    <span
       className={cn(
         "absolute w-px h-px p-0 m-0 overflow-hidden whitespace-nowrap border-0",
-        "clip-[rect(0,0,0,0)]",
-        className
+        "clip-[rect(0,0,0,0)]"
       )}
-      {...props}
-    />
+    >
+      <ComboboxPrimitive.Value data-slot="combobox-value" {...props} />
+    </span>
   )
 }
 

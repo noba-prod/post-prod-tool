@@ -34,6 +34,7 @@ class SupabaseAuthAdapter implements AuthAdapter {
     }
 
     try {
+      // @ts-expect-error Supabase RPC types may not match Database Functions
       const { data, error } = await supabase.rpc("check_email_precheck", {
         check_email: normalizedEmail,
       })
@@ -43,7 +44,7 @@ class SupabaseAuthAdapter implements AuthAdapter {
         return { allowed: false, reason: "error" }
       }
 
-      const row = Array.isArray(data) ? data[0] : data
+      const row = (Array.isArray(data) ? data[0] : data) as { allowed?: boolean; reason?: string } | null
       const allowed = row?.allowed ?? false
       return {
         allowed,

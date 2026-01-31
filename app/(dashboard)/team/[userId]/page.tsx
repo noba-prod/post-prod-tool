@@ -115,7 +115,9 @@ export default function TeamMemberProfilePage() {
           email: userData.email,
           phoneNumber: userData.phoneNumber,
           countryCode: userData.countryCode,
-          entity: userData.entity,
+          entity: userData.entity
+            ? { type: userData.entity.type as import("@/lib/types").StandardEntityType, name: userData.entity.name }
+            : null,
           role: userData.role,
         })
         if (USE_MOCK_AUTH) {

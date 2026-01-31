@@ -49,6 +49,8 @@ interface FormHorizontalFlowProps {
   secondTitle?: string
   /** Second capsule content */
   secondContent?: React.ReactNode
+  /** When false, only render the second capsule (no first block, no arrow). Used when first step is redundant (e.g. digital, no edition studio). */
+  showFirstBlock?: boolean
   /** Additional class name */
   className?: string
 }
@@ -172,15 +174,27 @@ function FormShippingModule({
 }
 
 /**
- * Horizontal Flow form variant - Two capsules side by side with arrow
+ * Horizontal Flow form variant - Two capsules side by side with arrow, or only second capsule when first is redundant
  */
 function FormHorizontalFlow({
   firstTitle = "This is a title",
   firstContent,
   secondTitle = "This is a title",
   secondContent,
+  showFirstBlock = true,
   className,
 }: FormHorizontalFlowProps) {
+  if (!showFirstBlock) {
+    return (
+      <div className={cn("flex items-center gap-5 w-full min-w-0", className)}>
+        <div className="flex-1 min-w-0 border border-zinc-200 rounded-xl p-4 overflow-hidden">
+          <FormBasic title={secondTitle} showTitle={true}>
+            <div className="min-w-0 overflow-hidden flex flex-col gap-5">{secondContent}</div>
+          </FormBasic>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className={cn("flex items-center gap-5 w-full min-w-0", className)}>
       {/* First Capsule */}

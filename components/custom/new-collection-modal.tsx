@@ -78,6 +78,8 @@ export interface NewCollectionModalProps {
   onOpenChange: (open: boolean) => void
   /** Current user id (manager / producer) */
   managerUserId: string
+  /** When provided: edit mode — prefill form, title "Collection settings", primary "Save" */
+  initialConfig?: Partial<CollectionConfig>
   /** Called with validated CollectionConfig and optional client display name (for toast) on submit */
   onSubmit: (config: CollectionConfig, clientDisplayName?: string) => void
   /** Disable primary button while submitting */
@@ -99,9 +101,12 @@ export function NewCollectionModal({
   open,
   onOpenChange,
   managerUserId,
+  initialConfig,
   onSubmit,
   isSubmitting = false,
 }: NewCollectionModalProps) {
+  const isEditMode = Boolean(initialConfig && Object.keys(initialConfig).length > 0)
+
   const [name, setName] = React.useState("")
   const [clientEntityId, setClientEntityId] = React.useState("")
   const [reference, setReference] = React.useState("")
@@ -114,6 +119,40 @@ export function NewCollectionModal({
   const [handprintIsDifferentLab, setHandprintIsDifferentLab] = React.useState(false)
   const [hasEditionStudio, setHasEditionStudio] = React.useState(false)
   const [selectedManagerUserId, setSelectedManagerUserId] = React.useState("")
+
+  // Sync from initialConfig when modal opens (edit mode)
+  React.useEffect(() => {
+    if (!open) return
+    if (initialConfig) {
+      setName(initialConfig.name ?? "")
+      setClientEntityId(initialConfig.clientEntityId ?? "")
+      setReference(initialConfig.reference ?? "")
+      setDeadlineDate(initialConfig.clientFinalsDeadline ?? "")
+      setTimeValue(initialConfig.clientFinalsDeadlineTime ?? "")
+      setHasAgency(initialConfig.hasAgency ?? false)
+      setDigitalOrHandprint(
+        initialConfig.hasHandprint === true
+          ? "handprint"
+          : initialConfig.hasLowResLab === true
+            ? "digital"
+            : null
+      )
+      setHandprintIsDifferentLab(initialConfig.handprintIsDifferentLab ?? false)
+      setHasEditionStudio(initialConfig.hasEditionStudio ?? false)
+      setSelectedManagerUserId(initialConfig.managerUserId ?? "")
+    } else {
+      setName("")
+      setClientEntityId("")
+      setReference("")
+      setDeadlineDate("")
+      setTimeValue("")
+      setHasAgency(false)
+      setDigitalOrHandprint(null)
+      setHandprintIsDifferentLab(false)
+      setHasEditionStudio(false)
+      setSelectedManagerUserId("")
+    }
+  }, [open, initialConfig])
 
   const [clientOptions, setClientOptions] = React.useState<
     { id: string; name: string }[]
@@ -254,10 +293,10 @@ export function NewCollectionModal({
     <ModalWindow
       open={open}
       onOpenChange={onOpenChange}
-      title="New collection"
-      subtitle="Specify the basic details to get started."
+      title={isEditMode ? "Collection settings" : "New collection"}
+      subtitle={isEditMode ? "Change the main characteristics of the collection." : "Specify the basic details to get started."}
       showSubtitle={true}
-      primaryLabel="Create collection"
+      primaryLabel={isEditMode ? "Save" : "Create collection"}
       secondaryLabel="Cancel"
       showPrimary={true}
       showSecondary={true}

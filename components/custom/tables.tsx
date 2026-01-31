@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { CollectionStatusTag } from "@/components/custom/tag"
-import { Trash2, ChevronRight, Settings } from "lucide-react"
+import { Trash2, Settings, ArrowDownUp, ArrowUpDown } from "lucide-react"
 
 // ============================================================================
 // TYPES
@@ -24,7 +24,7 @@ type TableVariant = "team-members" | "entities" | "collections" | "participants"
 
 type CollectionStatus = "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
 type UserRole = "Admin" | "Editor" | "Viewer"
-type EntityType = "Client" | "Photo Lab" | "Photographer" | "Photo Agency" | "Printer Lab" | "Edition Studio"
+type EntityType = "Client" | "Photo Lab" | "Photographer" | "Photo Agency" | "Printer Lab" | "Retouch/Post Studio"
 
 interface TeamMember {
   id: string
@@ -149,9 +149,7 @@ function TableWrapper({ children, className }: { children: React.ReactNode; clas
 
 function TeamMembersTable({
   data = sampleTeamMembers,
-  onDelete,
   onEditUser,
-  canDelete = true,
 }: {
   data?: TeamMember[]
   onDelete?: (id: string) => void
@@ -167,8 +165,6 @@ function TeamMembersTable({
             <TableHead className="bg-sidebar h-12">Email</TableHead>
             <TableHead className="bg-sidebar h-12">Phone</TableHead>
             <TableHead className="bg-sidebar h-12">Role</TableHead>
-            <TableHead className="bg-sidebar h-12">Collections</TableHead>
-            {canDelete && <TableHead className="bg-sidebar h-12 w-[85px]"></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -179,7 +175,6 @@ function TeamMembersTable({
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                console.log("TableRow clicked, member.id:", member.id, "onEditUser:", onEditUser)
                 onEditUser?.(member.id)
               }}
               role="button"
@@ -188,7 +183,6 @@ function TeamMembersTable({
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault()
                   e.stopPropagation()
-                  console.log("TableRow keyDown, member.id:", member.id, "onEditUser:", onEditUser)
                   onEditUser?.(member.id)
                 }
               }}
@@ -198,7 +192,6 @@ function TeamMembersTable({
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    console.log("Name button clicked, member.id:", member.id, "onEditUser:", onEditUser)
                     onEditUser?.(member.id)
                   }}
                   className="hover:underline cursor-pointer text-left"
@@ -209,22 +202,6 @@ function TeamMembersTable({
               <TableCell>{member.email}</TableCell>
               <TableCell>{member.phone}</TableCell>
               <TableCell>{member.role}</TableCell>
-              <TableCell>{member.collections}</TableCell>
-              {canDelete && (
-                <TableCell className="text-center">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDelete?.(member.id)
-                    }}
-                    className="h-10 w-10"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </TableCell>
-              )}
             </TableRow>
           ))}
         </TableBody>
@@ -237,6 +214,8 @@ function TeamMembersTable({
 // ENTITIES TABLE
 // ============================================================================
 
+type EntitySortColumn = "name" | "type" | "admin" | "teamMembers" | "collections"
+
 function EntitiesTable({
   data = sampleEntities,
   onViewDetails,
@@ -246,21 +225,79 @@ function EntitiesTable({
   onViewDetails?: (id: string) => void
   onEditAdminUser?: (userId: string, entityId: string) => void
 }) {
+  const [sortColumn, setSortColumn] = React.useState<EntitySortColumn | null>(null)
+  const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc")
+
+  const handleSort = (column: EntitySortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+    } else {
+      setSortColumn(column)
+      setSortDirection("asc")
+    }
+  }
+
+  const sortedData = React.useMemo(() => {
+    const list = data ?? []
+    if (!sortColumn) return list
+    return [...list].sort((a, b) => {
+      let cmp = 0
+      switch (sortColumn) {
+        case "name":
+          cmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+          break
+        case "type":
+          cmp = a.type.localeCompare(b.type, undefined, { sensitivity: "base" })
+          break
+        case "admin":
+          cmp = a.admin.localeCompare(b.admin, undefined, { sensitivity: "base" })
+          break
+        case "teamMembers":
+          cmp = a.teamMembers - b.teamMembers
+          break
+        case "collections":
+          cmp = a.collections - b.collections
+          break
+      }
+      return sortDirection === "asc" ? cmp : -cmp
+    })
+  }, [data, sortColumn, sortDirection])
+
+  const SortableHead = ({ column, label }: { column: EntitySortColumn; label: string }) => (
+    <TableHead className="bg-sidebar h-12">
+      <button
+        type="button"
+        onClick={() => handleSort(column)}
+        className="inline-flex items-center gap-1.5 text-left font-medium hover:opacity-80 transition-opacity"
+      >
+        {label}
+        {sortColumn === column ? (
+          sortDirection === "asc" ? (
+            <ArrowUpDown className="size-4 shrink-0" aria-label="Ascending" />
+          ) : (
+            <ArrowDownUp className="size-4 shrink-0" aria-label="Descending" />
+          )
+        ) : (
+          <ArrowDownUp className="size-4 shrink-0 text-muted-foreground" aria-label="Sort" />
+        )}
+      </button>
+    </TableHead>
+  )
+
   return (
     <TableWrapper>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="bg-sidebar h-12">Name</TableHead>
-            <TableHead className="bg-sidebar h-12">Type</TableHead>
-            <TableHead className="bg-sidebar h-12">Admin</TableHead>
-            <TableHead className="bg-sidebar h-12">Team members</TableHead>
-            <TableHead className="bg-sidebar h-12">Collections</TableHead>
-            <TableHead className="bg-sidebar h-12 w-[85px]"></TableHead>
+            <SortableHead column="name" label="Name" />
+            <SortableHead column="type" label="Type" />
+            <SortableHead column="admin" label="Admin" />
+            <SortableHead column="teamMembers" label="Team members" />
+            <SortableHead column="collections" label="Collections" />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((entity) => (
+          {sortedData.map((entity) => (
             <TableRow
               key={entity.id}
               className="h-[52px] cursor-pointer hover:bg-muted/50 transition-colors"
@@ -276,7 +313,7 @@ function EntitiesTable({
             >
               <TableCell className="font-medium">
                 <Link
-                  href={`/entities/${entity.id}`}
+                  href={`/organizations/${entity.id}`}
                   onClick={(e) => e.stopPropagation()}
                   className="hover:underline focus:outline-none focus:underline"
                 >
@@ -301,20 +338,6 @@ function EntitiesTable({
               </TableCell>
               <TableCell>{entity.teamMembers}</TableCell>
               <TableCell>{entity.collections}</TableCell>
-              <TableCell className="text-center">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onViewDetails?.(entity.id)
-                  }}
-                  className="h-10 w-10"
-                  aria-label={`View details for ${entity.name}`}
-                >
-                  <ChevronRight className="size-4" />
-                </Button>
-              </TableCell>
             </TableRow>
           ))}
         </TableBody>

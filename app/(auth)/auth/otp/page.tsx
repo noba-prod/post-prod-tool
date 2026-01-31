@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, ChevronLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,7 @@ import { toast } from "sonner"
 import Link from "next/link"
 import Image from "next/image"
 
-export default function OTPPage() {
+function OTPContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const authAdapter = useAuthAdapter()
@@ -269,5 +269,13 @@ export default function OTPPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function OTPPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+      <OTPContent />
+    </Suspense>
   )
 }

@@ -63,6 +63,7 @@ export default function AgencyCreationPage() {
                 role: roleToLabel(member.role) as "Admin" | "Editor" | "Viewer",
                 collections: 0,
               }))}
+              onEditUser={creation.openEditUserModal}
               onDelete={(id) => {
                 console.log("Delete member:", id)
               }}
@@ -75,7 +76,7 @@ export default function AgencyCreationPage() {
         </LayoutSection>
       </Layout>
     ),
-    [creation.teamMembers, creation.openNewMemberModal]
+    [creation.teamMembers, creation.openNewMemberModal, creation.openEditUserModal]
   )
 
   // ==========================================================================
@@ -105,8 +106,7 @@ export default function AgencyCreationPage() {
       <CreationTemplate
         title="Create new agency"
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Entities", href: "/entities" },
+          { label: "Organizations", href: "/organizations" },
           { label: "Create new agency" },
         ]}
         sidebarItems={[
@@ -191,6 +191,27 @@ export default function AgencyCreationPage() {
           }}
           onCancel={creation.closeNewMemberModal}
           primaryLabel="Register member"
+          secondaryLabel="Cancel"
+        />
+      )}
+
+      {/* Edit User Modal (creation flow) */}
+      {creation.entity && creation.editingUserId && (
+        <UserCreationForm
+          open={!!creation.editingUserId}
+          onOpenChange={(open) => {
+            if (!open) creation.closeEditUserModal()
+          }}
+          mode="edit"
+          entity={{
+            type: creation.entityType,
+            name: creation.entity.name,
+          }}
+          initialUserData={creation.teamMembers.find((u) => u.id === creation.editingUserId) ?? undefined}
+          disabled={false}
+          onSubmit={creation.handleEditUserSubmit}
+          onCancel={creation.closeEditUserModal}
+          primaryLabel={creation.isUpdatingMember ? "Saving..." : "Save changes"}
           secondaryLabel="Cancel"
         />
       )}

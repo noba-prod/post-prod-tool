@@ -63,7 +63,7 @@ export default function UserCreationFormDemoPage() {
           open={createUserOpen}
           onOpenChange={setCreateUserOpen}
           entity={{
-            type: "Client",
+            type: "client",
             name: "Zara",
           }}
           onSubmit={handleCreateUserSubmit}
@@ -77,7 +77,7 @@ export default function UserCreationFormDemoPage() {
           open={adminUserOpen}
           onOpenChange={setAdminUserOpen}
           entity={{
-            type: "Agency",
+            type: "agency",
             name: "Creative Studio",
           }}
           isAdminUser={true}

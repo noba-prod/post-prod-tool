@@ -53,23 +53,34 @@ export function DatePicker({
   className,
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
-  const minDate = React.useMemo(() => {
+
+  // Chronology minDate (from previous step in creation flow)
+  const chronologyMin = React.useMemo(() => {
     if (!minDateProp) return undefined
     const d = typeof minDateProp === "string" ? new Date(minDateProp + "T12:00:00") : minDateProp
     return Number.isNaN(d.getTime()) ? undefined : startOfDay(d)
   }, [minDateProp])
 
+  // Effective min: past dates always disabled; if chronology says "after X", use the later of today and X
+  const today = startOfDay(new Date())
+  const effectiveMinDate =
+    !chronologyMin
+      ? today
+      : chronologyMin.getTime() > today.getTime()
+        ? chronologyMin
+        : today
+
   // Al abrir el calendario: 1) si hay fecha seleccionada → mes de esa fecha; 2) si hay constraint (minDate) → mes de la próxima fecha disponible; 3) si no → mes en curso
   const defaultMonth = React.useMemo(() => {
     if (date) return startOfMonth(date)
-    if (minDate) return startOfMonth(minDate)
+    if (effectiveMinDate) return startOfMonth(effectiveMinDate)
     return startOfMonth(new Date())
-  }, [date, minDate])
+  }, [date, effectiveMinDate])
   const calendarKey = open
     ? date
       ? format(date, "yyyy-MM")
-      : minDate
-        ? format(minDate, "yyyy-MM")
+      : effectiveMinDate
+        ? format(effectiveMinDate, "yyyy-MM")
         : format(new Date(), "yyyy-MM")
     : "closed"
 
@@ -111,7 +122,7 @@ export function DatePicker({
               onDateChange?.(newDate)
               setOpen(false)
             }}
-            disabled={minDate ? { before: minDate } : undefined}
+            disabled={{ before: effectiveMinDate }}
             defaultMonth={defaultMonth}
             initialFocus
           />

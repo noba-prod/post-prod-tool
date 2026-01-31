@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import type { Invitation, ProfileInsert } from "@/lib/supabase/database.types"
 import { revalidatePath } from "next/cache"
 
 export type PrecheckResult = {
@@ -16,6 +17,7 @@ export async function precheckEmail(email: string): Promise<PrecheckResult> {
   const supabase = await createClient()
   
   try {
+    // @ts-expect-error Supabase generated types may not include RPC args for check_email_precheck
     const { data, error } = await supabase.rpc("check_email_precheck", {
       check_email: email.toLowerCase().trim(),
     })
@@ -25,7 +27,7 @@ export async function precheckEmail(email: string): Promise<PrecheckResult> {
       return { allowed: false, reason: "error" }
     }
 
-    const row = Array.isArray(data) ? data[0] : data
+    const row = (Array.isArray(data) ? data[0] : data) as { allowed?: boolean; reason?: string } | null
     const allowed = row?.allowed ?? false
     return {
       allowed,
@@ -104,17 +106,20 @@ export async function verifyOTP(email: string, token: string) {
       }
     }
 
-    // Ensure profile exists
+    // Ensure profile exists (profiles table uses first_name/last_name, not full_name)
     if (data.user) {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert({
-          id: data.user.id,
-          email: data.user.email!,
-          full_name: data.user.user_metadata?.full_name || null,
-        }, {
-          onConflict: "id",
-        })
+      const fullName = (data.user.user_metadata?.full_name as string) || ""
+      const parts = fullName.trim().split(/\s+/)
+      const firstName = parts[0] ?? null
+      const lastName = parts.length > 1 ? parts.slice(1).join(" ") : null
+      const profileRow: ProfileInsert = {
+        id: data.user.id,
+        email: data.user.email!,
+        first_name: firstName,
+        last_name: lastName,
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase client can infer upsert(never) in build; runtime types are correct
+      const { error: profileError } = await (supabase.from("profiles") as any).upsert(profileRow, { onConflict: "id" })
 
       if (profileError) {
         console.error("Profile upsert error:", profileError)
@@ -143,12 +148,13 @@ export async function activateInvitation(token: string) {
   const adminSupabase = createAdminClient()
 
   try {
-    // Find invitation
-    const { data: invitation, error: inviteError } = await supabase
+    // Find invitation (cast: Supabase client can infer never in build)
+    const { data: invitationData, error: inviteError } = await supabase
       .from("invitations")
       .select("*")
       .eq("token", token)
       .single()
+    const invitation = invitationData as Invitation | null
 
     if (inviteError || !invitation) {
       return {
@@ -165,11 +171,8 @@ export async function activateInvitation(token: string) {
     }
 
     if (new Date(invitation.expires_at) < new Date()) {
-      // Update status to expired
-      await supabase
-        .from("invitations")
-        .update({ status: "expired" })
-        .eq("id", invitation.id)
+      // Update status to expired (cast: Supabase client can infer never in build)
+      await (supabase.from("invitations") as any).update({ status: "expired" }).eq("id", invitation.id)
 
       return {
         success: false,
@@ -203,9 +206,8 @@ export async function activateInvitation(token: string) {
       userId = newUser.user.id
     }
 
-    // Update invitation
-    const { error: updateError } = await supabase
-      .from("invitations")
+    // Update invitation (cast: Supabase client can infer never in build)
+    const { error: updateError } = await (supabase.from("invitations") as any)
       .update({
         status: "accepted",
         accepted_at: new Date().toISOString(),
@@ -217,27 +219,42 @@ export async function activateInvitation(token: string) {
       console.error("Update invitation error:", updateError)
     }
 
-    // Ensure profile exists
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: userId,
-        email: invitation.email,
-        is_internal: false,
-      }, {
-        onConflict: "id",
-      })
+    // Org-only (platform/team) invite: resolve organization type for is_internal
+    const collectionId = invitation.collection_id
+    let isInternal = false
+    const orgId = invitation.organization_id
+    const invitationRole = invitation.role ?? "viewer"
+    if (!collectionId && orgId) {
+      const { data: org } = await adminSupabase
+        .from("organizations")
+        .select("type")
+        .eq("id", orgId)
+        .maybeSingle()
+      isInternal = (org as { type?: string } | null)?.type === "noba"
+    }
+
+    // Ensure profile exists; for org-only invite set organization_id, role, is_internal
+    const profilePayload: Record<string, unknown> = {
+      id: userId,
+      email: invitation.email,
+      is_internal: collectionId ? false : isInternal,
+    }
+    if (!collectionId && orgId) {
+      profilePayload.organization_id = orgId
+      profilePayload.role = invitationRole
+    }
+    const { error: profileError } = await (adminSupabase.from("profiles") as any).upsert(profilePayload as Record<string, string | boolean | null>, {
+      onConflict: "id",
+    })
 
     if (profileError) {
       console.error("Profile upsert error:", profileError)
     }
 
     // Add user to collection when invitation is collection-scoped
-    const collectionId = invitation.collection_id
     const invitedRole = invitation.invited_collection_role ?? "manager"
     if (collectionId) {
-      const { error: memberError } = await supabase
-        .from("collection_members")
+      const { error: memberError } = await (supabase.from("collection_members") as any)
         .insert({
           collection_id: collectionId,
           user_id: userId,

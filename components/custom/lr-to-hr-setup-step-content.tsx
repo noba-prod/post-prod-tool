@@ -95,7 +95,7 @@ export function LrToHrSetupStepContent({
   const ownerLabel = isDigital
     ? "Photographer"
     : c.handprintIsDifferentLab
-      ? "Hand print lab"
+      ? "Hand Print Lab"
       : "Lab"
   const ownerParticipant = isDigital
     ? draft.participants.find((p) => p.role === "photographer")

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { mapProfileToUser } from "@/lib/utils/supabase-mappers"
+import type { Profile } from "@/lib/supabase/database.types"
 
 type CreateMemberPayload = {
   firstName: string
@@ -20,12 +21,13 @@ async function getSessionProfile() {
     return { session: null, profile: null, error: sessionError?.message || "No session" }
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profileData, error: profileError } = await supabase
     .from("profiles")
     .select("id,is_internal,organization_id,role")
     .eq("id", sessionData.session.user.id)
     .maybeSingle()
 
+  const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
   return {
     session: sessionData.session,
     profile,
@@ -67,11 +69,12 @@ export async function POST(
   if (createUserError) {
     const message = createUserError.message.toLowerCase()
     if (message.includes("already") || message.includes("exists")) {
-      const { data: existingProfile } = await adminClient
+      const { data: existingProfileData } = await adminClient
         .from("profiles")
         .select("id")
         .eq("email", email)
         .maybeSingle()
+      const existingProfile = existingProfileData as Pick<Profile, "id"> | null
       userId = existingProfile?.id || null
     } else {
       return NextResponse.json({ error: createUserError.message }, { status: 500 })
@@ -84,24 +87,27 @@ export async function POST(
     return NextResponse.json({ error: "Unable to resolve user ID" }, { status: 500 })
   }
 
-  const { data: updatedProfile, error: updateError } = await adminClient
+  const profilePayload = {
+    id: userId,
+    organization_id: organizationId,
+    first_name: payload.firstName.trim(),
+    last_name: payload.lastName?.trim() || null,
+    email,
+    phone: payload.phoneNumber.trim() || null,
+    prefix: payload.countryCode.trim() || null,
+    role: payload.role,
+    is_internal: false,
+  }
+
+  const { data: updatedProfile, error: upsertError } = await adminClient
     .from("profiles")
-    .update({
-      organization_id: organizationId,
-      first_name: payload.firstName.trim(),
-      last_name: payload.lastName?.trim() || null,
-      email,
-      phone: payload.phoneNumber.trim(),
-      prefix: payload.countryCode.trim(),
-      role: payload.role,
-    })
-    .eq("id", userId)
+    .upsert(profilePayload as never, { onConflict: "id" })
     .select("*")
     .maybeSingle()
 
-  if (updateError || !updatedProfile) {
+  if (upsertError || !updatedProfile) {
     return NextResponse.json(
-      { error: updateError?.message || "Failed to update profile" },
+      { error: upsertError?.message || "Failed to create or update profile" },
       { status: 500 }
     )
   }
@@ -115,8 +121,10 @@ export async function POST(
     return NextResponse.json({ error: teamMembersError.message }, { status: 500 })
   }
 
+  const updated = updatedProfile as Profile
+  const members = (teamMembers || []) as Profile[]
   return NextResponse.json({
-    user: mapProfileToUser(updatedProfile),
-    teamMembers: (teamMembers || []).map(mapProfileToUser),
+    user: mapProfileToUser(updated),
+    teamMembers: members.map(mapProfileToUser),
   })
 }

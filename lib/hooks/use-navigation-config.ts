@@ -8,7 +8,7 @@ interface NavigationConfig {
   navBarVariant: "noba" | "collaborator" | "photographer"
   /** Available tabs for this entity type */
   availableTabs: string[]
-  /** Whether user can access Entities section */
+  /** Whether user can access Organizations section */
   canAccessEntities: boolean
   /** Whether user can access Team section */
   canAccessTeam: boolean
@@ -18,7 +18,7 @@ interface NavigationConfig {
  * Hook to determine navigation configuration based on entity type.
  * 
  * Rules:
- * - noba: variant "noba", tabs ["Collections", "Entities", "Team"]
+ * - noba: variant "noba", tabs ["Collections", "Organizations", "Team"]
  * - self-photographer: variant "photographer", tabs ["Collections"]
  * - Other entities: variant "collaborator", tabs ["Collections", "Team"]
  * 
@@ -38,7 +38,7 @@ export function useNavigationConfig(
   if (entityType === "noba") {
     return {
       navBarVariant: "noba",
-      availableTabs: ["Collections", "Entities", "Team"],
+      availableTabs: ["Collections", "Organizations", "Team"],
       canAccessEntities: true,
       canAccessTeam: true,
     }
