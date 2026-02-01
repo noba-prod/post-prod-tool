@@ -214,6 +214,7 @@ interface NavBarConfig {
   organization?: string
   role?: string
   isAdmin?: boolean
+  avatarSrc?: string
 }
 
 /**
@@ -639,6 +640,7 @@ export function ViewTemplate({
         role={role}
         isAdmin={isAdmin}
         isSelfPhotographer={userContext?.isSelfPhotographer || false}
+        avatarSrc={userContext?.user?.profilePictureUrl || navBarProps?.avatarSrc}
         onEditProfile={handleEditProfile}
         onEditCompany={handleEditCompany}
         onLogout={handleLogout}

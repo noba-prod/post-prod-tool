@@ -61,6 +61,8 @@ interface UseCreateEntityOptions {
   redirectAfterCreate?: boolean
   /** Current user id for New Collection modal (manager / producer) */
   managerUserId?: string
+  /** If true, user can create collections (noba producer: organization_id = noba org AND is_internal = true) */
+  isNobaProducerUser?: boolean
 }
 
 interface UseCreateEntityReturn {
@@ -102,6 +104,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
     onCreated,
     redirectAfterCreate = true,
     managerUserId = "",
+    isNobaProducerUser = false,
   } = config
 
   const router = useRouter()
@@ -111,21 +114,32 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
   const [isCreating, setIsCreating] = React.useState(false)
   const [isCreatingCollection, setIsCreatingCollection] = React.useState(false)
 
-  // Filter options based on configuration
+  // Filter options based on configuration; only noba producer users can create collections
   const options = React.useMemo(() => {
-    if (!allowedOptions || allowedOptions.length === 0) {
-      return ALL_OPTIONS
+    let list = !allowedOptions || allowedOptions.length === 0
+      ? ALL_OPTIONS
+      : ALL_OPTIONS.filter(opt => allowedOptions.includes(opt.id))
+    if (!isNobaProducerUser) {
+      list = list.filter(opt => opt.id !== "collection")
     }
-    return ALL_OPTIONS.filter(opt => allowedOptions.includes(opt.id))
-  }, [allowedOptions])
+    return list
+  }, [allowedOptions, isNobaProducerUser])
 
   // Listen for empty-state CTA (e.g. collections page "Create new")
   React.useEffect(() => {
     if (typeof window === "undefined") return
-    const handler = () => setNewCollectionModalOpen(true)
+    const handler = () => {
+      if (isNobaProducerUser) {
+        setNewCollectionModalOpen(true)
+      } else {
+        toast.error("Only noba producer users can create collections", {
+          description: "You must belong to the producer organization and have internal access.",
+        })
+      }
+    }
     window.addEventListener("noba:open-create-collection", handler)
     return () => window.removeEventListener("noba:open-create-collection", handler)
-  }, [])
+  }, [isNobaProducerUser])
 
   // Handle option selection
   const handleOptionSelect = React.useCallback((optionId: CreateEntityOption) => {
@@ -135,7 +149,13 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
     if (!option) return
 
     if (optionId === "collection") {
-      setNewCollectionModalOpen(true)
+      if (isNobaProducerUser) {
+        setNewCollectionModalOpen(true)
+      } else {
+        toast.error("Only noba producer users can create collections", {
+          description: "You must belong to the producer organization and have internal access.",
+        })
+      }
       return
     }
 
@@ -148,7 +168,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
     if (optionId === "self-photographer") {
       setSelfPhotographerModalOpen(true)
     }
-  }, [router])
+  }, [router, isNobaProducerUser])
 
   // Handle self-photographer form submit
   const handleSelfPhotographerSubmit = React.useCallback(async (formData: SelfPhotographerFormData) => {
@@ -310,9 +330,11 @@ export function CreateEntityCommand({
   disabled = false,
 }: CreateEntityCommandProps) {
   let managerUserId = ""
+  let isNobaProducerUser = false
   try {
     const ctx = useUserContext()
     managerUserId = ctx.user?.id ?? ""
+    isNobaProducerUser = ctx.isNobaProducerUser
   } catch {
     // UserContext not available (e.g. outside provider)
   }
@@ -336,6 +358,7 @@ export function CreateEntityCommand({
     onCreated,
     redirectAfterCreate,
     managerUserId,
+    isNobaProducerUser,
   })
 
   return (

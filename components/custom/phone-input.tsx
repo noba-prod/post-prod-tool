@@ -20,40 +20,7 @@ import {
   CommandGroup,
   CommandItem,
 } from "@/components/ui/command"
-
-// Common country codes with country names
-const COUNTRY_CODES = [
-  { code: "+34", country: "Spain" },
-  { code: "+1", country: "United States" },
-  { code: "+44", country: "United Kingdom" },
-  { code: "+33", country: "France" },
-  { code: "+49", country: "Germany" },
-  { code: "+39", country: "Italy" },
-  { code: "+351", country: "Portugal" },
-  { code: "+52", country: "Mexico" },
-  { code: "+55", country: "Brazil" },
-  { code: "+54", country: "Argentina" },
-  { code: "+57", country: "Colombia" },
-  { code: "+56", country: "Chile" },
-  { code: "+81", country: "Japan" },
-  { code: "+86", country: "China" },
-  { code: "+91", country: "India" },
-  { code: "+82", country: "South Korea" },
-  { code: "+61", country: "Australia" },
-  { code: "+64", country: "New Zealand" },
-  { code: "+31", country: "Netherlands" },
-  { code: "+32", country: "Belgium" },
-  { code: "+41", country: "Switzerland" },
-  { code: "+43", country: "Austria" },
-  { code: "+46", country: "Sweden" },
-  { code: "+47", country: "Norway" },
-  { code: "+45", country: "Denmark" },
-  { code: "+358", country: "Finland" },
-  { code: "+48", country: "Poland" },
-  { code: "+420", country: "Czech Republic" },
-  { code: "+7", country: "Russia" },
-  { code: "+380", country: "Ukraine" },
-] as const
+import { PHONE_PREFIXES } from "@/lib/data/location"
 
 interface PhoneInputProps {
   /** Label text */
@@ -91,11 +58,30 @@ export function PhoneInput({
   className,
 }: PhoneInputProps) {
   const [open, setOpen] = React.useState(false)
+  const [searchValue, setSearchValue] = React.useState("")
 
-  const handleSelect = (value: string) => {
-    onCountryCodeChange?.(value)
-    setOpen(false)
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      // Accept custom prefix on close: if user typed something not in the list, use it
+      const trimmed = searchValue.trim()
+      if (trimmed && !PHONE_PREFIXES.some((p) => p.code === trimmed || `${p.code} ${p.country}` === trimmed)) {
+        onCountryCodeChange?.(trimmed)
+      }
+      setSearchValue("")
+    }
+    setOpen(nextOpen)
   }
+
+  const handleSelect = (code: string) => {
+    onCountryCodeChange?.(code)
+    setOpen(false)
+    setSearchValue("")
+  }
+
+  const displayLabel = React.useMemo(() => {
+    const match = PHONE_PREFIXES.find((p) => p.code === countryCode)
+    return match ? `${match.code} ${match.country}` : countryCode
+  }, [countryCode])
 
   return (
     <div
@@ -118,8 +104,8 @@ export function PhoneInput({
 
       {/* Inputs row - same gap as Field (from parent --field-inner-gap) */}
       <div className="flex items-center gap-[var(--field-inner-gap,0.5rem)]">
-        {/* Country Code Combobox */}
-        <Popover open={open} onOpenChange={setOpen}>
+        {/* Country Code Combobox - full list with country name; custom prefix accepted on close */}
+        <Popover open={open} onOpenChange={handleOpenChange}>
           <PopoverTrigger asChild>
             <Button
               variant="outline"
@@ -127,23 +113,27 @@ export function PhoneInput({
               aria-expanded={open}
               disabled={disabled}
               className={cn(
-                "h-9 justify-between pl-3 pr-1.5 font-medium text-sm shrink-0 min-w-fit",
+                "h-9 justify-between pl-3 pr-1.5 font-medium text-sm shrink-0 min-w-fit max-w-[200px] truncate",
                 disabled && "opacity-50"
               )}
             >
-              {countryCode}
+              <span className="truncate">{displayLabel}</span>
               <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0 ml-1.5" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[220px] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Search country..." />
+          <PopoverContent className="w-[280px] p-0" align="start">
+            <Command shouldFilter={true}>
+              <CommandInput
+                placeholder="Search country or code..."
+                value={searchValue}
+                onValueChange={setSearchValue}
+              />
               <CommandList>
-                <CommandEmpty>No country found.</CommandEmpty>
+                <CommandEmpty>No match. You can type your own prefix (e.g. +999).</CommandEmpty>
                 <CommandGroup>
-                  {COUNTRY_CODES.map((item) => (
+                  {PHONE_PREFIXES.map((item) => (
                     <CommandItem
-                      key={item.code}
+                      key={`${item.code}-${item.country}`}
                       value={`${item.code} ${item.country}`}
                       onSelect={() => handleSelect(item.code)}
                       data-checked={countryCode === item.code}

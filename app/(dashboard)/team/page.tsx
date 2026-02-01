@@ -516,13 +516,25 @@ export default function TeamPage() {
       if (!selectedMemberId || !userContext.user?.entityId) return
       setIsUpdatingMember(true)
       try {
+        let profilePictureUrl: string | undefined
+        if (userData.profilePicture) {
+          const formData = new FormData()
+          formData.append("file", userData.profilePicture)
+          const uploadRes = await fetch(`/api/users/${selectedMemberId}/profile-picture`, {
+            method: "POST",
+            body: formData,
+          })
+          const uploadData = await uploadRes.json().catch(() => ({}))
+          if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+          profilePictureUrl = uploadData.profilePictureUrl
+        }
         const formDataForPayload = {
           ...userData,
           entity: userData.entity && userData.entity.type !== "self-photographer"
             ? { type: userData.entity.type as import("@/lib/types").StandardEntityType, name: userData.entity.name }
             : null,
         }
-        const payload = mapFormToUpdateUserPayload(formDataForPayload)
+        const payload = mapFormToUpdateUserPayload(formDataForPayload, profilePictureUrl)
         if (USE_MOCK_AUTH) {
           const repos = getRepositoryInstances()
           if (!repos.userRepository) throw new Error("User repository not available")

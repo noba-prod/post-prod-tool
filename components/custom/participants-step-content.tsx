@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getRepositoryInstances } from "@/lib/services"
+import { getRepositoryInstances, NOBA_ORGANIZATION_ID } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import { useUserContext } from "@/lib/contexts/user-context"
 import type {
@@ -108,24 +108,33 @@ async function fetchOrganizationsByType(orgTypes: OrganizationType[]): Promise<E
   }
 }
 
+function formatPhoneFromProfile(p: { phone?: string | null; prefix?: string | null }): string {
+  const prefix = (p.prefix ?? "").trim()
+  const phone = (p.phone ?? "").trim()
+  if (!phone) return ""
+  return prefix ? `${prefix} ${phone}` : phone
+}
+
 async function fetchUsersByOrganization(organizationId: string): Promise<User[]> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
     .from("profiles") as any)
-    .select("id, email, first_name, last_name, organization_id")
+    .select("id, email, first_name, last_name, organization_id, phone, prefix")
     .eq("organization_id", organizationId)
     .order("first_name")
   if (error) {
     console.error("[ParticipantsStepContent] Failed to fetch users:", error)
     return []
   }
-  return (data ?? []).map((p: Profile) => ({
+  return (data ?? []).map((p: Profile & { phone?: string | null; prefix?: string | null }) => ({
     id: p.id,
     email: p.email ?? "",
     firstName: p.first_name ?? "",
     lastName: p.last_name ?? "",
+    phoneNumber: formatPhoneFromProfile(p),
     entityId: p.organization_id ?? undefined,
+    role: (p as { role?: string }).role ?? "viewer",
   } as User))
 }
 
@@ -134,21 +143,23 @@ async function fetchUserById(userId: string): Promise<User | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
     .from("profiles") as any)
-    .select("id, email, first_name, last_name, organization_id")
+    .select("id, email, first_name, last_name, organization_id, phone, prefix")
     .eq("id", userId)
     .single()
   if (error) {
     console.error("[ParticipantsStepContent] Failed to fetch user:", error)
     return null
   }
-  const p = data as Profile | null
+  const p = data as (Profile & { phone?: string | null; prefix?: string | null }) | null
   if (!p) return null
   return {
     id: p.id,
     email: p.email ?? "",
     firstName: p.first_name ?? "",
     lastName: p.last_name ?? "",
+    phoneNumber: formatPhoneFromProfile(p),
     entityId: p.organization_id ?? undefined,
+    role: (p as { role?: string }).role ?? "viewer",
   } as User
 }
 
@@ -336,7 +347,7 @@ export function ParticipantsStepContent({
 // NOBA* SECTION — Owner (current user) + noba members with Edit permission
 // =============================================================================
 
-/** Fetches all noba team members (users belonging to organization with type "noba") for the New member overlay. */
+/** Fetches noba producer team members (organization_id = NOBA_ORGANIZATION_ID AND is_internal = true) for the New member overlay. */
 function useInternalUsers(): User[] {
   const [users, setUsers] = React.useState<User[]>([])
   React.useEffect(() => {
@@ -356,17 +367,10 @@ function useInternalUsers(): User[] {
           }>
         } | null) => {
           if (cancelled || !data?.profiles) return
-          const orgs = data.organizations ?? []
-          const nobaOrgIds = new Set(
-            orgs.filter((o) => o.type === "noba").map((o) => o.id)
+          const nobaTeam = data.profiles.filter(
+            (p) =>
+              p.organization_id === NOBA_ORGANIZATION_ID && p.is_internal === true
           )
-          // Noba team members = profiles whose organization is noba; fallback to is_internal if no noba org
-          const nobaTeam =
-            nobaOrgIds.size > 0
-              ? data.profiles.filter(
-                  (p) => p.organization_id != null && nobaOrgIds.has(p.organization_id)
-                )
-              : data.profiles.filter((p) => p.is_internal === true)
           setUsers(
             nobaTeam.map((p) => ({
               id: p.id,
@@ -396,7 +400,7 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
   const { user: currentUser } = useUserContext()
   const config = draft.config
   const [addOpen, setAddOpen] = React.useState(false)
-  const ownerId = currentUser?.id ?? ""
+  const ownerId = config.ownerUserId ?? currentUser?.id ?? ""
   const extraIds = config.nobaUserIds ?? []
   const nobaUserIds = React.useMemo(() => {
     const seen = new Set<string>()
@@ -582,43 +586,23 @@ function ParticipantSection({
     return users
   }, [isPhotographerNoAgency, isPhotographerWithAgency, users, selfPhotographerUsers])
 
-  // Client section: show manager (from producer participant) in the same table with edit permission on by default
-  const producerParticipant = role === "client" ? getParticipantByRole(draft.participants, "producer") : undefined
-  const clientEntityId = role === "client" ? (config.clientEntityId ?? entityId) : ""
-  const producerSameEntity =
-    role === "client" &&
-    producerParticipant?.entityId &&
-    clientEntityId &&
-    producerParticipant.entityId === clientEntityId
-
+  // Client section shows only client members (role='manager' in DB).
+  // Producer/noba* members are shown separately in NobaSection.
   const memberUserIds = React.useMemo(() => {
-    const fromRole = participant?.userIds ?? []
-    if (!producerSameEntity || !producerParticipant?.userIds?.length) return fromRole
-    const seen = new Set(fromRole)
-    const merged = [...fromRole]
-    for (const id of producerParticipant.userIds) {
-      if (!seen.has(id)) {
-        seen.add(id)
-        merged.push(id)
-      }
-    }
-    return merged
-  }, [participant?.userIds, producerSameEntity, producerParticipant?.userIds])
+    return participant?.userIds ?? []
+  }, [participant?.userIds])
 
   const editByUserId = React.useMemo(() => {
-    const fromRole = participant?.editPermissionByUserId ?? {}
-    if (!producerSameEntity || !producerParticipant?.editPermissionByUserId) return fromRole
-    return { ...fromRole, ...producerParticipant.editPermissionByUserId }
-  }, [participant?.editPermissionByUserId, producerSameEntity, producerParticipant?.editPermissionByUserId])
+    return participant?.editPermissionByUserId ?? {}
+  }, [participant?.editPermissionByUserId])
 
   /** For Client section: which participant "owns" this userId (so edit/remove update the right one) */
   const memberSourceRole = React.useMemo((): Record<string, ParticipantRole> => {
     if (role !== "client") return {}
     const out: Record<string, ParticipantRole> = {}
     for (const id of participant?.userIds ?? []) out[id] = "client"
-    if (producerSameEntity) for (const id of producerParticipant?.userIds ?? []) out[id] = "producer"
     return out
-  }, [role, participant?.userIds, producerSameEntity, producerParticipant?.userIds])
+  }, [role, participant?.userIds])
 
   const usersByIdsResolved = useUsersByIds(memberUserIds)
   const memberUsers = React.useMemo(

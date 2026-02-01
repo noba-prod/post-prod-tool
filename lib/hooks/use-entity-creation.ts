@@ -544,11 +544,24 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     countryCode: string
     entity: { type: import("@/lib/types").EntityType; name: string } | null
     role: "admin" | "editor" | "viewer"
+    profilePicture?: File | null
   }) => {
     if (!editingUserId) return
 
     setIsUpdatingMember(true)
     try {
+      let profilePictureUrl: string | undefined
+      if (userData.profilePicture) {
+        const uploadFormData = new FormData()
+        uploadFormData.append("file", userData.profilePicture)
+        const uploadRes = await fetch(`/api/users/${editingUserId}/profile-picture`, {
+          method: "POST",
+          body: uploadFormData,
+        })
+        const uploadData = await uploadRes.json().catch(() => ({}))
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        profilePictureUrl = uploadData.profilePictureUrl
+      }
       const formData = {
         firstName: userData.firstName,
         lastName: userData.lastName,
@@ -560,7 +573,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
           : null,
         role: userData.role,
       }
-      const payload = mapFormToUpdateUserPayload(formData)
+      const payload = mapFormToUpdateUserPayload(formData, profilePictureUrl)
       const response = await fetch(`/api/users/${editingUserId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -578,6 +591,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
             email: formData.email.trim(),
             phoneNumber: [formData.countryCode, formData.phoneNumber].filter(Boolean).join(" ").trim(),
             role: formData.role,
+            ...(profilePictureUrl && { profilePictureUrl }),
           }
           const updated = repos.userRepository
             ? await repos.userRepository.updateUser(editingUserId, inMemoryUpdate)

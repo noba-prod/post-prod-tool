@@ -1,10 +1,14 @@
 /**
  * No-op implementation of INotificationsService.
- * Used during development/POC until real notification infrastructure is ready.
+ * Used during development/testing or when notifications are disabled.
  * All methods are no-ops (do nothing).
  */
 
-import type { INotificationsService } from "./notifications.interface"
+import type {
+  INotificationsService,
+  CollectionEventType,
+  UserNotification,
+} from "./notifications.interface"
 
 export class NoopNotificationsService implements INotificationsService {
   async collectionPublished(_payload: {
@@ -12,6 +16,38 @@ export class NoopNotificationsService implements INotificationsService {
     participantUserIds: string[]
     participantEntityIds?: string[]
   }): Promise<void> {
-    // No-op: notifications will be implemented in a future milestone
+    // No-op
+  }
+
+  async triggerEvent(
+    _collectionId: string,
+    _eventType: CollectionEventType,
+    _triggeredByUserId?: string,
+    _metadata?: Record<string, unknown>
+  ): Promise<void> {
+    // No-op
+  }
+
+  async processScheduledNotifications(): Promise<{ processed: number; errors: number }> {
+    return { processed: 0, errors: 0 }
+  }
+
+  async scheduleTimeBasedNotifications(_collectionId: string): Promise<void> {
+    // No-op
+  }
+
+  async markAsRead(_notificationId: string, _userId: string): Promise<void> {
+    // No-op
+  }
+
+  async getUserNotifications(
+    _userId: string,
+    _options?: { unreadOnly?: boolean; limit?: number }
+  ): Promise<UserNotification[]> {
+    return []
+  }
+
+  async getUnreadCount(_userId: string): Promise<number> {
+    return 0
   }
 }

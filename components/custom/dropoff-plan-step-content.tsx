@@ -125,6 +125,14 @@ export function DropoffPlanStepContent({
   const shippingConstraint = chronologyConstraints?.["dropoff_plan_shipping"]
   const deliveryConstraint = chronologyConstraints?.["dropoff_plan_delivery"]
 
+  // Local state for tracking number so typing is not overwritten by parent/server updates
+  const [localTrackingNumber, setLocalTrackingNumber] = React.useState(c.dropoff_shipping_tracking ?? "")
+  const [trackingFocused, setTrackingFocused] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!trackingFocused) setLocalTrackingNumber(c.dropoff_shipping_tracking ?? "")
+  }, [c.dropoff_shipping_tracking, trackingFocused])
+
   const pickUpDate = c.dropoff_shipping_date
     ? new Date(c.dropoff_shipping_date + "T12:00:00")
     : undefined
@@ -294,12 +302,16 @@ export function DropoffPlanStepContent({
                 <Input
                   placeholder="Paste here the tracking number"
                   className="h-10 w-full"
-                  value={c.dropoff_shipping_tracking ?? ""}
-                  onChange={(e) =>
+                  value={localTrackingNumber}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setLocalTrackingNumber(next)
                     onDropoffPlanChange({
-                      dropoff_shipping_tracking: e.target.value || undefined,
+                      dropoff_shipping_tracking: next || undefined,
                     })
-                  }
+                  }}
+                  onFocus={() => setTrackingFocused(true)}
+                  onBlur={() => setTrackingFocused(false)}
                 />
               </FieldContent>
             </Field>

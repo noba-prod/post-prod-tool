@@ -239,11 +239,24 @@ export default function OrganizationsPage() {
     countryCode: string
     entity: { type: import("@/lib/types").EntityType; name: string } | null
     role: "admin" | "editor" | "viewer"
+    profilePicture?: File | null
   }) => {
     if (!editingAdminUserId) return
 
     setIsUpdatingAdmin(true)
     try {
+      let profilePictureUrl: string | undefined
+      if (userData.profilePicture) {
+        const formData = new FormData()
+        formData.append("file", userData.profilePicture)
+        const uploadRes = await fetch(`/api/users/${editingAdminUserId}/profile-picture`, {
+          method: "POST",
+          body: formData,
+        })
+        const uploadData = await uploadRes.json().catch(() => ({}))
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        profilePictureUrl = uploadData.profilePictureUrl
+      }
       const service = createEntityCreationService()
       const userFormData: import("@/lib/utils/form-mappers").UserFormData = {
         firstName: userData.firstName,
@@ -256,7 +269,7 @@ export default function OrganizationsPage() {
           : null,
         role: userData.role,
       }
-      const payload = mapFormToUpdateUserPayload(userFormData)
+      const payload = mapFormToUpdateUserPayload(userFormData, profilePictureUrl)
       await service.updateUser(editingAdminUserId, payload)
       await loadEntities()
       setIsEditAdminModalOpen(false)

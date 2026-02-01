@@ -95,19 +95,6 @@ async function fetchOrganizationsByIds(ids: string[]): Promise<Record<string, st
   return map
 }
 
-/** Resolve manager user from Supabase when in-memory repo doesn't have them (e.g. client user). */
-async function fetchProfileEntityId(userId: string): Promise<string | null> {
-  const supabase = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase
-    .from("profiles") as any)
-    .select("organization_id")
-    .eq("id", userId)
-    .maybeSingle()
-  if (error || !data) return null
-  return (data as { organization_id: string | null }).organization_id ?? null
-}
-
 /** UI labels for Creation Template sidebar — map stepId to PHOTO labels (collections-logic §4) */
 const STEP_LABELS: Record<CreationBlockId, string> = {
   participants: "Participants",
@@ -201,32 +188,25 @@ export default function CollectionCreatePage({
     const hasProducer = draft.participants.some((p) => p.role === "producer")
     if (hasClient && hasProducer) return
 
-    if (!hasProducer && draft.config.managerUserId) {
-      const managerUserId = draft.config.managerUserId
-      Promise.resolve(getRepositoryInstances().userRepository?.getUserById(managerUserId))
-        .then((user) => {
-          const entityId = user?.entityId ?? null
-          return entityId != null ? Promise.resolve(entityId) : fetchProfileEntityId(managerUserId)
-        })
-        .then((entityId) => {
-          if (!entityId) return null
-          const next: CollectionParticipant[] = [...draft.participants]
-          if (!next.some((p) => p.role === "client") && draft.config.clientEntityId) {
-            next.push({ role: "client", entityId: draft.config.clientEntityId })
-          }
-          next.push({
-            role: "producer",
-            entityId,
-            userIds: [managerUserId],
-            editPermissionByUserId: { [managerUserId]: true },
-          })
-          return service.updateCollection(id, { participants: next })
-        })
-        .then((updated) => {
-          if (updated) setDraft(updated)
-        })
+    // Add producer participant (owner) if missing
+    if (!hasProducer && draft.config.ownerUserId) {
+      const ownerUserId = draft.config.ownerUserId
+      const next: CollectionParticipant[] = [...draft.participants]
+      if (!next.some((p) => p.role === "client") && draft.config.clientEntityId) {
+        next.push({ role: "client", entityId: draft.config.clientEntityId })
+      }
+      next.push({
+        role: "producer",
+        entityId: undefined, // producer is noba*, not linked to client entity
+        userIds: [ownerUserId],
+        editPermissionByUserId: { [ownerUserId]: true },
+      })
+      service.updateCollection(id, { participants: next }).then((updated) => {
+        if (updated) setDraft(updated)
+      })
       return
     }
+    // Add client participant if missing
     if (!hasClient && draft.config.clientEntityId) {
       const next: CollectionParticipant[] = [
         ...draft.participants,
@@ -236,7 +216,7 @@ export default function CollectionCreatePage({
         if (updated) setDraft(updated)
       })
     }
-  }, [draft?.id, id, draft?.participants, draft?.config?.clientEntityId, draft?.config?.managerUserId, service])
+  }, [draft?.id, id, draft?.participants, draft?.config?.clientEntityId, draft?.config?.ownerUserId, service])
 
   React.useEffect(() => {
     if (!draft) {
@@ -340,11 +320,43 @@ export default function CollectionCreatePage({
       const nextConfig = { ...draft.config, ...patch }
       // Optimistic update so Edit permission switch reflects immediately (noba section)
       setDraft({ ...draft, config: nextConfig })
-      service.updateCollection(id, { config: patch }).then((updated) => {
-        if (updated) setDraft(updated)
-      })
+      const hasNobaFields =
+        patch.nobaUserIds !== undefined || patch.nobaEditPermissionByUserId !== undefined
+      if (hasNobaFields) {
+        // Owner is stored in config.ownerUserId; fallback to current user only if not set
+        const ownerId = draft.config.ownerUserId ?? user?.id ?? ""
+        const nextNobaUserIds = patch.nobaUserIds ?? draft.config.nobaUserIds ?? []
+        const nextNobaEdit = {
+          ...(draft.config.nobaEditPermissionByUserId ?? {}),
+          ...(patch.nobaEditPermissionByUserId ?? {}),
+        }
+        // Producer userIds = owner (is_owner=true) + extra noba members (is_owner=false)
+        const producerUserIds = [
+          ...new Set([ownerId, ...nextNobaUserIds.filter((uid) => uid !== ownerId)]),
+        ]
+        const producerParticipant = draft.participants.find((p) => p.role === "producer")
+        const mergedParticipants: CollectionParticipant[] = draft.participants
+          .filter((p) => p.role !== "producer")
+          .concat([
+            {
+              role: "producer",
+              entityId: undefined, // producer is noba*, not linked to client entity
+              userIds: producerUserIds,
+              editPermissionByUserId: nextNobaEdit,
+            },
+          ])
+        service
+          .updateCollection(id, { config: patch, participants: mergedParticipants })
+          .then((updated) => {
+            if (updated) setDraft(updated)
+          })
+      } else {
+        service.updateCollection(id, { config: patch }).then((updated) => {
+          if (updated) setDraft(updated)
+        })
+      }
     },
-    [draft, id, service]
+    [draft, id, service, user?.id]
   )
 
   const handleShootingSetupChange = React.useCallback(

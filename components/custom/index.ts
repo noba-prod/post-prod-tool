@@ -8,6 +8,7 @@
 export { ExampleCustomComponent } from "./example-custom-component"
 export { Logo } from "./logo"
 export { Notifications } from "./notifications"
+export { NotificationsPanel } from "./notifications-panel"
 export { UserInformation } from "./user-information"
 export { NavBar } from "./nav-bar"
 export {

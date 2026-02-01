@@ -30,8 +30,8 @@ function validateCreateConfig(config: Partial<CollectionConfig>): void {
   if (!config.clientEntityId?.trim()) {
     throw new CollectionsServiceError("Client is required", "VALIDATION_ERROR")
   }
-  if (!config.managerUserId?.trim()) {
-    throw new CollectionsServiceError("Manager is required", "VALIDATION_ERROR")
+  if (!config.ownerUserId?.trim()) {
+    throw new CollectionsServiceError("Owner (noba producer) is required", "VALIDATION_ERROR")
   }
 }
 
@@ -50,22 +50,33 @@ export class CollectionsService {
 
   /**
    * Creates a new collection (draft) from modal config.
-   * When managerUserId and clientEntityId are set, pre-fills client + producer (manager) so the manager appears in the Client section with edit permission on.
+   * - ownerUserId = logged-in noba producer (stored as role='producer', is_owner=true)
+   * - managerUserId = selected CLIENT manager (stored as role='manager', is_owner=false)
    */
   async createCollection(config: CollectionConfig): Promise<Collection> {
     validateCreateConfig(config)
     const id = generateId()
     const now = new Date().toISOString()
     const participants: import("@/lib/domain/collections").CollectionParticipant[] = []
+    // Client participant with selected manager (role='manager' in DB)
     if (config.clientEntityId?.trim()) {
-      participants.push({ role: "client", entityId: config.clientEntityId })
+      const clientUserIds = config.managerUserId?.trim() ? [config.managerUserId] : []
+      participants.push({
+        role: "client",
+        entityId: config.clientEntityId,
+        userIds: clientUserIds,
+        editPermissionByUserId: clientUserIds.length
+          ? { [config.managerUserId]: true }
+          : {},
+      })
     }
-    if (config.managerUserId?.trim() && config.clientEntityId?.trim()) {
+    // Producer participant with owner (role='producer', is_owner=true in DB)
+    if (config.ownerUserId?.trim()) {
       participants.push({
         role: "producer",
-        entityId: config.clientEntityId,
-        userIds: [config.managerUserId],
-        editPermissionByUserId: { [config.managerUserId]: true },
+        entityId: undefined,
+        userIds: [config.ownerUserId],
+        editPermissionByUserId: { [config.ownerUserId]: true },
       })
     }
     const collection: Collection = {
@@ -133,8 +144,20 @@ export class CollectionsService {
       throw new CollectionsServiceError("Failed to update collection status", "UPDATE_FAILED")
     }
 
-    // TODO: notify participants when notification system is implemented
-    // notifyParticipants(collection)
+    // Notify participants and schedule time-based notifications
+    const participantUserIds = collection.participants
+      .flatMap((p) => p.userIds || [])
+      .filter((id) => id?.trim())
+    
+    const participantEntityIds = collection.participants
+      .map((p) => p.entityId)
+      .filter((id): id is string => !!id?.trim())
+
+    await this.notifications.collectionPublished({
+      collectionId: id,
+      participantUserIds,
+      participantEntityIds,
+    })
 
     return updated
   }

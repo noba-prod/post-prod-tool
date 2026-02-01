@@ -65,36 +65,6 @@ async function fetchOrganizationById(id: string): Promise<{ name: string; addres
   return { name: org.name, address: formatOrgAddress(org) }
 }
 
-/** Debounced text input: local state for typing, then debounced onChange. */
-function useDebouncedInput(
-  value: string | undefined,
-  onChange: (value: string | undefined) => void,
-  delay = 500
-) {
-  const [localValue, setLocalValue] = React.useState(value ?? "")
-  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null)
-
-  React.useEffect(() => {
-    setLocalValue(value ?? "")
-  }, [value])
-
-  const handleChange = React.useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newValue = e.target.value
-      setLocalValue(newValue)
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      timeoutRef.current = setTimeout(() => onChange(newValue || undefined), delay)
-    },
-    [onChange, delay]
-  )
-
-  React.useEffect(() => () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-  }, [])
-
-  return { localValue, handleChange }
-}
-
 const SHIPPING_PROVIDER_OPTIONS = [
   { value: "dhl", label: "DHL" },
   { value: "fedex", label: "FedEx" },
@@ -167,10 +137,13 @@ export function LowResConfigStepContent({
     handprintParticipant?.entityId
   )
 
-  const trackingNumber = useDebouncedInput(
-    c.lowResShippingTracking,
-    (v) => onLowResConfigChange({ lowResShippingTracking: v })
-  )
+  // Local state for tracking number so typing is not overwritten by parent/server updates
+  const [localTrackingNumber, setLocalTrackingNumber] = React.useState(c.lowResShippingTracking ?? "")
+  const [trackingFocused, setTrackingFocused] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!trackingFocused) setLocalTrackingNumber(c.lowResShippingTracking ?? "")
+  }, [c.lowResShippingTracking, trackingFocused])
 
   React.useEffect(() => {
     const eid = labParticipant?.entityId
@@ -397,8 +370,16 @@ export function LowResConfigStepContent({
                   <Input
                     placeholder="10320TSO"
                     className="h-10 w-full"
-                    value={trackingNumber.localValue}
-                    onChange={trackingNumber.handleChange}
+                    value={localTrackingNumber}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setLocalTrackingNumber(next)
+                      onLowResConfigChange({
+                        lowResShippingTracking: next || undefined,
+                      })
+                    }}
+                    onFocus={() => setTrackingFocused(true)}
+                    onBlur={() => setTrackingFocused(false)}
                   />
                 </FieldContent>
               </Field>

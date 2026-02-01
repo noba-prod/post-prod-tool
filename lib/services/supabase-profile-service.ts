@@ -98,6 +98,8 @@ export function determineEntityType(
 export interface SupabaseUserData {
   user: User
   entity: Entity
+  /** True when profile.organization_id === NOBA_ORGANIZATION_ID && profile.is_internal === true (can create collections). */
+  isNobaProducerUser: boolean
 }
 
 /**
@@ -123,6 +125,7 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
         prefix,
         role,
         is_internal,
+        image,
         created_at,
         updated_at
       `)
@@ -166,6 +169,7 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
       phoneNumber: p.phone || "",
       entityId: p.organization_id || NOBA_ORGANIZATION_ID, // Use noba org for internal users
       role: (p.role as Role) || "viewer",
+      profilePictureUrl: p.image || undefined,
       notes: undefined,
     }
 
@@ -187,16 +191,20 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
       updatedAt: organization?.updated_at ? new Date(organization.updated_at) : undefined,
     }
 
+    const isNobaProducerUser =
+      p.is_internal === true && p.organization_id === NOBA_ORGANIZATION_ID
+
     console.log(`[SupabaseProfileService] Loaded user data:`, {
       userId: user.id,
       email: user.email,
       isInternal: p.is_internal,
       organizationId: p.organization_id,
+      isNobaProducerUser,
       entityType,
       entityName: entity.name,
     })
 
-    return { user, entity }
+    return { user, entity, isNobaProducerUser }
   } catch (error) {
     console.error("[SupabaseProfileService] Unexpected error:", error)
     return null

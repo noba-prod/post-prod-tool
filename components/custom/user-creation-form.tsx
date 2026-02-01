@@ -6,8 +6,12 @@ import { Layout, LayoutSection } from "./layout"
 import { RowVariants } from "./row-variants"
 import { Field, FieldGroup, FieldLabel, FieldContent, FieldDescription } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import { PhoneInput } from "./phone-input"
 import { OptionPicker } from "./option-picker"
+import { Upload } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 // Import domain types and helpers
 import type { Role, EntityType, User } from "@/lib/types"
@@ -40,6 +44,8 @@ interface UserFormData {
   entity: Entity | null
   /** Role - uses domain value (e.g., "admin", "editor", "viewer") */
   role: Role
+  /** Profile picture file (for upload) */
+  profilePicture?: File | null
 }
 
 interface UserCreationFormProps {
@@ -140,6 +146,7 @@ export function UserCreationForm({
         countryCode: countryCode,
         entity: { type: entity.type, name: entity.name },
         role: initialUserData.role,
+        profilePicture: null,
       }
     }
     return initialData
@@ -154,6 +161,7 @@ export function UserCreationForm({
     countryCode: parsedInitialData?.countryCode || "+34",
     entity: entity || parsedInitialData?.entity || null,
     role: isAdminUser ? "admin" : (parsedInitialData?.role || "viewer"),
+    profilePicture: parsedInitialData?.profilePicture ?? null,
   })
 
   // Update form data when entity prop changes
@@ -175,6 +183,7 @@ export function UserCreationForm({
         countryCode: countryCode,
         entity: { type: entity.type, name: entity.name },
         role: initialUserData.role,
+        profilePicture: null,
       })
     }
   }, [mode, initialUserData, entity])
@@ -227,6 +236,7 @@ export function UserCreationForm({
           countryCode: countryCode,
           entity: { type: entity.type, name: entity.name },
           role: initialUserData.role,
+          profilePicture: null,
         })
       } else {
         setFormData({
@@ -237,6 +247,7 @@ export function UserCreationForm({
           countryCode: parsedInitialData?.countryCode || "+34",
           entity: entity || parsedInitialData?.entity || null,
           role: isAdminUser ? "admin" : (parsedInitialData?.role || "viewer"),
+          profilePicture: null,
         })
       }
     }
@@ -267,6 +278,15 @@ export function UserCreationForm({
     } else if (onOpenChange) {
       onOpenChange(false)
     }
+  }
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null
+    setFormData((prev) => ({ ...prev, profilePicture: file }))
+  }
+  const handleChooseFileClick = () => {
+    fileInputRef.current?.click()
   }
 
   return (
@@ -426,6 +446,51 @@ export function UserCreationForm({
                     searchable={false}
                     disabled={isAdminUser || disabled}
                   />
+                </FieldContent>
+              </Field>
+            </RowVariants>
+
+            {/* Row 4: Profile Picture Upload */}
+            <RowVariants variant="1">
+              <Field>
+                <div className="grid w-full items-center gap-1.5">
+                  <Label htmlFor="user-profile-picture" className={cn("h-3.5 leading-snug w-fit", disabled && "opacity-50")}>
+                    Profile picture
+                  </Label>
+                </div>
+                <FieldContent>
+                  <div className={cn(
+                    "flex items-center gap-3 h-9 pl-2 pr-px py-0.5 border border-border rounded-lg",
+                    disabled && "opacity-50 cursor-not-allowed"
+                  )}>
+                    <Input
+                      ref={fileInputRef}
+                      id="user-profile-picture"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      disabled={disabled}
+                    />
+                    <span className="text-sm text-muted-foreground truncate flex-1 min-w-0">
+                      {formData.profilePicture
+                        ? formData.profilePicture.name
+                        : initialUserData?.profilePictureUrl
+                          ? "Current image"
+                          : "No file chosen"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="default"
+                      className="rounded-lg cursor-pointer h-8 shrink-0"
+                      onClick={handleChooseFileClick}
+                      disabled={disabled}
+                    >
+                      <Upload className="size-4 mr-2" />
+                      Choose file
+                    </Button>
+                  </div>
                 </FieldContent>
               </Field>
             </RowVariants>

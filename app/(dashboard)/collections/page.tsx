@@ -11,6 +11,7 @@ import { Tables } from "@/components/custom/tables"
 import { Button } from "@/components/ui/button"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
+import { useUserContext } from "@/lib/contexts/user-context"
 import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
 import type { Collection as TableCollection } from "@/components/custom/tables"
 import { createCollectionsService, createEntityCreationService, getRepositoryInstances } from "@/lib/services"
@@ -145,6 +146,7 @@ function collectionDates(c: Collection): { start: string; end: string } {
 export default function CollectionsPage() {
   const router = useRouter()
   const authAdapter = useAuthAdapter()
+  const { isNobaProducerUser } = useUserContext()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [collections, setCollections] = useState<Collection[]>([])
@@ -410,17 +412,21 @@ export default function CollectionsPage() {
                     No collections yet
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Create your first collection to get started.
+                    {isNobaProducerUser
+                      ? "Create your first collection to get started."
+                      : "Only noba producer users can create collections."}
                   </p>
-                  <Button
-                    onClick={() => {
-                      if (typeof window !== "undefined") {
-                        window.dispatchEvent(new CustomEvent("noba:open-create-collection"))
-                      }
-                    }}
-                  >
-                    Create new
-                  </Button>
+                  {isNobaProducerUser && (
+                    <Button
+                      onClick={() => {
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(new CustomEvent("noba:open-create-collection"))
+                        }
+                      }}
+                    >
+                      Create new
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>

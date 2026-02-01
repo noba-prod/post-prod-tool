@@ -126,11 +126,25 @@ export default function OrganizationDetailPage() {
 
     setIsSavingBasicInfo(true)
     try {
+      let profilePictureUrl: string | undefined
+      if (entity.entity.type !== "self-photographer" && basicFormData?.profilePicture) {
+        const formData = new FormData()
+        formData.append("file", basicFormData.profilePicture)
+        const uploadRes = await fetch(`/api/organizations/${entityId}/profile-picture`, {
+          method: "POST",
+          body: formData,
+        })
+        const uploadData = await uploadRes.json().catch(() => ({}))
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        profilePictureUrl = uploadData.profilePictureUrl
+      }
+
       let payload: {
         name?: string
         email?: string
         phoneNumber?: string
         countryCode?: string
+        profilePictureUrl?: string
         notes?: string
         location?: {
           streetAddress?: string
@@ -167,6 +181,9 @@ export default function OrganizationDetailPage() {
             city: basicFormData.city.trim(),
             country: basicFormData.country.trim(),
           },
+        }
+        if (profilePictureUrl) {
+          payload.profilePictureUrl = profilePictureUrl
         }
       }
 
@@ -303,11 +320,24 @@ export default function OrganizationDetailPage() {
     countryCode: string
     entity: { type: EntityType; name: string } | null
     role: "admin" | "editor" | "viewer"
+    profilePicture?: File | null
   }) => {
     if (!editingUserId || !entityId) return
 
     setIsUpdatingUser(true)
     try {
+      let profilePictureUrl: string | undefined
+      if (userData.profilePicture) {
+        const formData = new FormData()
+        formData.append("file", userData.profilePicture)
+        const uploadRes = await fetch(`/api/users/${editingUserId}/profile-picture`, {
+          method: "POST",
+          body: formData,
+        })
+        const uploadData = await uploadRes.json().catch(() => ({}))
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        profilePictureUrl = uploadData.profilePictureUrl
+      }
       // Convert to UserFormData format (entity type must be StandardEntityType for UserFormData)
       // Since we're editing a team member, we know the entity is not self-photographer
       const userFormData: import("@/lib/utils/form-mappers").UserFormData = {
@@ -321,7 +351,7 @@ export default function OrganizationDetailPage() {
           : null,
         role: userData.role,
       }
-      const payload = mapFormToUpdateUserPayload(userFormData)
+      const payload = mapFormToUpdateUserPayload(userFormData, profilePictureUrl)
       const response = await fetch(`/api/users/${editingUserId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

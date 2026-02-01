@@ -69,6 +69,7 @@ export interface User {
   phoneNumber: string
   entityId: string
   role: Role
+  profilePictureUrl?: string
   notes?: string
 }
 
@@ -109,6 +110,7 @@ export interface UpdateUserPayload {
   phoneNumber?: string
   countryCode?: string
   role?: Role
+  profilePictureUrl?: string
   notes?: string
 }
 

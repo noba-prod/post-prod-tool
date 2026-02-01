@@ -1,0 +1,571 @@
+/**
+ * Notifications Service Implementation
+ * 
+ * Handles both event-driven and time-based notifications for the production workflow.
+ * Supports email (via Resend) and in-app notification delivery.
+ */
+
+import type { SupabaseClient } from "@supabase/supabase-js"
+import type { Database } from "@/lib/supabase/database.types"
+import type {
+  INotificationsService,
+  CollectionEventType,
+  UserNotification,
+} from "./notifications.interface"
+import type { RecipientType } from "./notification-templates"
+import {
+  resolveRecipients,
+  getCollectionContext,
+  buildCtaUrl,
+  formatNotificationTitle,
+} from "./recipient-resolver"
+import { sendNotificationEmail } from "@/lib/email/send-notification"
+
+// Database type aliases
+type NotificationTemplate = Database["public"]["Tables"]["notification_templates"]["Row"]
+type NotificationInsert = Database["public"]["Tables"]["notifications"]["Insert"]
+type CollectionEvent = Database["public"]["Tables"]["collection_events"]["Insert"]
+
+interface DeadlineMapping {
+  dateField: string
+  timeField: string
+}
+
+/**
+ * Maps trigger events to collection deadline fields
+ */
+const DEADLINE_FIELD_MAP: Record<string, DeadlineMapping> = {
+  shooting_end: {
+    dateField: "shooting_end_date",
+    timeField: "shooting_end_time",
+  },
+  dropoff_deadline: {
+    dateField: "dropoff_delivery_date",
+    timeField: "dropoff_delivery_time",
+  },
+  scanning_deadline: {
+    dateField: "lowres_deadline_date",
+    timeField: "lowres_deadline_time",
+  },
+  photographer_selection_deadline: {
+    dateField: "photo_selection_photographer_preselection_date",
+    timeField: "photo_selection_photographer_preselection_time",
+  },
+  client_selection_deadline: {
+    dateField: "photo_selection_client_selection_date",
+    timeField: "photo_selection_client_selection_time",
+  },
+  highres_deadline: {
+    dateField: "low_to_high_date",
+    timeField: "low_to_high_time",
+  },
+  final_edits_deadline: {
+    dateField: "precheck_studio_final_edits_date",
+    timeField: "precheck_studio_final_edits_time",
+  },
+  photographer_review_deadline: {
+    dateField: "check_finals_photographer_check_date",
+    timeField: "check_finals_photographer_check_time",
+  },
+}
+
+export class NotificationsService implements INotificationsService {
+  constructor(private readonly supabase: SupabaseClient<Database>) {}
+
+  /**
+   * Called when a collection is published
+   */
+  async collectionPublished(payload: {
+    collectionId: string
+    participantUserIds: string[]
+    participantEntityIds?: string[]
+  }): Promise<void> {
+    // Schedule all time-based notifications for this collection
+    await this.scheduleTimeBasedNotifications(payload.collectionId)
+  }
+
+  /**
+   * Trigger an event-based notification
+   */
+  async triggerEvent(
+    collectionId: string,
+    eventType: CollectionEventType,
+    triggeredByUserId?: string,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    // 1. Record the event
+    const eventData: CollectionEvent = {
+      collection_id: collectionId,
+      event_type: eventType,
+      triggered_by_user_id: triggeredByUserId || null,
+      metadata: metadata || {},
+      notifications_processed: false,
+    }
+
+    const { data: event, error: eventError } = await this.supabase
+      .from("collection_events")
+      .insert(eventData)
+      .select("id")
+      .single()
+
+    if (eventError) {
+      console.error("[NotificationsService] Failed to record event:", eventError)
+      // Continue anyway to send notifications
+    }
+
+    // 2. Find templates triggered by this event
+    const { data: templates, error: templatesError } = await this.supabase
+      .from("notification_templates")
+      .select("*")
+      .eq("trigger_type", "on")
+      .eq("trigger_event", eventType)
+      .eq("is_active", true)
+
+    if (templatesError) {
+      console.error("[NotificationsService] Failed to fetch templates:", templatesError)
+      return
+    }
+
+    if (!templates || templates.length === 0) {
+      console.log(`[NotificationsService] No templates for event: ${eventType}`)
+      return
+    }
+
+    // 3. Get collection context
+    const context = await getCollectionContext(this.supabase, collectionId)
+    if (!context) {
+      console.error("[NotificationsService] Collection not found:", collectionId)
+      return
+    }
+
+    // 4. Process each template
+    for (const template of templates) {
+      await this.processTemplate(template, collectionId, context)
+    }
+
+    // 5. Mark event as processed
+    if (event?.id) {
+      await this.supabase
+        .from("collection_events")
+        .update({ notifications_processed: true, processed_at: new Date().toISOString() })
+        .eq("id", event.id)
+    }
+  }
+
+  /**
+   * Process scheduled notifications (called by cron)
+   */
+  async processScheduledNotifications(): Promise<{ processed: number; errors: number }> {
+    const now = new Date().toISOString()
+    let processed = 0
+    let errors = 0
+
+    // 1. Process pending scheduled tracking entries
+    const { data: pendingScheduled, error: scheduledError } = await this.supabase
+      .from("scheduled_notification_tracking")
+      .select("*, notification_templates(*)")
+      .eq("is_sent", false)
+      .lte("scheduled_for", now)
+      .limit(100)
+
+    if (scheduledError) {
+      console.error("[NotificationsService] Failed to fetch pending scheduled:", scheduledError)
+      return { processed: 0, errors: 1 }
+    }
+
+    for (const scheduled of pendingScheduled || []) {
+      try {
+        const template = scheduled.notification_templates as NotificationTemplate
+        if (!template) continue
+
+        // Check if condition is met (for 'if' triggers)
+        if (template.trigger_condition) {
+          const conditionMet = await this.checkCondition(
+            scheduled.collection_id,
+            template.trigger_condition
+          )
+          if (!conditionMet) {
+            // Mark as sent (skipped) to avoid re-checking
+            await this.supabase
+              .from("scheduled_notification_tracking")
+              .update({ is_sent: true, sent_at: now })
+              .eq("id", scheduled.id)
+            continue
+          }
+        }
+
+        const context = await getCollectionContext(this.supabase, scheduled.collection_id)
+        if (!context) continue
+
+        await this.processTemplate(template, scheduled.collection_id, context)
+
+        // Mark as sent
+        await this.supabase
+          .from("scheduled_notification_tracking")
+          .update({ is_sent: true, sent_at: now })
+          .eq("id", scheduled.id)
+
+        processed++
+      } catch (err) {
+        console.error("[NotificationsService] Error processing scheduled:", err)
+        errors++
+      }
+    }
+
+    // 2. Process pending notification deliveries
+    const { data: pendingNotifications, error: notifError } = await this.supabase
+      .from("notifications")
+      .select("*")
+      .eq("status", "pending")
+      .or(`scheduled_for.is.null,scheduled_for.lte.${now}`)
+      .limit(100)
+
+    if (notifError) {
+      console.error("[NotificationsService] Failed to fetch pending notifications:", notifError)
+      return { processed, errors: errors + 1 }
+    }
+
+    for (const notification of pendingNotifications || []) {
+      try {
+        if (notification.channel === "email") {
+          // Get user email
+          const { data: user } = await this.supabase
+            .from("profiles")
+            .select("email, first_name")
+            .eq("id", notification.user_id)
+            .single()
+
+          if (user?.email) {
+            const result = await sendNotificationEmail({
+              to: user.email,
+              subject: notification.title,
+              body: notification.body,
+              ctaText: notification.cta_text || undefined,
+              ctaUrl: notification.cta_url || undefined,
+              recipientName: user.first_name || undefined,
+            })
+
+            if (result.sent) {
+              await this.supabase
+                .from("notifications")
+                .update({ status: "sent", sent_at: now })
+                .eq("id", notification.id)
+              processed++
+            } else {
+              await this.supabase
+                .from("notifications")
+                .update({
+                  status: "failed",
+                  error_message: result.error,
+                  retry_count: notification.retry_count + 1,
+                })
+                .eq("id", notification.id)
+              errors++
+            }
+          }
+        } else {
+          // In-app notifications are immediately "sent"
+          await this.supabase
+            .from("notifications")
+            .update({ status: "sent", sent_at: now })
+            .eq("id", notification.id)
+          processed++
+        }
+      } catch (err) {
+        console.error("[NotificationsService] Error sending notification:", err)
+        errors++
+      }
+    }
+
+    return { processed, errors }
+  }
+
+  /**
+   * Schedule time-based notifications for a collection
+   */
+  async scheduleTimeBasedNotifications(collectionId: string): Promise<void> {
+    // Get all time-based templates (before, after, if, first_time)
+    const { data: templates, error: templatesError } = await this.supabase
+      .from("notification_templates")
+      .select("*")
+      .in("trigger_type", ["before", "after", "if", "first_time"])
+      .eq("is_active", true)
+
+    if (templatesError || !templates) {
+      console.error("[NotificationsService] Failed to fetch time-based templates:", templatesError)
+      return
+    }
+
+    // Get collection data
+    const { data: collection, error: collectionError } = await this.supabase
+      .from("collections")
+      .select("*")
+      .eq("id", collectionId)
+      .single()
+
+    if (collectionError || !collection) {
+      console.error("[NotificationsService] Collection not found:", collectionId)
+      return
+    }
+
+    const now = new Date()
+
+    for (const template of templates) {
+      const deadlineMapping = DEADLINE_FIELD_MAP[template.trigger_event]
+      if (!deadlineMapping) {
+        // This is an event-based trigger, skip
+        continue
+      }
+
+      // Get deadline value from collection
+      const dateValue = (collection as Record<string, unknown>)[deadlineMapping.dateField] as string | null
+      const timeValue = (collection as Record<string, unknown>)[deadlineMapping.timeField] as string | null
+
+      if (!dateValue) continue
+
+      // Parse deadline
+      const deadlineDate = this.parseDeadline(dateValue, timeValue)
+      if (!deadlineDate) continue
+
+      // Calculate scheduled time
+      const scheduledFor = new Date(deadlineDate.getTime() + template.trigger_offset_minutes * 60000)
+
+      // Skip if already in the past
+      if (scheduledFor < now) continue
+
+      // Insert tracking entry (upsert to avoid duplicates)
+      const { error: insertError } = await this.supabase
+        .from("scheduled_notification_tracking")
+        .upsert(
+          {
+            collection_id: collectionId,
+            template_id: template.id,
+            deadline_value: deadlineDate.toISOString(),
+            scheduled_for: scheduledFor.toISOString(),
+            is_sent: false,
+          },
+          { onConflict: "collection_id,template_id,deadline_value" }
+        )
+
+      if (insertError) {
+        console.error("[NotificationsService] Failed to schedule:", insertError)
+      }
+    }
+  }
+
+  /**
+   * Mark a notification as read
+   */
+  async markAsRead(notificationId: string, userId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from("notifications")
+      .update({ status: "read", read_at: new Date().toISOString() })
+      .eq("id", notificationId)
+      .eq("user_id", userId)
+      .eq("channel", "in_app")
+
+    if (error) {
+      console.error("[NotificationsService] Failed to mark as read:", error)
+      throw error
+    }
+  }
+
+  /**
+   * Get user's in-app notifications
+   */
+  async getUserNotifications(
+    userId: string,
+    options?: { unreadOnly?: boolean; limit?: number }
+  ): Promise<UserNotification[]> {
+    let query = this.supabase
+      .from("notifications")
+      .select(`
+        id,
+        title,
+        body,
+        cta_text,
+        cta_url,
+        collection_id,
+        status,
+        created_at,
+        sent_at,
+        read_at,
+        collections!inner(name)
+      `)
+      .eq("user_id", userId)
+      .eq("channel", "in_app")
+      .in("status", ["sent", "read"])
+      .order("created_at", { ascending: false })
+
+    if (options?.unreadOnly) {
+      query = query.eq("status", "sent")
+    }
+
+    if (options?.limit) {
+      query = query.limit(options.limit)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error("[NotificationsService] Failed to fetch notifications:", error)
+      return []
+    }
+
+    return (data || []).map((n) => ({
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      ctaText: n.cta_text,
+      ctaUrl: n.cta_url,
+      collectionId: n.collection_id,
+      collectionName: (n.collections as { name: string })?.name || null,
+      status: n.status as "sent" | "read",
+      isRead: n.status === "read",
+      createdAt: n.created_at,
+      sentAt: n.sent_at,
+    }))
+  }
+
+  /**
+   * Get count of unread notifications
+   */
+  async getUnreadCount(userId: string): Promise<number> {
+    const { count, error } = await this.supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("channel", "in_app")
+      .eq("status", "sent")
+
+    if (error) {
+      console.error("[NotificationsService] Failed to get unread count:", error)
+      return 0
+    }
+
+    return count || 0
+  }
+
+  // ============================================================================
+  // Private Methods
+  // ============================================================================
+
+  /**
+   * Process a single template for a collection
+   */
+  private async processTemplate(
+    template: NotificationTemplate,
+    collectionId: string,
+    context: { name: string; reference: string | null }
+  ): Promise<void> {
+    // Resolve email recipients
+    const emailRecipients = await resolveRecipients(
+      this.supabase,
+      collectionId,
+      (template.email_recipients || []) as RecipientType[]
+    )
+
+    // Resolve in-app recipients
+    const inappRecipients = await resolveRecipients(
+      this.supabase,
+      collectionId,
+      (template.inapp_recipients || []) as RecipientType[]
+    )
+
+    const title = formatNotificationTitle(template.title, context.name, context.reference)
+    const ctaUrl = buildCtaUrl(template.cta_url_template, collectionId)
+
+    // Create email notifications
+    for (const recipient of emailRecipients) {
+      await this.createNotification({
+        collection_id: collectionId,
+        template_id: template.id,
+        user_id: recipient.userId,
+        channel: "email",
+        status: "pending",
+        title,
+        body: template.description,
+        cta_text: template.cta_text,
+        cta_url: ctaUrl,
+      })
+    }
+
+    // Create in-app notifications (immediately sent)
+    for (const recipient of inappRecipients) {
+      await this.createNotification({
+        collection_id: collectionId,
+        template_id: template.id,
+        user_id: recipient.userId,
+        channel: "in_app",
+        status: "sent",
+        title,
+        body: template.description,
+        cta_text: template.cta_text,
+        cta_url: ctaUrl,
+        sent_at: new Date().toISOString(),
+      })
+    }
+  }
+
+  /**
+   * Create a notification record
+   */
+  private async createNotification(data: NotificationInsert): Promise<void> {
+    const { error } = await this.supabase.from("notifications").insert(data)
+
+    if (error) {
+      console.error("[NotificationsService] Failed to create notification:", error)
+    }
+  }
+
+  /**
+   * Parse a deadline from date and time fields
+   */
+  private parseDeadline(dateStr: string, timeStr: string | null): Date | null {
+    try {
+      if (timeStr) {
+        // Combine date and time (assuming time is in HH:mm format)
+        return new Date(`${dateStr}T${timeStr}:00`)
+      }
+      // Default to end of day if no time specified
+      return new Date(`${dateStr}T23:59:59`)
+    } catch {
+      console.error("[NotificationsService] Failed to parse deadline:", dateStr, timeStr)
+      return null
+    }
+  }
+
+  /**
+   * Check if a condition is met for conditional notifications
+   */
+  private async checkCondition(
+    collectionId: string,
+    condition: string
+  ): Promise<boolean> {
+    // Get collection and events
+    const { data: events } = await this.supabase
+      .from("collection_events")
+      .select("event_type")
+      .eq("collection_id", collectionId)
+
+    const eventTypes = (events || []).map((e) => e.event_type)
+
+    switch (condition) {
+      case "negatives_not_confirmed":
+        // Check if dropoff has NOT been confirmed
+        return !eventTypes.includes("dropoff_confirmed")
+
+      case "selection_not_completed":
+        // Check if client selection has NOT been confirmed
+        return !eventTypes.includes("client_selection_confirmed")
+
+      case "morning_reminder":
+        // Always true for first-time morning reminders (controlled by scheduling)
+        return true
+
+      default:
+        console.warn(`[NotificationsService] Unknown condition: ${condition}`)
+        return false
+    }
+  }
+}

@@ -65,6 +65,7 @@ export function mapProfileToUser(profile: Profile): User {
     phoneNumber: combinePhone(profile.prefix, profile.phone) || "",
     entityId: profile.organization_id || "",
     role: resolveRole(profile.role),
+    profilePictureUrl: profile.image || undefined,
     notes: undefined,
   }
 }

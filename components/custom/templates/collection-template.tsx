@@ -49,6 +49,7 @@ interface NavBarConfig {
   organization?: string
   role?: string
   isAdmin?: boolean
+  avatarSrc?: string
 }
 
 // =============================================================================
@@ -191,6 +192,7 @@ export function CollectionTemplate({
         role={role}
         isAdmin={isAdmin}
         isSelfPhotographer={userContext?.isSelfPhotographer ?? false}
+        avatarSrc={userContext?.user?.profilePictureUrl || navBarProps?.avatarSrc}
         onSearch={() => setIsSearchOpen(true)}
       />
 

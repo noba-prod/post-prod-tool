@@ -34,19 +34,29 @@ function isoToDbDate(v: string | undefined): string | null {
 function dbRowToConfig(row: DbCollection, members: CollectionMember[]): CollectionConfig {
   const managerUserId =
     members.find((m) => m.role === "manager")?.user_id ?? ""
+  const ownerMember = members.find((m) => m.role === "producer" && (m as { is_owner?: boolean }).is_owner === true)
+  const ownerUserId =
+    ownerMember?.user_id ?? members.find((m) => m.role === "producer")?.user_id ?? undefined
+  const producerMembers = members.filter((m) => m.role === "producer")
+  const producerUserIds = producerMembers.map((m) => m.user_id)
+  const rowNobaUserIds = Array.isArray((row as { noba_user_ids?: unknown }).noba_user_ids)
+    ? (row as { noba_user_ids: string[] }).noba_user_ids
+    : null
+  const rowNobaEdit = (row as { noba_edit_permission_by_user_id?: unknown }).noba_edit_permission_by_user_id
+  const storedEdit = (row as { participant_edit_permissions?: Record<string, Record<string, boolean>> }).participant_edit_permissions
   return {
     name: row.name,
     reference: row.reference ?? undefined,
     clientEntityId: row.client_id,
     managerUserId,
-    nobaUserIds: Array.isArray((row as { noba_user_ids?: unknown }).noba_user_ids)
-      ? ((row as { noba_user_ids: string[] }).noba_user_ids)
-      : undefined,
+    ownerUserId,
+    nobaUserIds: rowNobaUserIds ?? (producerUserIds.length > 0 ? producerUserIds : undefined),
     nobaEditPermissionByUserId:
-      (row as { noba_edit_permission_by_user_id?: unknown }).noba_edit_permission_by_user_id != null &&
-      typeof (row as { noba_edit_permission_by_user_id: Record<string, boolean> }).noba_edit_permission_by_user_id === "object"
-        ? (row as { noba_edit_permission_by_user_id: Record<string, boolean> }).noba_edit_permission_by_user_id
-        : undefined,
+      rowNobaEdit != null && typeof rowNobaEdit === "object"
+        ? (rowNobaEdit as Record<string, boolean>)
+        : (storedEdit?.producer != null && typeof storedEdit.producer === "object"
+          ? storedEdit.producer
+          : undefined),
     hasAgency: row.photographer_collaborates_with_agency,
     hasLowResLab: row.low_res_to_high_res_digital,
     hasHandprint: row.low_res_to_high_res_hand_print,
@@ -98,7 +108,8 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
 }
 
 const DB_ROLE_TO_DOMAIN: Record<CollectionMemberRole, ParticipantRole | null> = {
-  manager: "producer",
+  manager: "client",
+  producer: "producer",
   photographer: "photographer",
   lab_technician: "lab",
   editor: "edition_studio",
@@ -128,12 +139,23 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
   const participants: CollectionParticipant[] = []
   if (row.client_id) {
     const clientMembers = byRole.get("manager") ?? []
-    const userIds = clientMembers.map((m) => m.user_id)
+    const clientUserIds = clientMembers.map((m) => m.user_id)
     participants.push({
       role: "client",
       entityId: row.client_id,
-      userIds,
-      editPermissionByUserId: getEditPermissionByUserId("client", userIds, storedEdit),
+      userIds: clientUserIds,
+      editPermissionByUserId: getEditPermissionByUserId("client", clientUserIds, storedEdit),
+    })
+  }
+  const producerMembers = byRole.get("producer") ?? []
+  if (producerMembers.length > 0) {
+    const producerUserIds = producerMembers.map((m) => m.user_id)
+    const editPermissionByUserId = getEditPermissionByUserId("producer", producerUserIds, storedEdit)
+    participants.push({
+      role: "producer",
+      entityId: row.client_id ?? undefined,
+      userIds: producerUserIds,
+      editPermissionByUserId,
     })
   }
   if (row.photographer_id) {
@@ -175,27 +197,6 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       userIds,
       editPermissionByUserId: getEditPermissionByUserId("handprint_lab", userIds, storedEdit),
     })
-  }
-  const managerMembers = byRole.get("manager") ?? []
-  if (managerMembers.length > 0) {
-    const managerUserIds = managerMembers.map((m) => m.user_id)
-    const editPermissionByUserId = getEditPermissionByUserId("producer", managerUserIds, storedEdit)
-    const alreadyClient = participants.some((p) => p.role === "client")
-    if (!alreadyClient) {
-      participants.push({
-        role: "producer",
-        entityId: row.client_id ?? undefined,
-        userIds: managerUserIds,
-        editPermissionByUserId,
-      })
-    } else {
-      participants.push({
-        role: "producer",
-        entityId: row.client_id ?? undefined,
-        userIds: managerUserIds,
-        editPermissionByUserId,
-      })
-    }
   }
   return participants
 }
@@ -327,7 +328,7 @@ export function mapDbCollectionToDomain(
 }
 
 const DOMAIN_ROLE_TO_DB: Record<ParticipantRole, CollectionMemberRole> = {
-  producer: "manager",
+  producer: "producer",
   client: "manager",
   photographer: "photographer",
   agency: "photographer",
@@ -471,7 +472,9 @@ export function mapDomainPatchToDbUpdate(
     if (conf.editionStudioDueTime !== undefined) u.precheck_studio_final_edits_time = conf.editionStudioDueTime ?? null
     if (conf.checkFinalsPhotographerDueDate !== undefined) u.check_finals_photographer_check_date = isoToDbDate(conf.checkFinalsPhotographerDueDate)
     if (conf.checkFinalsPhotographerDueTime !== undefined) u.check_finals_photographer_check_time = conf.checkFinalsPhotographerDueTime ?? null
-    // Omit noba_user_ids / noba_edit_permission_by_user_id so UPDATE succeeds when migrations 011/012 are not applied
+    // Omit noba_user_ids / noba_edit_permission_by_user_id so update succeeds when migration 011
+    // is not applied or schema cache is stale. Noba members are persisted via collection_members
+    // (patch.participants); when loading we derive config from producer members in dbRowToConfig.
     // if (conf.nobaUserIds !== undefined) u.noba_user_ids = conf.nobaUserIds
     // if (conf.nobaEditPermissionByUserId !== undefined) u.noba_edit_permission_by_user_id = conf.nobaEditPermissionByUserId
   }
@@ -501,10 +504,10 @@ export function mapDomainPatchToDbUpdate(
 /** Build collection_members inserts from domain participants. */
 export function mapParticipantsToDbMembers(
   collectionId: string,
-  participants: CollectionParticipant[]
+  participants: CollectionParticipant[],
+  ownerUserId?: string
 ): CollectionMemberInsert[] {
-  // Use a Set to deduplicate by (user_id, role) since multiple domain roles
-  // can map to the same DB role (e.g., client and producer both map to "manager")
+  // Use a Set to deduplicate by (user_id, role)
   const seen = new Set<string>()
   const out: CollectionMemberInsert[] = []
   
@@ -514,7 +517,8 @@ export function mapParticipantsToDbMembers(
       const key = `${userId}:${dbRole}`
       if (!seen.has(key)) {
         seen.add(key)
-        out.push({ collection_id: collectionId, user_id: userId, role: dbRole })
+        const isOwner = dbRole === "producer" && userId === ownerUserId
+        out.push({ collection_id: collectionId, user_id: userId, role: dbRole, is_owner: isOwner })
       }
     }
   }

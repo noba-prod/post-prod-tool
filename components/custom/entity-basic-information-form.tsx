@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils"
 // Import domain types
 import type { StandardEntityType } from "@/lib/types"
 import { entityTypeToLabel } from "@/lib/types"
+import { COUNTRY_NAMES, getCitiesByCountryName } from "@/lib/data/location"
 
 // ============================================================================
 // TYPES
@@ -68,33 +69,6 @@ interface EntityBasicInformationFormProps {
   /** Whether all inputs should be disabled (for view-only mode) */
   disabled?: boolean
 }
-
-// Sample data for comboboxes (in production, these would come from an API)
-const CITIES = [
-  "Madrid",
-  "Barcelona",
-  "Valencia",
-  "Seville",
-  "Bilbao",
-  "Málaga",
-  "Zaragoza",
-  "Murcia",
-  "Palma",
-  "Las Palmas",
-]
-
-const COUNTRIES = [
-  "Spain",
-  "France",
-  "Germany",
-  "Italy",
-  "Portugal",
-  "United Kingdom",
-  "United States",
-  "Mexico",
-  "Argentina",
-  "Chile",
-]
 
 // ============================================================================
 // MAIN COMPONENT
@@ -149,6 +123,25 @@ export function EntityBasicInformationForm({
     profilePicture: initialData?.profilePicture || null,
     notes: initialData?.notes || "",
   })
+
+  // Input value for country/city comboboxes when open (for "accept custom on close")
+  const [countryInputValue, setCountryInputValue] = React.useState(initialData?.country ?? "")
+  const [cityInputValue, setCityInputValue] = React.useState(initialData?.city ?? "")
+  // Track open state so we pass value = input while open (avoids combobox resetting input from value)
+  const [countryOpen, setCountryOpen] = React.useState(false)
+  const [cityOpen, setCityOpen] = React.useState(false)
+  // Ref to capture selection on close (onOpenChange can run before setState from onValueChange commits)
+  const selectedCountryRef = React.useRef<string | null>(null)
+  const selectedCityRef = React.useRef<string | null>(null)
+
+  // When popup is closed, show saved country/city from form (so loaded Supabase data displays correctly)
+  React.useEffect(() => {
+    if (!countryOpen) setCountryInputValue(formData.country ?? "")
+  }, [countryOpen, formData.country])
+
+  React.useEffect(() => {
+    if (!cityOpen) setCityInputValue(formData.city ?? "")
+  }, [cityOpen, formData.city])
 
   // Store latest callbacks in refs to avoid dependency issues
   const onDataChangeRef = React.useRef(onDataChange)
@@ -226,9 +219,30 @@ export function EntityBasicInformationForm({
     fileInputRef.current?.click()
   }
 
-  // Filtered cities and countries (combobox handles search internally)
-  const filteredCities = CITIES
-  const filteredCountries = COUNTRIES
+  // Country list: full list + current value and current input when open (so value is always in items). Dedupe so keys are unique.
+  const countryItems = React.useMemo(() => {
+    const base = COUNTRY_NAMES
+    const v = formData.country?.trim()
+    const input = countryInputValue?.trim()
+    const extra = [v, input].filter(Boolean).filter((x) => !base.includes(x))
+    const uniqExtra = [...new Set(extra)]
+    const combined = uniqExtra.length ? [...base, ...uniqExtra] : base
+    return [...new Set(combined)]
+  }, [formData.country, countryInputValue])
+
+  // City list: cities for selected country + current value and current input when open. Dedupe (data can have same name in different states).
+  const cityItems = React.useMemo(() => {
+    const baseRaw = formData.country?.trim()
+      ? getCitiesByCountryName(formData.country)
+      : []
+    const base = [...new Set(baseRaw)]
+    const v = formData.city?.trim()
+    const input = cityInputValue?.trim()
+    const extra = [v, input].filter(Boolean).filter((x) => !base.includes(x))
+    const uniqExtra = [...new Set(extra)]
+    const combined = uniqExtra.length ? [...base, ...uniqExtra] : base
+    return [...new Set(combined)]
+  }, [formData.country, formData.city, cityInputValue])
 
   return (
     <Layout padding="none" showSeparators={false}>
@@ -304,7 +318,7 @@ export function EntityBasicInformationForm({
                 </Field>
               </RowVariants>
 
-              {/* ZIP Code, City, Country (3 columns) */}
+              {/* ZIP Code, Country, City (3 columns) */}
               <RowVariants variant="3">
                 {/* ZIP Code */}
                 <Field>
@@ -325,27 +339,47 @@ export function EntityBasicInformationForm({
                   </FieldContent>
                 </Field>
 
-                {/* City (combobox) */}
+                {/* Country (combobox) - full list; custom value accepted on close */}
                 <Field>
-                  <FieldLabel htmlFor="city" disabled={disabled}>
-                    City
+                  <FieldLabel htmlFor="country" disabled={disabled}>
+                    Country
                   </FieldLabel>
                   <FieldContent>
                     <Combobox
-                      items={filteredCities}
-                      value={formData.city}
-                      onValueChange={(value) => updateFormData({ city: value || "" })}
+                      items={countryItems}
+                      value={countryOpen ? countryInputValue : formData.country}
+                      onValueChange={(value) => {
+                        const next = value || ""
+                        selectedCountryRef.current = next
+                        setCountryInputValue(next)
+                        updateFormData({ country: next })
+                      }}
+                      inputValue={countryInputValue}
+                      onInputValueChange={(v) => setCountryInputValue(v)}
+                      open={countryOpen}
+                      onOpenChange={(open) => {
+                        setCountryOpen(open)
+                        if (open) {
+                          setCountryInputValue(formData.country)
+                          selectedCountryRef.current = null
+                        } else {
+                          const toSave = selectedCountryRef.current ?? (countryInputValue?.trim() || "")
+                          selectedCountryRef.current = null
+                          setCountryInputValue(toSave)
+                          updateFormData({ country: toSave })
+                        }
+                      }}
                       disabled={disabled}
                     >
                       <ComboboxInput
-                        id="city"
-                        placeholder="Select city"
-                        showClear={!!formData.city && !disabled}
+                        id="country"
+                        placeholder="Select or type country"
+                        showClear={!!formData.country && !disabled}
                         disabled={disabled}
                       />
                       {!disabled && (
                         <ComboboxContent>
-                          <ComboboxEmpty>No city found.</ComboboxEmpty>
+                          <ComboboxEmpty>No country found. You can type your own.</ComboboxEmpty>
                           <ComboboxList>
                             {(item) => (
                               <ComboboxItem key={item} value={item}>
@@ -359,27 +393,49 @@ export function EntityBasicInformationForm({
                   </FieldContent>
                 </Field>
 
-                {/* Country (combobox) */}
+                {/* City (combobox) - list by country; custom value accepted on close */}
                 <Field>
-                  <FieldLabel htmlFor="country" disabled={disabled}>
-                    Country
+                  <FieldLabel htmlFor="city" disabled={disabled}>
+                    City
                   </FieldLabel>
                   <FieldContent>
                     <Combobox
-                      items={filteredCountries}
-                      value={formData.country}
-                      onValueChange={(value) => updateFormData({ country: value || "" })}
+                      items={cityItems}
+                      value={cityOpen ? cityInputValue : formData.city}
+                      onValueChange={(value) => {
+                        const next = value || ""
+                        selectedCityRef.current = next
+                        setCityInputValue(next)
+                        updateFormData({ city: next })
+                      }}
+                      inputValue={cityInputValue}
+                      onInputValueChange={(v) => setCityInputValue(v)}
+                      open={cityOpen}
+                      onOpenChange={(open) => {
+                        setCityOpen(open)
+                        if (open) {
+                          setCityInputValue(formData.city)
+                          selectedCityRef.current = null
+                        } else {
+                          const toSave = selectedCityRef.current ?? (cityInputValue?.trim() || "")
+                          selectedCityRef.current = null
+                          setCityInputValue(toSave)
+                          updateFormData({ city: toSave })
+                        }
+                      }}
                       disabled={disabled}
                     >
                       <ComboboxInput
-                        id="country"
-                        placeholder="Select country"
-                        showClear={!!formData.country && !disabled}
+                        id="city"
+                        placeholder={formData.country ? "Select or type city" : "Select country first"}
+                        showClear={!!formData.city && !disabled}
                         disabled={disabled}
                       />
                       {!disabled && (
                         <ComboboxContent>
-                          <ComboboxEmpty>No country found.</ComboboxEmpty>
+                          <ComboboxEmpty>
+                            {formData.country ? "No city found. You can type your own." : "Select a country first."}
+                          </ComboboxEmpty>
                           <ComboboxList>
                             {(item) => (
                               <ComboboxItem key={item} value={item}>

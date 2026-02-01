@@ -105,21 +105,37 @@ export default function TeamMemberProfilePage() {
       countryCode: string
       entity: { type: string; name: string } | null
       role: "admin" | "editor" | "viewer"
+      profilePicture?: File | null
     }) => {
       if (!userId || !userContext.entity) return
       setIsSaving(true)
       try {
-        const payload = mapFormToUpdateUserPayload({
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          email: userData.email,
-          phoneNumber: userData.phoneNumber,
-          countryCode: userData.countryCode,
-          entity: userData.entity
-            ? { type: userData.entity.type as import("@/lib/types").StandardEntityType, name: userData.entity.name }
-            : null,
-          role: userData.role,
-        })
+        let profilePictureUrl: string | undefined
+        if (userData.profilePicture) {
+          const formData = new FormData()
+          formData.append("file", userData.profilePicture)
+          const uploadRes = await fetch(`/api/users/${userId}/profile-picture`, {
+            method: "POST",
+            body: formData,
+          })
+          const uploadData = await uploadRes.json().catch(() => ({}))
+          if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+          profilePictureUrl = uploadData.profilePictureUrl
+        }
+        const payload = mapFormToUpdateUserPayload(
+          {
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            email: userData.email,
+            phoneNumber: userData.phoneNumber,
+            countryCode: userData.countryCode,
+            entity: userData.entity
+              ? { type: userData.entity.type as import("@/lib/types").StandardEntityType, name: userData.entity.name }
+              : null,
+            role: userData.role,
+          },
+          profilePictureUrl
+        )
         if (USE_MOCK_AUTH) {
           const repos = getRepositoryInstances()
           if (!repos.userRepository) throw new Error("User repository not available")

@@ -145,10 +145,7 @@ export function NavBar({
             />
           )}
 
-          <Notifications
-            hasNotifications={hasNotifications}
-            onClick={onNotifications}
-          />
+          <Notifications usePanel />
 
           <div className="w-px h-5 bg-border" />
 
@@ -183,10 +180,7 @@ export function NavBar({
           <div className="w-px h-5 bg-border" />
 
           <div className="flex items-center gap-1">
-            <Notifications
-              hasNotifications={hasNotifications}
-              onClick={onNotifications}
-            />
+            <Notifications usePanel />
 
             <Button
               variant="ghost"

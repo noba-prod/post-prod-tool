@@ -12,6 +12,7 @@ type UpdateUserPayload = {
   phoneNumber?: string
   countryCode?: string
   role?: "admin" | "editor" | "viewer"
+  profilePictureUrl?: string
 }
 
 async function getSessionProfile() {
@@ -122,6 +123,7 @@ export async function PATCH(
     phone?: string | null
     prefix?: string | null
     role?: "admin" | "editor" | "viewer" | null
+    image?: string | null
   } = {}
 
   if (payload.firstName !== undefined) {
@@ -135,6 +137,9 @@ export async function PATCH(
   }
   if (payload.role !== undefined) {
     update.role = payload.role
+  }
+  if (payload.profilePictureUrl !== undefined) {
+    update.image = payload.profilePictureUrl || null
   }
 
   if (payload.phoneNumber !== undefined || payload.countryCode !== undefined) {

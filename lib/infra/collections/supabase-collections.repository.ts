@@ -22,7 +22,8 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
   async create(collection: Collection): Promise<Collection> {
     const supabase = createClient()
     const insert = mapDomainToDbInsert(collection)
-    const members = mapParticipantsToDbMembers(collection.id, collection.participants)
+    const ownerUserId = collection.config.ownerUserId
+    const members = mapParticipantsToDbMembers(collection.id, collection.participants, ownerUserId)
 
     const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
     const { data: row, error: insertError } = await tbl.insert(insert).select().single()
@@ -83,7 +84,8 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
       if (deleteError) {
         console.error("[SupabaseCollectionsRepository] Failed to delete members:", deleteError)
       }
-      const members = mapParticipantsToDbMembers(id, patch.participants)
+      const ownerUserId = patch.config?.ownerUserId ?? current?.config?.ownerUserId
+      const members = mapParticipantsToDbMembers(id, patch.participants, ownerUserId)
       if (members.length > 0) {
         const { error: insertError } = await memTbl.insert(members)
         if (insertError) {

@@ -47,6 +47,7 @@ export interface UserFormData {
   countryCode: string
   entity: { type: StandardEntityType; name: string } | null
   role: Role
+  profilePicture?: File | null
 }
 
 // =============================================================================
@@ -287,6 +288,7 @@ export function mapUserToFormData(
     countryCode: countryCode,
     entity: { type: entity.type as StandardEntityType, name: entity.name },
     role: user.role,
+    profilePicture: null, // File cannot be reconstructed from URL
   }
 }
 
@@ -297,7 +299,7 @@ export function mapUserToFormData(
  * @param formData - Form data from UserCreationForm
  * @returns Update payload suitable for updateUser service method
  */
-export function mapFormToUpdateUserPayload(formData: UserFormData): UpdateUserPayload {
+export function mapFormToUpdateUserPayload(formData: UserFormData, profilePictureUrl?: string): UpdateUserPayload {
   return {
     firstName: formData.firstName.trim(),
     lastName: formData.lastName?.trim() || undefined,
@@ -305,6 +307,7 @@ export function mapFormToUpdateUserPayload(formData: UserFormData): UpdateUserPa
     phoneNumber: formData.phoneNumber.trim(),
     countryCode: formData.countryCode,
     role: formData.role,
+    profilePictureUrl,
     notes: undefined, // Notes field not in UserFormData yet, can be added later
   }
 }

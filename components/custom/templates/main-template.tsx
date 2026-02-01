@@ -15,7 +15,7 @@ import { useNavigationConfig } from "@/lib/hooks/use-navigation-config"
 import { useAuthAdapter } from "@/lib/auth"
 import { getRepositoryInstances } from "@/lib/services"
 import { toast } from "sonner"
-import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft } from "@/lib/utils/form-mappers"
+import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
 import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
@@ -32,6 +32,7 @@ interface MainTemplateProps {
     organization?: string
     role?: string
     isAdmin?: boolean
+    avatarSrc?: string
   }
   className?: string
 }
@@ -169,6 +170,8 @@ export function MainTemplate({
     }
   }, [userContext?.entity, companyFormData, isCompanyFormValid])
 
+  const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+
   // Handle profile update
   const handleProfileUpdate = React.useCallback(async (userData: UserFormData) => {
     if (!userContext?.user) {
@@ -178,23 +181,40 @@ export function MainTemplate({
 
     setIsUpdatingProfile(true)
     try {
-      const repos = getRepositoryInstances()
-      if (!repos.userRepository) {
-        throw new Error("User repository not available")
+      let profilePictureUrl: string | undefined
+      if (userData.profilePicture) {
+        const formData = new FormData()
+        formData.append("file", userData.profilePicture)
+        const uploadRes = await fetch(`/api/users/${userContext.user.id}/profile-picture`, {
+          method: "POST",
+          body: formData,
+        })
+        const uploadData = await uploadRes.json().catch(() => ({}))
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        profilePictureUrl = uploadData.profilePictureUrl
       }
 
-      // Update user data (email, entityId, and role cannot be changed by user editing their own profile)
-      const phoneNumber = `${userData.countryCode} ${userData.phoneNumber}`.trim()
-      
-      const updatedUser = await repos.userRepository.updateUser(userContext.user.id, {
-        firstName: userData.firstName.trim(),
-        lastName: userData.lastName?.trim() || undefined,
-        phoneNumber: phoneNumber,
-        // Note: email, entityId, and role are not updated when user edits their own profile
-      })
+      if (USE_MOCK_AUTH) {
+        const repos = getRepositoryInstances()
+        if (!repos.userRepository) {
+          throw new Error("User repository not available")
+        }
 
-      if (!updatedUser) {
-        throw new Error("Failed to update user")
+        const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
+        const updatedUser = await repos.userRepository.updateUser(userContext.user.id, payload)
+
+        if (!updatedUser) {
+          throw new Error("Failed to update user")
+        }
+      } else {
+        const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
+        const res = await fetch(`/api/users/${userContext.user.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? "Failed to update user")
       }
 
       // Dispatch session-changed event to refresh UserContext
@@ -267,6 +287,7 @@ export function MainTemplate({
         role={role}
         isAdmin={isAdmin}
         isSelfPhotographer={userContext?.isSelfPhotographer || false}
+        avatarSrc={userContext?.user?.profilePictureUrl || navBarProps?.avatarSrc}
         onEditProfile={handleEditProfile}
         onEditCompany={handleEditCompany}
         onLogout={handleLogout}

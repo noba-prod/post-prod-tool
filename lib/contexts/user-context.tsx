@@ -21,6 +21,8 @@ interface UserContextValue {
   loading: boolean
   /** Derived: true if user belongs to noba entity */
   isNobaUser: boolean
+  /** Derived: true if user can create collections (organization_id = noba producer org AND is_internal = true) */
+  isNobaProducerUser: boolean
   /** Derived: true if user is a self-photographer */
   isSelfPhotographer: boolean
   /** Derived: true if user can access Entities section (only noba users) */
@@ -66,6 +68,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
   const authAdapter = useAuthAdapter()
   const [user, setUser] = React.useState<User | null>(null)
   const [entity, setEntity] = React.useState<Entity | null>(null)
+  const [isNobaProducerUser, setIsNobaProducerUser] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
 
   // Load user and entity data when session changes
@@ -115,7 +118,9 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
         }
       }
 
-      return { user: fetchedUser, entity: fetchedEntity }
+      const isNobaProducer =
+        fetchedEntity?.type === "noba"
+      return { user: fetchedUser, entity: fetchedEntity, isNobaProducerUser: isNobaProducer }
     }
 
     async function loadUserData() {
@@ -128,6 +133,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
           if (!cancelled) {
             setUser(null)
             setEntity(null)
+            setIsNobaProducerUser(false)
             setLoading(false)
           }
           return
@@ -150,18 +156,21 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
           console.warn(`[UserContext] User data not found for userId: ${session.userId}`)
           setUser(null)
           setEntity(null)
+          setIsNobaProducerUser(false)
           setLoading(false)
           return
         }
 
         setUser(userData.user)
         setEntity(userData.entity)
+        setIsNobaProducerUser("isNobaProducerUser" in userData && userData.isNobaProducerUser === true)
         setLoading(false)
       } catch (error) {
         console.error("[UserContext] Failed to load user data:", error)
         if (!cancelled) {
           setUser(null)
           setEntity(null)
+          setIsNobaProducerUser(false)
           setLoading(false)
         }
       }
@@ -213,6 +222,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
       entity,
       loading,
       isNobaUser,
+      isNobaProducerUser,
       isSelfPhotographer,
       canAccessEntities,
       canAccessTeam,
@@ -223,6 +233,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
       entity,
       loading,
       isNobaUser,
+      isNobaProducerUser,
       isSelfPhotographer,
       canAccessEntities,
       canAccessTeam,

@@ -232,7 +232,10 @@ export function NewCollectionModal({
       name: name.trim(),
       reference: reference.trim() || undefined,
       clientEntityId: cid,
-      managerUserId: selectedManagerUserId.trim() || managerUserId.trim(),
+      // managerUserId = selected CLIENT manager (role='manager' in collection_members)
+      managerUserId: selectedManagerUserId.trim(),
+      // ownerUserId = logged-in noba producer creating the collection (role='producer', is_owner=true)
+      ownerUserId: managerUserId.trim(),
       hasAgency,
       hasLowResLab,
       hasHandprint,

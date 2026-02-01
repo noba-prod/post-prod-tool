@@ -22,6 +22,7 @@ export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'revoked'
 
 export type CollectionMemberRole = 
   | 'manager'          // Client users who manage/approve the collection
+  | 'producer'         // Noba* (producer) users who own or collaborate on the collection
   | 'photographer'     // Users from photography_agency or self_photographer
   | 'lab_technician'   // Users from lab_low_res_scan
   | 'editor'           // Users from edition_studio
@@ -91,6 +92,7 @@ export interface Profile {
   prefix: string | null
   role: UserRole | null
   is_internal: boolean
+  image: string | null
   created_at: string
   updated_at: string
 }
@@ -105,6 +107,7 @@ export interface ProfileInsert {
   prefix?: string | null
   role?: UserRole | null
   is_internal?: boolean
+  image?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -118,6 +121,7 @@ export interface ProfileUpdate {
   prefix?: string | null
   role?: UserRole | null
   is_internal?: boolean
+  image?: string | null
   updated_at?: string
 }
 
@@ -333,6 +337,7 @@ export interface CollectionMember {
   collection_id: string
   user_id: string
   role: CollectionMemberRole
+  is_owner: boolean
   created_at: string
 }
 
@@ -341,6 +346,7 @@ export interface CollectionMemberInsert {
   collection_id: string
   user_id: string
   role: CollectionMemberRole
+  is_owner?: boolean
   created_at?: string
 }
 
@@ -348,6 +354,7 @@ export interface CollectionMemberUpdate {
   collection_id?: string
   user_id?: string
   role?: CollectionMemberRole
+  is_owner?: boolean
 }
 
 export interface Invitation {

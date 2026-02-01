@@ -73,6 +73,8 @@ export interface CollectionConfig {
   clientEntityId: string
   /** Manager (admin) user id — producer / noba */
   managerUserId: string
+  /** User who created the collection (producer with is_owner in collection_members). Single source for owner in noba* section. */
+  ownerUserId?: string
   /** noba* internal user ids (owner + additional members). Owner = user creating the collection; others added via "New member". */
   nobaUserIds?: string[]
   /** Edit permission by user id for noba* members (milestone edit power once published). */

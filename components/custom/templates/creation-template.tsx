@@ -100,6 +100,7 @@ interface CreationTemplateProps {
     organization?: string
     role?: string
     isAdmin?: boolean
+    avatarSrc?: string
   }
   className?: string
 }
@@ -346,6 +347,7 @@ export function CreationTemplate({
         role={role}
         isAdmin={isAdmin}
         isSelfPhotographer={userContext?.isSelfPhotographer || false}
+        avatarSrc={userContext?.user?.profilePictureUrl || navBarProps?.avatarSrc}
         onEditProfile={handleEditProfile}
         onEditCompany={handleEditCompany}
         onLogout={handleLogout}
