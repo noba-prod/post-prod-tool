@@ -23,8 +23,14 @@ import { sendNotificationEmail } from "@/lib/email/send-notification"
 
 // Database type aliases
 type NotificationTemplate = Database["public"]["Tables"]["notification_templates"]["Row"]
+type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"]
 type NotificationInsert = Database["public"]["Tables"]["notifications"]["Insert"]
 type CollectionEvent = Database["public"]["Tables"]["collection_events"]["Insert"]
+type CollectionEventRow = Database["public"]["Tables"]["collection_events"]["Row"]
+/** Result of select('*, notification_templates(*)') on scheduled_notification_tracking */
+type ScheduledWithTemplate = Database["public"]["Tables"]["scheduled_notification_tracking"]["Row"] & {
+  notification_templates: NotificationTemplate | null
+}
 
 interface DeadlineMapping {
   dateField: string
@@ -102,11 +108,13 @@ export class NotificationsService implements INotificationsService {
       notifications_processed: false,
     }
 
-    const { data: event, error: eventError } = await this.supabase
+    const insertResult = await this.supabase
       .from("collection_events")
-      .insert(eventData)
+      .insert(eventData as never)
       .select("id")
       .single()
+    const event = insertResult.data as { id: string } | null
+    const eventError = insertResult.error
 
     if (eventError) {
       console.error("[NotificationsService] Failed to record event:", eventError)
@@ -147,7 +155,7 @@ export class NotificationsService implements INotificationsService {
     if (event?.id) {
       await this.supabase
         .from("collection_events")
-        .update({ notifications_processed: true, processed_at: new Date().toISOString() })
+        .update({ notifications_processed: true, processed_at: new Date().toISOString() } as never)
         .eq("id", event.id)
     }
   }
@@ -173,9 +181,10 @@ export class NotificationsService implements INotificationsService {
       return { processed: 0, errors: 1 }
     }
 
-    for (const scheduled of pendingScheduled || []) {
+    const scheduledList = (pendingScheduled ?? []) as ScheduledWithTemplate[]
+    for (const scheduled of scheduledList) {
       try {
-        const template = scheduled.notification_templates as NotificationTemplate
+        const template = scheduled.notification_templates
         if (!template) continue
 
         // Check if condition is met (for 'if' triggers)
@@ -188,7 +197,7 @@ export class NotificationsService implements INotificationsService {
             // Mark as sent (skipped) to avoid re-checking
             await this.supabase
               .from("scheduled_notification_tracking")
-              .update({ is_sent: true, sent_at: now })
+              .update({ is_sent: true, sent_at: now } as never)
               .eq("id", scheduled.id)
             continue
           }
@@ -202,7 +211,7 @@ export class NotificationsService implements INotificationsService {
         // Mark as sent
         await this.supabase
           .from("scheduled_notification_tracking")
-          .update({ is_sent: true, sent_at: now })
+          .update({ is_sent: true, sent_at: now } as never)
           .eq("id", scheduled.id)
 
         processed++
@@ -225,15 +234,17 @@ export class NotificationsService implements INotificationsService {
       return { processed, errors: errors + 1 }
     }
 
-    for (const notification of pendingNotifications || []) {
+    const notificationList = (pendingNotifications ?? []) as NotificationRow[]
+    for (const notification of notificationList) {
       try {
         if (notification.channel === "email") {
           // Get user email
-          const { data: user } = await this.supabase
+          const { data: userData } = await this.supabase
             .from("profiles")
             .select("email, first_name")
             .eq("id", notification.user_id)
             .single()
+          const user = userData as { email: string; first_name: string | null } | null
 
           if (user?.email) {
             const result = await sendNotificationEmail({
@@ -248,7 +259,7 @@ export class NotificationsService implements INotificationsService {
             if (result.sent) {
               await this.supabase
                 .from("notifications")
-                .update({ status: "sent", sent_at: now })
+                .update({ status: "sent", sent_at: now } as never)
                 .eq("id", notification.id)
               processed++
             } else {
@@ -258,7 +269,7 @@ export class NotificationsService implements INotificationsService {
                   status: "failed",
                   error_message: result.error,
                   retry_count: notification.retry_count + 1,
-                })
+                } as never)
                 .eq("id", notification.id)
               errors++
             }
@@ -267,7 +278,7 @@ export class NotificationsService implements INotificationsService {
           // In-app notifications are immediately "sent"
           await this.supabase
             .from("notifications")
-            .update({ status: "sent", sent_at: now })
+            .update({ status: "sent", sent_at: now } as never)
             .eq("id", notification.id)
           processed++
         }
@@ -309,8 +320,9 @@ export class NotificationsService implements INotificationsService {
     }
 
     const now = new Date()
+    const templateList = templates as NotificationTemplate[]
 
-    for (const template of templates) {
+    for (const template of templateList) {
       const deadlineMapping = DEADLINE_FIELD_MAP[template.trigger_event]
       if (!deadlineMapping) {
         // This is an event-based trigger, skip
@@ -343,7 +355,7 @@ export class NotificationsService implements INotificationsService {
             deadline_value: deadlineDate.toISOString(),
             scheduled_for: scheduledFor.toISOString(),
             is_sent: false,
-          },
+          } as never,
           { onConflict: "collection_id,template_id,deadline_value" }
         )
 
@@ -359,7 +371,7 @@ export class NotificationsService implements INotificationsService {
   async markAsRead(notificationId: string, userId: string): Promise<void> {
     const { error } = await this.supabase
       .from("notifications")
-      .update({ status: "read", read_at: new Date().toISOString() })
+      .update({ status: "read", read_at: new Date().toISOString() } as never)
       .eq("id", notificationId)
       .eq("user_id", userId)
       .eq("channel", "in_app")
@@ -412,7 +424,8 @@ export class NotificationsService implements INotificationsService {
       return []
     }
 
-    return (data || []).map((n) => ({
+    type NotificationWithCollection = NotificationRow & { collections: { name: string } | null }
+    return ((data || []) as NotificationWithCollection[]).map((n) => ({
       id: n.id,
       title: n.title,
       body: n.body,
@@ -511,7 +524,7 @@ export class NotificationsService implements INotificationsService {
    * Create a notification record
    */
   private async createNotification(data: NotificationInsert): Promise<void> {
-    const { error } = await this.supabase.from("notifications").insert(data)
+    const { error } = await this.supabase.from("notifications").insert(data as never)
 
     if (error) {
       console.error("[NotificationsService] Failed to create notification:", error)
@@ -548,7 +561,7 @@ export class NotificationsService implements INotificationsService {
       .select("event_type")
       .eq("collection_id", collectionId)
 
-    const eventTypes = (events || []).map((e) => e.event_type)
+    const eventTypes = ((events || []) as Pick<CollectionEventRow, "event_type">[]).map((e) => e.event_type)
 
     switch (condition) {
       case "negatives_not_confirmed":

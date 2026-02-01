@@ -293,13 +293,31 @@ export function mapUserToFormData(
 }
 
 /**
+ * Form data shape accepted by mapFormToUpdateUserPayload.
+ * Entity is not used when building the update payload; this type allows
+ * form data from UserCreationForm (entity.type may be EntityType including "self-photographer")
+ * and object literals that include entity (e.g. team page).
+ */
+export type UserFormDataForUpdate = Pick<
+  UserFormData,
+  "firstName" | "lastName" | "email" | "phoneNumber" | "countryCode" | "role"
+> & {
+  profilePicture?: File | null
+  /** Optional; not used by the mapper but callers may include it for type compatibility */
+  entity?: { type: EntityType; name: string } | null
+}
+
+/**
  * Converts UserFormData to UpdateUserPayload.
  * Used when updating an existing user.
- * 
- * @param formData - Form data from UserCreationForm
+ *
+ * @param formData - Form data from UserCreationForm (entity field is not used)
  * @returns Update payload suitable for updateUser service method
  */
-export function mapFormToUpdateUserPayload(formData: UserFormData, profilePictureUrl?: string): UpdateUserPayload {
+export function mapFormToUpdateUserPayload(
+  formData: UserFormDataForUpdate,
+  profilePictureUrl?: string
+): UpdateUserPayload {
   return {
     firstName: formData.firstName.trim(),
     lastName: formData.lastName?.trim() || undefined,

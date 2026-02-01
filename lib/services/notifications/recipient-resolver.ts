@@ -52,7 +52,8 @@ export async function resolveRecipients(
     .eq("id", collectionId)
     .single()
 
-  if (collectionError || !collection) {
+  const collectionData = collection as CollectionWithAssignments | null
+  if (collectionError || !collectionData) {
     console.error("[resolveRecipients] Collection not found:", collectionId, collectionError)
     return []
   }
@@ -71,8 +72,8 @@ export async function resolveRecipients(
       
       case "lab":
         memberRoles.push("lab_technician")
-        if (collection.lab_low_res_id) {
-          orgIds.add(collection.lab_low_res_id)
+        if (collectionData.lab_low_res_id) {
+          orgIds.add(collectionData.lab_low_res_id)
         }
         break
       
@@ -82,20 +83,20 @@ export async function resolveRecipients(
       
       case "client":
         memberRoles.push("manager")
-        if (collection.client_id) {
-          orgIds.add(collection.client_id)
+        if (collectionData.client_id) {
+          orgIds.add(collectionData.client_id)
         }
         break
       
       case "hand_print_lab":
-        if (collection.hand_print_lab_id) {
-          orgIds.add(collection.hand_print_lab_id)
+        if (collectionData.hand_print_lab_id) {
+          orgIds.add(collectionData.hand_print_lab_id)
         }
         break
       
       case "edition_studio":
-        if (collection.edition_studio_id) {
-          orgIds.add(collection.edition_studio_id)
+        if (collectionData.edition_studio_id) {
+          orgIds.add(collectionData.edition_studio_id)
         }
         break
     }
@@ -112,7 +113,8 @@ export async function resolveRecipients(
     if (membersError) {
       console.error("[resolveRecipients] Error fetching collection members:", membersError)
     } else if (members) {
-      for (const member of members) {
+      const memberList = members as { user_id: string }[]
+      for (const member of memberList) {
         userIds.add(member.user_id)
       }
     }
@@ -128,7 +130,8 @@ export async function resolveRecipients(
     if (orgUsersError) {
       console.error("[resolveRecipients] Error fetching org users:", orgUsersError)
     } else if (orgUsers) {
-      for (const user of orgUsers) {
+      const orgUserList = orgUsers as { id: string }[]
+      for (const user of orgUserList) {
         userIds.add(user.id)
       }
     }
@@ -149,7 +152,8 @@ export async function resolveRecipients(
     return []
   }
 
-  return (users || [])
+  type ProfileRow = { id: string; email: string; first_name: string | null; last_name: string | null }
+  return ((users || []) as ProfileRow[])
     .filter((u) => u.email) // Only users with email addresses
     .map((u) => ({
       userId: u.id,
@@ -177,7 +181,7 @@ export async function getCollectionContext(
     return null
   }
 
-  return data
+  return data as { name: string; reference: string | null }
 }
 
 /**

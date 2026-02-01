@@ -28,6 +28,46 @@ export type CollectionMemberRole =
   | 'editor'           // Users from edition_studio
   | 'print_technician' // Users from hand_print_lab
 
+// Notifications (migration 016)
+export type NotificationTriggerType = 'before' | 'after' | 'on' | 'if' | 'first_time'
+export type NotificationStatus = 'pending' | 'sent' | 'read' | 'failed'
+export type NotificationChannel = 'email' | 'in_app'
+export type NotificationRecipientType =
+  | 'producer'
+  | 'lab'
+  | 'photographer'
+  | 'client'
+  | 'hand_print_lab'
+  | 'edition_studio'
+export type CollectionEventType =
+  | 'shooting_started'
+  | 'shooting_ended'
+  | 'negatives_pickup_marked'
+  | 'dropoff_confirmed'
+  | 'dropoff_deadline_missed'
+  | 'scanning_started'
+  | 'scanning_completed'
+  | 'scanning_deadline_missed'
+  | 'photographer_selection_uploaded'
+  | 'photographer_selection_shared'
+  | 'photographer_selection_deadline_missed'
+  | 'client_selection_started'
+  | 'client_selection_confirmed'
+  | 'client_selection_deadline_missed'
+  | 'highres_started'
+  | 'highres_ready'
+  | 'highres_deadline_missed'
+  | 'edition_request_submitted'
+  | 'edition_request_deadline_missed'
+  | 'final_edits_started'
+  | 'final_edits_completed'
+  | 'final_edits_deadline_missed'
+  | 'photographer_review_started'
+  | 'photographer_edits_approved'
+  | 'photographer_review_deadline_missed'
+  | 'collection_completed'
+  | 'collection_cancelled'
+
 // ============================================================================
 // Table Types
 // ============================================================================
@@ -403,6 +443,182 @@ export interface InvitationUpdate {
   invited_collection_role?: CollectionMemberRole | null
 }
 
+// Notifications (migration 016)
+export interface NotificationTemplate {
+  id: string
+  code: string
+  step: number
+  step_name: string
+  title: string
+  description: string
+  cta_text: string | null
+  cta_url_template: string | null
+  trigger_type: NotificationTriggerType
+  trigger_event: string
+  trigger_offset_minutes: number
+  trigger_condition: string | null
+  email_recipients: NotificationRecipientType[]
+  inapp_recipients: NotificationRecipientType[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface NotificationTemplateInsert {
+  id?: string
+  code: string
+  step: number
+  step_name: string
+  title: string
+  description: string
+  cta_text?: string | null
+  cta_url_template?: string | null
+  trigger_type: NotificationTriggerType
+  trigger_event: string
+  trigger_offset_minutes?: number
+  trigger_condition?: string | null
+  email_recipients?: NotificationRecipientType[]
+  inapp_recipients?: NotificationRecipientType[]
+  is_active?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface NotificationTemplateUpdate {
+  code?: string
+  step?: number
+  step_name?: string
+  title?: string
+  description?: string
+  cta_text?: string | null
+  cta_url_template?: string | null
+  trigger_type?: NotificationTriggerType
+  trigger_event?: string
+  trigger_offset_minutes?: number
+  trigger_condition?: string | null
+  email_recipients?: NotificationRecipientType[]
+  inapp_recipients?: NotificationRecipientType[]
+  is_active?: boolean
+  updated_at?: string
+}
+
+export interface Notification {
+  id: string
+  collection_id: string
+  template_id: string | null
+  user_id: string
+  channel: NotificationChannel
+  status: NotificationStatus
+  title: string
+  body: string
+  cta_text: string | null
+  cta_url: string | null
+  scheduled_for: string | null
+  sent_at: string | null
+  read_at: string | null
+  error_message: string | null
+  retry_count: number
+  created_at: string
+}
+
+export interface NotificationInsert {
+  id?: string
+  collection_id: string
+  template_id?: string | null
+  user_id: string
+  channel: NotificationChannel
+  status?: NotificationStatus
+  title: string
+  body: string
+  cta_text?: string | null
+  cta_url?: string | null
+  scheduled_for?: string | null
+  sent_at?: string | null
+  read_at?: string | null
+  error_message?: string | null
+  retry_count?: number
+  created_at?: string
+}
+
+export interface NotificationUpdate {
+  collection_id?: string
+  template_id?: string | null
+  user_id?: string
+  channel?: NotificationChannel
+  status?: NotificationStatus
+  title?: string
+  body?: string
+  cta_text?: string | null
+  cta_url?: string | null
+  scheduled_for?: string | null
+  sent_at?: string | null
+  read_at?: string | null
+  error_message?: string | null
+  retry_count?: number
+}
+
+export interface CollectionEvent {
+  id: string
+  collection_id: string
+  triggered_by_user_id: string | null
+  event_type: CollectionEventType
+  metadata: Record<string, unknown>
+  notifications_processed: boolean
+  processed_at: string | null
+  created_at: string
+}
+
+export interface CollectionEventInsert {
+  id?: string
+  collection_id: string
+  triggered_by_user_id?: string | null
+  event_type: CollectionEventType
+  metadata?: Record<string, unknown>
+  notifications_processed?: boolean
+  processed_at?: string | null
+  created_at?: string
+}
+
+export interface CollectionEventUpdate {
+  collection_id?: string
+  triggered_by_user_id?: string | null
+  event_type?: CollectionEventType
+  metadata?: Record<string, unknown>
+  notifications_processed?: boolean
+  processed_at?: string | null
+}
+
+export interface ScheduledNotificationTracking {
+  id: string
+  collection_id: string
+  template_id: string
+  deadline_value: string
+  scheduled_for: string
+  is_sent: boolean
+  sent_at: string | null
+  created_at: string
+}
+
+export interface ScheduledNotificationTrackingInsert {
+  id?: string
+  collection_id: string
+  template_id: string
+  deadline_value: string
+  scheduled_for: string
+  is_sent?: boolean
+  sent_at?: string | null
+  created_at?: string
+}
+
+export interface ScheduledNotificationTrackingUpdate {
+  collection_id?: string
+  template_id?: string
+  deadline_value?: string
+  scheduled_for?: string
+  is_sent?: boolean
+  sent_at?: string | null
+}
+
 // ============================================================================
 // Database Schema Type
 // ============================================================================
@@ -435,11 +651,36 @@ export interface Database {
         Insert: InvitationInsert
         Update: InvitationUpdate
       }
+      notification_templates: {
+        Row: NotificationTemplate
+        Insert: NotificationTemplateInsert
+        Update: NotificationTemplateUpdate
+      }
+      notifications: {
+        Row: Notification
+        Insert: NotificationInsert
+        Update: NotificationUpdate
+      }
+      collection_events: {
+        Row: CollectionEvent
+        Insert: CollectionEventInsert
+        Update: CollectionEventUpdate
+      }
+      scheduled_notification_tracking: {
+        Row: ScheduledNotificationTracking
+        Insert: ScheduledNotificationTrackingInsert
+        Update: ScheduledNotificationTrackingUpdate
+      }
     }
     Enums: {
       organization_type: OrganizationType
       user_role: UserRole
       collection_member_role: CollectionMemberRole
+      notification_trigger_type: NotificationTriggerType
+      notification_status: NotificationStatus
+      notification_channel: NotificationChannel
+      notification_recipient_type: NotificationRecipientType
+      collection_event_type: CollectionEventType
     }
     Functions: {
       is_internal_user: {
