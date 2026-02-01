@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { createCollectionsService } from "@/lib/services"
 import { getRepositoryInstances } from "@/lib/services"
+import { deriveCompletedBlockIds } from "@/lib/utils/collection-mappers"
 import {
   computeCreationTemplate,
   isDraftComplete,
@@ -314,14 +315,23 @@ export default function CollectionCreatePage({
 
   const handleParticipantsChange = React.useCallback(
     (participants: CollectionParticipant[]) => {
-      if (!draft || !id) return
-      // Optimistic update so Edit permission switch reflects immediately
-      setDraft({ ...draft, participants })
+      if (!id) return
+      // Optimistic update with functional setState so we never overwrite with stale draft (e.g. lab stays)
+      setDraft((prev) => {
+        if (!prev) return prev
+        const nextDraft = { ...prev, participants }
+        // Recompute completedBlockIds so "participants" step shows complete as soon as lab (etc.) is filled
+        nextDraft.creationData = {
+          ...prev.creationData,
+          completedBlockIds: deriveCompletedBlockIds(prev.config, participants),
+        }
+        return nextDraft
+      })
       service.updateCollection(id, { participants }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
-    [draft, id, service]
+    [id, service]
   )
 
   const handleConfigChange = React.useCallback(
@@ -348,14 +358,17 @@ export default function CollectionCreatePage({
       | "shootingCity"
       | "shootingCountry"
     >>) => {
-      if (!draft || !id) return
-      const nextConfig = { ...draft.config, ...patch }
-      setDraft({ ...draft, config: nextConfig })
+      if (!id) return
+      setDraft((prev) => {
+        if (!prev) return prev
+        const nextConfig = { ...prev.config, ...patch }
+        return { ...prev, config: nextConfig }
+      })
       service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
-    [draft, id, service]
+    [id, service]
   )
 
   const handleDropoffPlanChange = React.useCallback(

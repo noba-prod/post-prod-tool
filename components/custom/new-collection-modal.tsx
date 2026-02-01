@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { CheckSelection } from "./check-selection"
 import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 import { getRepositoryInstances } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionConfig } from "@/lib/domain/collections"
@@ -266,19 +267,20 @@ export function NewCollectionModal({
   )
 
   const switchItems = React.useMemo(() => {
-    const items: { id: string; label: string; checked: boolean }[] = [
-      { id: "edition", label: "Photographer request edition", checked: hasEditionStudio },
-      { id: "agency", label: "Photographer collaborates with photo agency", checked: hasAgency },
+    const items: { id: string; label: string; checked: boolean; disabled?: boolean }[] = [
+      { id: "edition", label: "Photographer request edition", checked: hasEditionStudio, disabled: isEditMode },
+      { id: "agency", label: "Photographer collaborates with photo agency", checked: hasAgency, disabled: isEditMode },
     ]
     if (hasHandprint) {
       items.push({
         id: "handprint-lab",
         label: "Handprint different from original lab",
         checked: handprintIsDifferentLab,
+        disabled: isEditMode,
       })
     }
     return items
-  }, [hasEditionStudio, hasAgency, hasHandprint, handprintIsDifferentLab])
+  }, [hasEditionStudio, hasAgency, hasHandprint, handprintIsDifferentLab, isEditMode])
 
   const handleSwitchChange = React.useCallback(
     (id: string, checked: boolean) => {
@@ -317,6 +319,7 @@ export function NewCollectionModal({
                 onValueChange={setClientEntityId}
                 placeholder="Zara"
                 options={clientOptions.map((c) => ({ value: c.id, label: c.name }))}
+                disabled={isEditMode}
               />
               <Field>
                 <FieldLabel>Collection name</FieldLabel>
@@ -374,14 +377,19 @@ export function NewCollectionModal({
 
           <Separator className="w-full" />
 
-          {/* Low res to High-res */}
-          <div className="flex flex-col gap-4 w-full">
+          {/* Low res to High-res — disabled in edit mode to avoid changing workflow config */}
+          <div
+            className={cn(
+              "flex flex-col gap-4 w-full",
+              isEditMode && "opacity-30 pointer-events-none"
+            )}
+          >
             <Titles type="form" title="Low res to High-res" showSubtitle={false} />
             <RowVariants variant="2">
               <CheckSelection
                 label="Digital"
                 selected={digitalOrHandprint === "digital"}
-                status="default"
+                status={isEditMode ? "disabled" : "default"}
                 onClick={() =>
                   setDigitalOrHandprint((prev) =>
                     prev === "digital" ? null : "digital"
@@ -391,7 +399,7 @@ export function NewCollectionModal({
               <CheckSelection
                 label="Hand print"
                 selected={digitalOrHandprint === "handprint"}
-                status="default"
+                status={isEditMode ? "disabled" : "default"}
                 onClick={() =>
                   setDigitalOrHandprint((prev) =>
                     prev === "handprint" ? null : "handprint"

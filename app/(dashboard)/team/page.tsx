@@ -99,6 +99,7 @@ export default function TeamPage() {
             phone: u.phoneNumber,
             role: roleToLabel(u.role) as TeamMember["role"],
             collections: 0,
+            status: "Active",
           }))
           setTeamMembers(mappedMembers)
         } else {
@@ -112,14 +113,25 @@ export default function TeamPage() {
           }
           const data = await res.json()
           const users = data.teamMembers ?? []
-          const mappedMembers: TeamMember[] = users.map((u: { id: string; firstName: string; lastName?: string; email: string; phoneNumber: string; role: string }) => ({
-            id: u.id,
-            name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
-            email: u.email,
-            phone: u.phoneNumber ?? "",
-            role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
-            collections: 0,
-          }))
+          const mappedMembers: TeamMember[] = users.map(
+            (u: {
+              id: string
+              firstName: string
+              lastName?: string
+              email: string
+              phoneNumber: string
+              role: string
+              status?: "Invite sent" | "Active"
+            }) => ({
+              id: u.id,
+              name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+              email: u.email,
+              phone: u.phoneNumber ?? "",
+              role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
+              collections: 0,
+              status: u.status ?? "Active",
+            })
+          )
           setTeamMembers(mappedMembers)
         }
       } catch (error) {
@@ -214,6 +226,7 @@ export default function TeamPage() {
           phone: u.phoneNumber,
           role: roleToLabel(u.role) as TeamMember["role"],
           collections: 0,
+          status: "Active",
         }))
         setTeamMembers(mappedMembers)
         setIsNewMemberModalOpen(false)
@@ -223,20 +236,61 @@ export default function TeamPage() {
         return
       }
 
-      // noba* (internal org): send platform invitation email; user joins when they accept
+      // noba* (internal org): create profile in DB first so they appear in the table, then send invitation email
       const isNobaOrg = entity.name?.trim() === "noba*"
       if (isNobaOrg) {
+        const res = await fetch(`/api/organizations/${organizationId}/members`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: userData.firstName.trim(),
+            lastName: userData.lastName?.trim() || undefined,
+            email: userData.email.trim(),
+            phoneNumber: userData.phoneNumber.trim(),
+            countryCode: userData.countryCode,
+            role: userData.role,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(data.error ?? "Failed to add team member")
+        }
         const inviteResult = await createTeamMemberInvitation(
           organizationId,
           userData.email.trim(),
           userData.role as "admin" | "editor" | "viewer"
         )
         if (!inviteResult.success) {
-          throw new Error(inviteResult.error)
+          toast.warning("Member created but invitation failed", {
+            description: inviteResult.error,
+          })
         }
+        const users = data.teamMembers ?? []
+        const mappedMembers: TeamMember[] = users.map(
+          (u: {
+            id: string
+            firstName: string
+            lastName?: string
+            email: string
+            phoneNumber: string
+            role: string
+            status?: "Invite sent" | "Active"
+          }) => ({
+            id: u.id,
+            name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+            email: u.email,
+            phone: u.phoneNumber ?? "",
+            role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
+            collections: 0,
+            status: u.status ?? "Invite sent",
+          })
+        )
+        setTeamMembers(mappedMembers)
         setIsNewMemberModalOpen(false)
-        toast.success("Invitation sent", {
-          description: inviteResult.message,
+        toast.success("Team member added", {
+          description: inviteResult.success
+            ? inviteResult.message
+            : "They appear in the table. You can resend the invite later if needed.",
         })
         return
       }
@@ -259,14 +313,25 @@ export default function TeamPage() {
         throw new Error(data.error ?? "Failed to add team member")
       }
       const users = data.teamMembers ?? []
-      const mappedMembers: TeamMember[] = users.map((u: { id: string; firstName: string; lastName?: string; email: string; phoneNumber: string; role: string }) => ({
-        id: u.id,
-        name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
-        email: u.email,
-        phone: u.phoneNumber ?? "",
-        role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
-        collections: 0,
-      }))
+      const mappedMembers: TeamMember[] = users.map(
+        (u: {
+          id: string
+          firstName: string
+          lastName?: string
+          email: string
+          phoneNumber: string
+          role: string
+          status?: "Invite sent" | "Active"
+        }) => ({
+          id: u.id,
+          name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+          email: u.email,
+          phone: u.phoneNumber ?? "",
+          role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
+          collections: 0,
+          status: u.status ?? "Active",
+        })
+      )
       setTeamMembers(mappedMembers)
       setIsNewMemberModalOpen(false)
       const newUser = data.user
@@ -314,6 +379,7 @@ export default function TeamPage() {
           phone: u.phoneNumber,
           role: roleToLabel(u.role) as TeamMember["role"],
           collections: 0,
+          status: "Active",
         }))
         setTeamMembers(mappedMembers)
         toast.success("Member removed", { description: `${name} has been removed from the team.` })
@@ -326,14 +392,25 @@ export default function TeamPage() {
         throw new Error(data.error ?? "Failed to remove member")
       }
       const users = data.teamMembers ?? []
-      const mappedMembers: TeamMember[] = users.map((u: { id: string; firstName: string; lastName?: string; email: string; phoneNumber: string; role: string }) => ({
-        id: u.id,
-        name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
-        email: u.email,
-        phone: u.phoneNumber ?? "",
-        role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
-        collections: 0,
-      }))
+      const mappedMembers: TeamMember[] = users.map(
+        (u: {
+          id: string
+          firstName: string
+          lastName?: string
+          email: string
+          phoneNumber: string
+          role: string
+          status?: "Invite sent" | "Active"
+        }) => ({
+          id: u.id,
+          name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+          email: u.email,
+          phone: u.phoneNumber ?? "",
+          role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
+          collections: 0,
+          status: u.status ?? "Active",
+        })
+      )
       setTeamMembers(mappedMembers)
       toast.success("Member removed", { description: `${name} has been removed from the team.` })
     } catch (error) {
@@ -459,6 +536,7 @@ export default function TeamPage() {
               phone: u.phoneNumber,
               role: roleToLabel(u.role) as TeamMember["role"],
               collections: 0,
+              status: "Active",
             }))
             setTeamMembers(mapped)
             handleCloseUserDetailModal()
@@ -478,14 +556,25 @@ export default function TeamPage() {
           if (listRes.ok) {
             const listData = await listRes.json()
             const users = listData.teamMembers ?? []
-            const mapped: TeamMember[] = users.map((u: { id: string; firstName: string; lastName?: string; email: string; phoneNumber: string; role: string }) => ({
-              id: u.id,
-              name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
-              email: u.email,
-              phone: u.phoneNumber ?? "",
-              role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
-              collections: 0,
-            }))
+            const mapped: TeamMember[] = users.map(
+              (u: {
+                id: string
+                firstName: string
+                lastName?: string
+                email: string
+                phoneNumber: string
+                role: string
+                status?: "Invite sent" | "Active"
+              }) => ({
+                id: u.id,
+                name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+                email: u.email,
+                phone: u.phoneNumber ?? "",
+                role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
+                collections: 0,
+                status: u.status ?? "Active",
+              })
+            )
             setTeamMembers(mapped)
           }
           handleCloseUserDetailModal()

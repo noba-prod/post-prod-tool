@@ -33,6 +33,8 @@ interface TeamMember {
   phone: string
   role: UserRole
   collections: number
+  /** "Invite sent" = invitation email sent, not yet accepted; "Active" = user accepted the invitation */
+  status?: "Invite sent" | "Active"
 }
 
 interface Entity {
@@ -100,11 +102,11 @@ interface TablesProps {
 // ============================================================================
 
 const sampleTeamMembers: TeamMember[] = [
-  { id: "1", name: "Erika Goldner", email: "erika.goldner@zara.com", phone: "+34 649 393 291", role: "Admin", collections: 0 },
-  { id: "2", name: "Sophia Johnson", email: "sophia.johnson@zara.com", phone: "+34 672 271 218", role: "Viewer", collections: 0 },
-  { id: "3", name: "Aiden Smith", email: "kevin.brown@zara.com", phone: "555-555-5555", role: "Editor", collections: 0 },
-  { id: "4", name: "Mia Clark", email: "sarah.davis@zara.com", phone: "666-666-6666", role: "Viewer", collections: 0 },
-  { id: "5", name: "Noah Garcia", email: "james.wilson@zara.com", phone: "777-777-7777", role: "Viewer", collections: 0 },
+  { id: "1", name: "Erika Goldner", email: "erika.goldner@zara.com", phone: "+34 649 393 291", role: "Admin", collections: 0, status: "Active" },
+  { id: "2", name: "Sophia Johnson", email: "sophia.johnson@zara.com", phone: "+34 672 271 218", role: "Viewer", collections: 0, status: "Active" },
+  { id: "3", name: "Aiden Smith", email: "kevin.brown@zara.com", phone: "555-555-5555", role: "Editor", collections: 0, status: "Active" },
+  { id: "4", name: "Mia Clark", email: "sarah.davis@zara.com", phone: "666-666-6666", role: "Viewer", collections: 0, status: "Active" },
+  { id: "5", name: "Noah Garcia", email: "james.wilson@zara.com", phone: "777-777-7777", role: "Viewer", collections: 0, status: "Active" },
 ]
 
 const sampleEntities: Entity[] = [
@@ -165,6 +167,7 @@ function TeamMembersTable({
             <TableHead className="bg-sidebar h-12">Email</TableHead>
             <TableHead className="bg-sidebar h-12">Phone</TableHead>
             <TableHead className="bg-sidebar h-12">Role</TableHead>
+            <TableHead className="bg-sidebar h-12">Status</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -202,6 +205,7 @@ function TeamMembersTable({
               <TableCell>{member.email}</TableCell>
               <TableCell>{member.phone}</TableCell>
               <TableCell>{member.role}</TableCell>
+              <TableCell>{member.status ?? "Active"}</TableCell>
             </TableRow>
           ))}
         </TableBody>

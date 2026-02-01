@@ -92,8 +92,24 @@ export async function GET(
   }
 
   const entity = mapOrganizationToEntity(org)
-  const teamMembers = mapProfilesToUsers((profiles || []) as Profile[])
-  const adminUsers = teamMembers.filter((user) => user.role === "admin")
+  const teamMembersBase = mapProfilesToUsers((profiles || []) as Profile[])
+
+  const { data: pendingInvites } = await adminClient
+    .from("invitations")
+    .select("email")
+    .eq("organization_id", organizationId)
+    .eq("status", "pending")
+  const pendingInviteEmails = new Set(
+    (pendingInvites ?? []).map((r: { email: string }) => r.email.toLowerCase())
+  )
+  const teamMembers = teamMembersBase.map((user) => ({
+    ...user,
+    status: pendingInviteEmails.has(user.email.toLowerCase())
+      ? ("Invite sent" as const)
+      : ("Active" as const),
+  }))
+
+  const adminUsers = teamMembersBase.filter((user) => user.role === "admin")
   const adminUser = adminUsers.length > 0 ? adminUsers[0] : null
 
   // Collections where this entity is invited (client or participant: photographer, lab, edition studio, handprint lab)

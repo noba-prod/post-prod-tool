@@ -27,8 +27,12 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
     const { data: row, error: insertError } = await tbl.insert(insert).select().single()
     if (insertError) {
-      console.error("[SupabaseCollectionsRepository] create insert error:", insertError)
-      throw insertError
+      const msg =
+        (insertError as { message?: string }).message ??
+        (insertError as { error_description?: string }).error_description ??
+        JSON.stringify(insertError)
+      console.error("[SupabaseCollectionsRepository] create insert error:", msg, insertError)
+      throw new Error(msg)
     }
 
     if (members.length > 0) {
@@ -65,7 +69,13 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     })
     const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
     const { data: row, error } = await tbl.update(updatePayload).eq("id", id).select().single()
-    if (error || !row) return null
+    if (error || !row) {
+      if (error) {
+        const msg = (error as { message?: string }).message ?? JSON.stringify(error)
+        console.error("[SupabaseCollectionsRepository] update error:", msg, error)
+      }
+      return null
+    }
 
     if (patch.participants !== undefined) {
       const memTbl = supabase.from("collection_members") as ReturnType<typeof supabase.from>

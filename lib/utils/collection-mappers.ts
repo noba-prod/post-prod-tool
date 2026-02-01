@@ -204,7 +204,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
  * Derives which creation blocks are complete based on filled config fields.
  * This allows the Edit button to work on previous steps when fetching from DB.
  */
-function deriveCompletedBlockIds(
+export function deriveCompletedBlockIds(
   config: CollectionConfig,
   participants: CollectionParticipant[]
 ): CreationBlockId[] {
@@ -401,17 +401,9 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     check_finals_photographer_check_time: conf.checkFinalsPhotographerDueTime ?? null,
     status: c.status ?? "draft",
     published_at: c.publishedAt ?? null,
-    noba_user_ids: conf.nobaUserIds ?? [],
-    noba_edit_permission_by_user_id: (conf.nobaEditPermissionByUserId ?? {}) as Record<string, boolean>,
-    participant_edit_permissions: (() => {
-      const out: Record<string, Record<string, boolean>> = {}
-      for (const p of c.participants) {
-        if (p.editPermissionByUserId && Object.keys(p.editPermissionByUserId).length > 0) {
-          out[p.role] = { ...p.editPermissionByUserId }
-        }
-      }
-      return out
-    })(),
+    // Do not send noba_user_ids, noba_edit_permission_by_user_id, participant_edit_permissions
+    // on INSERT so creation works when migrations 011/012 are not applied or schema cache is stale.
+    // If those columns exist, the DB will use their DEFAULTs ([] and {}).
   }
 }
 
@@ -479,8 +471,9 @@ export function mapDomainPatchToDbUpdate(
     if (conf.editionStudioDueTime !== undefined) u.precheck_studio_final_edits_time = conf.editionStudioDueTime ?? null
     if (conf.checkFinalsPhotographerDueDate !== undefined) u.check_finals_photographer_check_date = isoToDbDate(conf.checkFinalsPhotographerDueDate)
     if (conf.checkFinalsPhotographerDueTime !== undefined) u.check_finals_photographer_check_time = conf.checkFinalsPhotographerDueTime ?? null
-    if (conf.nobaUserIds !== undefined) u.noba_user_ids = conf.nobaUserIds
-    if (conf.nobaEditPermissionByUserId !== undefined) u.noba_edit_permission_by_user_id = conf.nobaEditPermissionByUserId
+    // Omit noba_user_ids / noba_edit_permission_by_user_id so UPDATE succeeds when migrations 011/012 are not applied
+    // if (conf.nobaUserIds !== undefined) u.noba_user_ids = conf.nobaUserIds
+    // if (conf.nobaEditPermissionByUserId !== undefined) u.noba_edit_permission_by_user_id = conf.nobaEditPermissionByUserId
   }
   if (patch.participants) {
     const photographerId = patch.participants.find((p) => p.role === "photographer")?.entityId
@@ -491,14 +484,15 @@ export function mapDomainPatchToDbUpdate(
     u.lab_low_res_id = labId ?? null
     u.edition_studio_id = editionStudioId ?? null
     u.hand_print_lab_id = handprintLabId ?? null
-    // Persist edit permission by user id per role (Edit permission switch)
-    const participant_edit_permissions: Record<string, Record<string, boolean>> = {}
-    for (const p of patch.participants) {
-      if (p.editPermissionByUserId && Object.keys(p.editPermissionByUserId).length > 0) {
-        participant_edit_permissions[p.role] = { ...p.editPermissionByUserId }
-      }
-    }
-    u.participant_edit_permissions = participant_edit_permissions
+    // Omit participant_edit_permissions so UPDATE succeeds when migration 012 is not applied.
+    // When 012 is applied, uncomment below to persist Edit permission switch.
+    // const participant_edit_permissions: Record<string, Record<string, boolean>> = {}
+    // for (const p of patch.participants) {
+    //   if (p.editPermissionByUserId && Object.keys(p.editPermissionByUserId).length > 0) {
+    //     participant_edit_permissions[p.role] = { ...p.editPermissionByUserId }
+    //   }
+    // }
+    // u.participant_edit_permissions = participant_edit_permissions
   }
   u.updated_at = new Date().toISOString()
   return u

@@ -145,7 +145,8 @@ export function DropoffPlanStepContent({
     const lab = draft.participants.find((p) => p.role === "lab")
     const eid = lab?.entityId
     if (!eid) {
-      setLabAddress("—")
+      // Show saved lab address from config when participants don't have lab (e.g. after refresh or race)
+      setLabAddress(c.dropoff_shipping_destination_address?.trim() ?? "—")
       return
     }
     let cancelled = false

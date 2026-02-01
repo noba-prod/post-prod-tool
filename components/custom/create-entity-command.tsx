@@ -217,9 +217,15 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
         onCreated?.()
         router.push(`/collections/create/${collection.id}`)
       } catch (err) {
-        console.error("Failed to create collection draft:", err)
+        const message =
+          err instanceof Error
+            ? err.message
+            : (err && typeof err === "object" && "message" in err)
+              ? String((err as { message: unknown }).message)
+              : "An unexpected error occurred"
+        console.error("Failed to create collection draft:", message, err)
         toast.error("Failed to create collection", {
-          description: err instanceof Error ? err.message : "An unexpected error occurred",
+          description: message,
         })
       } finally {
         setIsCreatingCollection(false)

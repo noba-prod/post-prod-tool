@@ -59,6 +59,14 @@ export async function POST(
   const email = payload.email.toLowerCase().trim()
   const adminClient = createAdminClient()
 
+  const { data: orgRow } = await adminClient
+    .from("organizations")
+    .select("type")
+    .eq("id", organizationId)
+    .maybeSingle()
+  const orgType = (orgRow as { type?: string } | null)?.type
+  const isNobaOrg = orgType === "noba"
+
   let userId: string | null = null
   const { data: createdUser, error: createUserError } =
     await adminClient.auth.admin.createUser({
@@ -96,7 +104,7 @@ export async function POST(
     phone: payload.phoneNumber.trim() || null,
     prefix: payload.countryCode.trim() || null,
     role: payload.role,
-    is_internal: false,
+    is_internal: isNobaOrg,
   }
 
   const { data: updatedProfile, error: upsertError } = await adminClient
@@ -121,10 +129,27 @@ export async function POST(
     return NextResponse.json({ error: teamMembersError.message }, { status: 500 })
   }
 
+  const { data: pendingInvites } = await adminClient
+    .from("invitations")
+    .select("email")
+    .eq("organization_id", organizationId)
+    .eq("status", "pending")
+  const pendingInviteEmails = new Set(
+    (pendingInvites ?? []).map((r: { email: string }) => r.email.toLowerCase())
+  )
+
   const updated = updatedProfile as Profile
   const members = (teamMembers || []) as Profile[]
+  const users = members.map(mapProfileToUser)
+  const teamMembersWithStatus = users.map((u) => ({
+    ...u,
+    status: pendingInviteEmails.has(u.email.toLowerCase())
+      ? ("Invite sent" as const)
+      : ("Active" as const),
+  }))
+
   return NextResponse.json({
     user: mapProfileToUser(updated),
-    teamMembers: members.map(mapProfileToUser),
+    teamMembers: teamMembersWithStatus,
   })
 }
