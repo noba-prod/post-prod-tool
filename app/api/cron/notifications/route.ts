@@ -2,9 +2,17 @@
  * POST /api/cron/notifications
  * Cron endpoint for processing scheduled notifications
  * 
- * This endpoint is called by Vercel Cron every minute to:
- * 1. Process pending scheduled notifications
- * 2. Send pending email notifications
+ * Called every minute by cron-job.org (free external cron service)
+ * to process time-based notifications (deadline reminders, etc.)
+ * 
+ * Setup instructions for cron-job.org:
+ * 1. Go to https://cron-job.org and create a free account
+ * 2. Create a new cron job with:
+ *    - URL: https://your-domain.vercel.app/api/cron/notifications
+ *    - Schedule: Every 1 minute
+ *    - Request method: GET or POST
+ *    - Header: Authorization: Bearer <your-CRON_SECRET>
+ * 3. Set CRON_SECRET in Vercel environment variables
  * 
  * Security: Protected by CRON_SECRET header
  */
