@@ -113,9 +113,9 @@ export async function POST(
     .select("*")
     .maybeSingle()
 
-  if (updateError) {
+  if (updateError || !updatedOrg) {
     return NextResponse.json(
-      { error: updateError.message || "Failed to update organization" },
+      { error: updateError?.message || "Failed to update organization" },
       { status: 500 }
     )
   }
