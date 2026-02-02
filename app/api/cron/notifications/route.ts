@@ -59,10 +59,13 @@ export async function POST(request: NextRequest) {
     const authHeader = rawHeader?.trim() ?? ""
     const userAgent = request.headers.get("user-agent") ?? ""
     const isCronJobOrg = userAgent.includes("cron-job.org")
-    const querySecret = request.nextUrl.searchParams.get("secret")?.trim() ?? ""
+    const querySecretRaw = request.nextUrl.searchParams.get("secret")
+    const querySecret = (querySecretRaw ? decodeURIComponent(querySecretRaw) : "").trim()
 
-    // Accept: (1) Authorization: Bearer <secret>, or (2) ?secret= when from cron-job.org
-    const headerOk = cronSecret && authHeader === `Bearer ${cronSecret}`
+    // Accept: (1) Authorization: "Bearer <secret>" or "<secret>", or (2) ?secret= when from cron-job.org
+    const headerOk =
+      cronSecret &&
+      (authHeader === `Bearer ${cronSecret}` || authHeader === cronSecret)
     const queryOk = cronSecret && isCronJobOrg && querySecret === cronSecret
     const authenticated = headerOk || queryOk
 
@@ -85,7 +88,13 @@ export async function POST(request: NextRequest) {
       )
       return unauthorized({
         error: "Unauthorized",
-        hint: "Use header Authorization: Bearer <CRON_SECRET>, or add ?secret=<CRON_SECRET> to the URL in cron-job.org. Ensure CRON_SECRET is set for Preview if using a branch URL.",
+        hint: "Use Authorization header (Bearer <CRON_SECRET>) in cron-job.org ADVANCED tab, or URL with ?secret=<CRON_SECRET>. Set CRON_SECRET for Preview if using branch URL.",
+        debug: {
+          cronSecretSet: !!cronSecret,
+          authHeaderPresent: rawHeader != null,
+          querySecretPresent: !!querySecret,
+          fromCronJobOrg: isCronJobOrg,
+        },
       })
     }
 
