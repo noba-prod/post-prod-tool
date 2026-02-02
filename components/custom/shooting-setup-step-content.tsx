@@ -50,7 +50,9 @@ export function ShootingSetupStepContent({
   chronologyConstraints,
   className,
 }: ShootingSetupStepContentProps) {
-  const c = draft.config
+  const baseId = React.useId().replace(/:/g, "")
+  const c = draft?.config
+  if (!c) return null
   const startConstraint = chronologyConstraints?.["shooting_setup"]
   const endConstraint = chronologyConstraints?.["shooting_setup_ending"]
 
@@ -189,10 +191,10 @@ export function ShootingSetupStepContent({
           <Titles type="form" title="Location" showSubtitle={false} />
           <RowVariants variant="1">
             <Field>
-              <FieldLabel htmlFor="shooting-street-address">Street address</FieldLabel>
+              <FieldLabel htmlFor={`${baseId}-shooting-street-address`}>Street address</FieldLabel>
               <FieldContent>
                 <Input
-                  id="shooting-street-address"
+                  id={`${baseId}-shooting-street-address`}
                   type="text"
                   value={localStreetAddress}
                   onChange={(e) => {
@@ -212,10 +214,10 @@ export function ShootingSetupStepContent({
           </RowVariants>
           <RowVariants variant="3">
             <Field>
-              <FieldLabel htmlFor="shooting-zip-code">ZIP code</FieldLabel>
+              <FieldLabel htmlFor={`${baseId}-shooting-zip-code`}>ZIP code</FieldLabel>
               <FieldContent>
                 <Input
-                  id="shooting-zip-code"
+                  id={`${baseId}-shooting-zip-code`}
                   type="text"
                   value={localZipCode}
                   onChange={(e) => {
@@ -233,7 +235,7 @@ export function ShootingSetupStepContent({
               </FieldContent>
             </Field>
             <Field>
-              <FieldLabel htmlFor="shooting-country">Country</FieldLabel>
+              <FieldLabel htmlFor={`${baseId}-shooting-country`}>Country</FieldLabel>
               <FieldContent>
                 <Combobox
                   items={countryItems}
@@ -261,7 +263,7 @@ export function ShootingSetupStepContent({
                   }}
                 >
                   <ComboboxInput
-                    id="shooting-country"
+                    id={`${baseId}-shooting-country`}
                     placeholder="Select or type country"
                     showClear={!!c.shootingCountry}
                   />
@@ -279,7 +281,7 @@ export function ShootingSetupStepContent({
               </FieldContent>
             </Field>
             <Field>
-              <FieldLabel htmlFor="shooting-city">City</FieldLabel>
+              <FieldLabel htmlFor={`${baseId}-shooting-city`}>City</FieldLabel>
               <FieldContent>
                 <Combobox
                   items={cityItems}
@@ -307,7 +309,7 @@ export function ShootingSetupStepContent({
                   }}
                 >
                   <ComboboxInput
-                    id="shooting-city"
+                    id={`${baseId}-shooting-city`}
                     placeholder={(c.shootingCountry ?? "").trim() ? "Select or type city" : "Select country first"}
                     showClear={!!c.shootingCity}
                   />
