@@ -144,7 +144,7 @@ export class CollectionsService {
       throw new CollectionsServiceError("Failed to update collection status", "UPDATE_FAILED")
     }
 
-    // Notify participants and schedule time-based notifications
+    // Notify participants and schedule time-based notifications (best-effort; don't fail publish)
     const participantUserIds = collection.participants
       .flatMap((p) => p.userIds || [])
       .filter((id) => id?.trim())
@@ -153,11 +153,15 @@ export class CollectionsService {
       .map((p) => p.entityId)
       .filter((id): id is string => !!id?.trim())
 
-    await this.notifications.collectionPublished({
-      collectionId: id,
-      participantUserIds,
-      participantEntityIds,
-    })
+    try {
+      await this.notifications.collectionPublished({
+        collectionId: id,
+        participantUserIds,
+        participantEntityIds,
+      })
+    } catch (err) {
+      console.warn("[CollectionsService] Notifications after publish failed (collection was published):", err)
+    }
 
     return updated
   }

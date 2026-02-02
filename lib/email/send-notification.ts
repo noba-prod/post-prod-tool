@@ -1,71 +1,17 @@
 /**
  * Sends notification emails via Resend.
  * Used for workflow notifications (deadline reminders, status updates, etc.)
+ * Uses process.env only so this module is safe to bundle in the client
+ * (email sending only runs in API routes / cron).
  */
 
-import { readFileSync, existsSync } from "node:fs"
-import { join, dirname } from "node:path"
-import { fileURLToPath } from "node:url"
 import { Resend } from "resend"
 
-/** Project root = directory that contains package.json (with "next" dependency). */
-function getProjectRoot(): string | null {
-  try {
-    const currentDir =
-      typeof __dirname !== "undefined"
-        ? __dirname
-        : dirname(fileURLToPath(import.meta.url))
-    let dir = currentDir
-    for (let i = 0; i < 10; i++) {
-      const pkgPath = join(dir, "package.json")
-      if (existsSync(pkgPath)) {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
-          name?: string
-          dependencies?: Record<string, string>
-        }
-        if (pkg.dependencies?.next) return dir
-      }
-      const parent = join(dir, "..")
-      if (parent === dir) break
-      dir = parent
-    }
-  } catch {
-    // ignore
-  }
-  return null
-}
-
-/** Path to .env */
-function getEnvPath(): string {
-  const root = getProjectRoot()
-  if (root) {
-    const p = join(root, ".env")
-    if (existsSync(p)) return p
-  }
-  return join(process.cwd(), ".env")
-}
-
-/** Read RESEND_FROM_EMAIL from .env file */
+/** Read RESEND_FROM_EMAIL from environment */
 function getResendFromEmail(): string {
-  try {
-    const envPath = getEnvPath()
-    if (existsSync(envPath)) {
-      const content = readFileSync(envPath, "utf-8")
-      const lines = content.split(/\r?\n/)
-      const line = lines.find((l) => /^\s*RESEND_FROM_EMAIL\s*=/.test(l))
-      if (line) {
-        const raw = line.replace(/^\s*RESEND_FROM_EMAIL\s*=\s*/, "").trim()
-        const beforeComment = raw.split(/#/)[0].trim()
-        const unquoted = beforeComment.replace(/^["']|["']$/g, "").trim()
-        if (unquoted) return unquoted
-      }
-    }
-    const fromEnv = process.env.RESEND_FROM_EMAIL?.trim()
-    if (fromEnv && fromEnv.includes("postproduction")) return fromEnv
-    return ""
-  } catch {
-    return ""
-  }
+  const fromEnv = process.env.RESEND_FROM_EMAIL?.trim()
+  if (fromEnv) return fromEnv
+  return ""
 }
 
 export interface SendNotificationEmailResult {

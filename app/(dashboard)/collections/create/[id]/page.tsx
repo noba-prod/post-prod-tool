@@ -517,49 +517,61 @@ export default function CollectionCreatePage({
 
     setIsPublishing(true)
     try {
-      await service.publishCollection(id)
+      // Publish via API so notifications (scheduled_notification_tracking) and invitation emails run server-side
+      const res = await fetch(`/api/collections/${id}/publish`, { method: "POST" })
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        code?: string
+        success?: boolean
+        invitationsCreated?: number
+        invitationsSent?: number
+        message?: string
+      }
 
-      // Create and store invitations for all participants (Supabase invitations table)
-      const { createInvitationsForPublishedCollection } = await import("@/lib/invitations")
-      const inviteResult = await createInvitationsForPublishedCollection(id)
-      if (!inviteResult.success && inviteResult.created === 0 && inviteResult.error) {
-        console.warn("[Publish] Invitations could not be created:", inviteResult.error)
+      if (!res.ok) {
+        if (data.code === "DRAFT_INCOMPLETE") {
+          toast.error("Finish required setup before publishing.")
+        } else if (data.code === "NOT_FOUND") {
+          toast.error("Draft not found.")
+          router.push("/collections")
+        } else {
+          toast.error(data.error || "Failed to publish collection")
+        }
+        setIsPublishing(false)
+        return
       }
 
       // Get client name for toast
       const clientEntityId = draft.config.clientEntityId
       let clientName = "Client"
       if (clientEntityId) {
-        const res = await fetch(`/api/organizations/${clientEntityId}`)
-        if (res.ok) {
-          const data = await res.json().catch(() => null) as { entity?: { name?: string } } | null
-          if (data?.entity?.name) clientName = data.entity.name
+        const orgRes = await fetch(`/api/organizations/${clientEntityId}`)
+        if (orgRes.ok) {
+          const orgData = await orgRes.json().catch(() => null) as { entity?: { name?: string } } | null
+          if (orgData?.entity?.name) clientName = orgData.entity.name
         }
       }
 
       const collectionName = draft.config.name || "Collection"
       toast.success(`${collectionName} by @${clientName.toLowerCase()} has been published`)
-      
+
+      const created = data.invitationsCreated ?? 0
+      const sent = data.invitationsSent ?? 0
+      if (created > 0 && sent < created && data.error) {
+        toast.warning(`Invitation emails could not be sent for some participants. ${data.error}`)
+      } else if (created > 0 && sent < created) {
+        toast.warning(
+          `Invitation emails could not be sent (${sent}/${created} sent). Check RESEND_API_KEY and RESEND_FROM_EMAIL.`
+        )
+      }
+
       setPublishDialogOpen(false)
       router.push("/collections")
     } catch (error) {
       setIsPublishing(false)
-      if (error instanceof Error && "code" in error) {
-        const serviceError = error as { code: string; message: string }
-        if (serviceError.code === "DRAFT_INCOMPLETE") {
-          toast.error("Finish required setup before publishing.")
-          // Keep dialog open
-        } else if (serviceError.code === "NOT_FOUND") {
-          toast.error("Draft not found.")
-          router.push("/collections")
-        } else {
-          toast.error(serviceError.message || "Failed to publish collection")
-        }
-      } else {
-        toast.error("Failed to publish collection")
-      }
+      toast.error("Failed to publish collection")
     }
-  }, [draft, id, service, router, isPublishing])
+  }, [draft, id, router, isPublishing])
 
   /** Open delete confirmation dialog (sidebar trash icon). */
   const handleDeleteCollection = React.useCallback(() => {

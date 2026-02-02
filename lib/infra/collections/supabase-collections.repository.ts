@@ -1,8 +1,10 @@
 /**
  * Supabase implementation of ICollectionsRepository.
  * Uses collections + collection_members tables; RLS applies.
+ * When supabase client is passed (e.g. admin client on server), uses it; otherwise uses browser client.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js"
 import type {
   Collection,
   CollectionUpdatePatch,
@@ -10,6 +12,7 @@ import type {
   ListCollectionsFilters,
 } from "@/lib/domain/collections"
 import { createClient } from "@/lib/supabase/client"
+import type { Database } from "@/lib/supabase/database.types"
 import type { Collection as DbCollection, CollectionMember } from "@/lib/supabase/database.types"
 import {
   mapDbCollectionToDomain,
@@ -19,8 +22,14 @@ import {
 } from "@/lib/utils/collection-mappers"
 
 export class SupabaseCollectionsRepository implements ICollectionsRepository {
+  constructor(private readonly supabaseClient?: SupabaseClient<Database>) {}
+
+  private get supabase() {
+    return this.supabaseClient ?? createClient()
+  }
+
   async create(collection: Collection): Promise<Collection> {
-    const supabase = createClient()
+    const supabase = this.supabase
     const insert = mapDomainToDbInsert(collection)
     const ownerUserId = collection.config.ownerUserId
     const members = mapParticipantsToDbMembers(collection.id, collection.participants, ownerUserId)
@@ -49,7 +58,7 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
   }
 
   async getById(id: string): Promise<Collection | null> {
-    const supabase = createClient()
+    const supabase = this.supabase
     const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
     const { data: row, error } = await tbl.select("*").eq("id", id).single()
     if (error || !row) return null
@@ -58,7 +67,7 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
   }
 
   async update(id: string, patch: CollectionUpdatePatch): Promise<Collection | null> {
-    const supabase = createClient()
+    const supabase = this.supabase
     const current = await this.getById(id)
     if (!current) return null
 
@@ -75,6 +84,9 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
         const msg = (error as { message?: string }).message ?? JSON.stringify(error)
         console.error("[SupabaseCollectionsRepository] update error:", msg, error)
       }
+      // Update may have succeeded but select failed (e.g. RLS). Refetch to avoid false failure.
+      const fallback = await this.getById(id)
+      if (fallback) return fallback
       return null
     }
 
@@ -98,7 +110,7 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
   }
 
   async delete(id: string): Promise<void> {
-    const supabase = createClient()
+    const supabase = this.supabase
     const memTbl = supabase.from("collection_members") as ReturnType<typeof supabase.from>
     await memTbl.delete().eq("collection_id", id)
     const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
@@ -110,7 +122,7 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
   }
 
   async list(filters?: ListCollectionsFilters): Promise<Collection[]> {
-    const supabase = createClient()
+    const supabase = this.supabase
     let idsToFilter: string[] | null = null
     if (filters?.createdByUserId) {
       const { data: memberRows } = await (supabase
@@ -149,7 +161,7 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
   }
 
   private async fetchMembers(collectionId: string): Promise<CollectionMember[]> {
-    const supabase = createClient()
+    const supabase = this.supabase
     const tbl = supabase.from("collection_members") as ReturnType<typeof supabase.from>
     const { data, error } = await tbl.select("*").eq("collection_id", collectionId)
     if (error) return []

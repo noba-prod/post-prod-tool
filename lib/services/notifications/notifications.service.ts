@@ -321,6 +321,7 @@ export class NotificationsService implements INotificationsService {
 
     const now = new Date()
     const templateList = templates as NotificationTemplate[]
+    let scheduledCount = 0
 
     for (const template of templateList) {
       const deadlineMapping = DEADLINE_FIELD_MAP[template.trigger_event]
@@ -337,10 +338,11 @@ export class NotificationsService implements INotificationsService {
 
       // Parse deadline
       const deadlineDate = this.parseDeadline(dateValue, timeValue)
-      if (!deadlineDate) continue
+      if (!deadlineDate || !Number.isFinite(deadlineDate.getTime())) continue
 
       // Calculate scheduled time
       const scheduledFor = new Date(deadlineDate.getTime() + template.trigger_offset_minutes * 60000)
+      if (!Number.isFinite(scheduledFor.getTime())) continue
 
       // Skip if already in the past
       if (scheduledFor < now) continue
@@ -361,7 +363,16 @@ export class NotificationsService implements INotificationsService {
 
       if (insertError) {
         console.error("[NotificationsService] Failed to schedule:", insertError)
+      } else {
+        scheduledCount++
       }
+    }
+
+    if (process.env.NODE_ENV === "development" && scheduledCount === 0 && templateList.length > 0) {
+      console.log(
+        "[NotificationsService] scheduleTimeBasedNotifications: no rows inserted. " +
+          "Ensure the collection has at least one deadline set (e.g. shooting_end_date, lowres_deadline_date, dropoff_delivery_date)."
+      )
     }
   }
 
@@ -532,16 +543,52 @@ export class NotificationsService implements INotificationsService {
   }
 
   /**
-   * Parse a deadline from date and time fields
+   * Map semantic time presets (from TimePicker) to HH:mm for Date parsing.
+   * Matches components/custom/time-picker.tsx and lib/domain/collections/workflow.ts.
+   */
+  private static readonly TIME_PRESET_TO_HHMM: Record<string, string> = {
+    morning: "09:00",
+    "Morning (9:00am)": "09:00",
+    midday: "12:00",
+    "Midday (12:00pm)": "12:00",
+    "Midday - 12:00pm": "12:00",
+    "end-of-day": "17:00",
+    "End of day (5:00pm)": "17:00",
+    "End of day - 05:00pm": "17:00",
+  }
+
+  /**
+   * Parse a deadline from date and time fields.
+   * Handles semantic time presets (morning, midday, end-of-day) from the TimePicker.
+   * Date field may be "YYYY-MM-DD" or "YYYY-MM-DD end-of-day" (preset stored in date column).
+   * Returns null if the string cannot be parsed or the result is an invalid date.
    */
   private parseDeadline(dateStr: string, timeStr: string | null): Date | null {
     try {
-      if (timeStr) {
-        // Combine date and time (assuming time is in HH:mm format)
-        return new Date(`${dateStr}T${timeStr}:00`)
+      const rawDate = dateStr?.trim()
+      if (!rawDate) return null
+      // Extract date and optional preset from date field (e.g. "2026-02-02 end-of-day" -> date "2026-02-02", preset "end-of-day")
+      const presetMatch = rawDate.match(/^(.+?)\s+(morning|midday|end-of-day)$/i)
+      const dateOnly = presetMatch ? presetMatch[1].trim() : rawDate
+      const presetFromDate = presetMatch ? presetMatch[2].toLowerCase() : null
+      const rawTime = timeStr?.trim()
+      const preset = presetFromDate ?? (rawTime && /^(morning|midday|end-of-day)$/i.test(rawTime) ? rawTime.toLowerCase() : null)
+      const timePart = preset
+        ? (NotificationsService.TIME_PRESET_TO_HHMM[preset] ?? NotificationsService.TIME_PRESET_TO_HHMM["end-of-day"])
+        : rawTime && NotificationsService.TIME_PRESET_TO_HHMM[rawTime]
+          ? NotificationsService.TIME_PRESET_TO_HHMM[rawTime]
+          : rawTime && /^\d{1,2}:\d{2}$/.test(rawTime)
+            ? rawTime
+            : null
+      const combined = timePart
+        ? `${dateOnly}T${timePart}:00`
+        : `${dateOnly}T23:59:59`
+      const d = new Date(combined)
+      if (!Number.isFinite(d.getTime())) {
+        console.warn("[NotificationsService] Invalid deadline:", dateStr, timeStr)
+        return null
       }
-      // Default to end of day if no time specified
-      return new Date(`${dateStr}T23:59:59`)
+      return d
     } catch {
       console.error("[NotificationsService] Failed to parse deadline:", dateStr, timeStr)
       return null
