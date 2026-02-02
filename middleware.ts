@@ -8,6 +8,11 @@ export async function middleware(request: NextRequest) {
   const authRoutes = ["/auth/login", "/auth/otp", "/auth/activate"]
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route))
 
+  // Cron API routes handle their own authentication - skip middleware
+  if (pathname.startsWith("/api/cron")) {
+    return NextResponse.next()
+  }
+
   // Dev routes are always accessible
   if (pathname.startsWith("/dev")) {
     return NextResponse.next()

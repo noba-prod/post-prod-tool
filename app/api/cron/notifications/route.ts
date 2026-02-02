@@ -78,20 +78,31 @@ export async function POST(request: NextRequest) {
     }
 
     if (!authenticated) {
-      console.warn(
-        "[Cron] Unauthorized: header present =",
-        rawHeader != null,
-        "query secret present =",
-        !!querySecret,
-        "from cron-job.org =",
-        isCronJobOrg
-      )
+      // Detailed debug logging to diagnose auth issues
+      console.warn("[Cron] Unauthorized request details:", {
+        cronSecretLength: cronSecret.length,
+        cronSecretFirst3: cronSecret.slice(0, 3),
+        rawHeader,
+        authHeader,
+        authHeaderLength: authHeader.length,
+        expectedBearer: `Bearer ${cronSecret}`,
+        expectedBearerLength: `Bearer ${cronSecret}`.length,
+        headerMatchesBearer: authHeader === `Bearer ${cronSecret}`,
+        headerMatchesRaw: authHeader === cronSecret,
+        querySecret,
+        querySecretLength: querySecret.length,
+        isCronJobOrg,
+        userAgent,
+      })
       return unauthorized({
         error: "Unauthorized",
         hint: "Use Authorization header (Bearer <CRON_SECRET>) in cron-job.org ADVANCED tab, or URL with ?secret=<CRON_SECRET>. Set CRON_SECRET for Preview if using branch URL.",
         debug: {
           cronSecretSet: !!cronSecret,
+          cronSecretLength: cronSecret.length,
           authHeaderPresent: rawHeader != null,
+          authHeaderReceived: rawHeader ? `${rawHeader.slice(0, 10)}...` : null,
+          authHeaderLength: authHeader.length,
           querySecretPresent: !!querySecret,
           fromCronJobOrg: isCronJobOrg,
         },
