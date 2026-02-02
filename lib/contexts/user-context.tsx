@@ -30,22 +30,32 @@ interface UserContextValue {
   navBarVariant: "noba" | "collaborator" | "photographer"
 }
 
+/** Default context when used outside UserContextProvider (e.g. during SSG or on /create, /dev routes). */
+const DEFAULT_USER_CONTEXT: UserContextValue = {
+  user: null,
+  entity: null,
+  loading: false,
+  isNobaUser: false,
+  isNobaProducerUser: false,
+  isSelfPhotographer: false,
+  canAccessEntities: false,
+  canAccessTeam: true,
+  navBarVariant: "collaborator",
+}
+
 /**
  * User context for accessing current user and entity data.
- * Must be used within UserContextProvider.
  */
 const UserContext = React.createContext<UserContextValue | null>(null)
 
 /**
  * Hook to access user context.
- * @throws Error if used outside UserContextProvider
+ * Returns default (no user, not loading) when used outside UserContextProvider,
+ * e.g. during static generation or on routes like /create/* and /dev/* that don't use the dashboard layout.
  */
 export function useUserContext(): UserContextValue {
   const context = React.useContext(UserContext)
-  if (!context) {
-    throw new Error("useUserContext must be used within UserContextProvider")
-  }
-  return context
+  return context ?? DEFAULT_USER_CONTEXT
 }
 
 interface UserContextProviderProps {

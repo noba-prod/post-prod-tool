@@ -136,18 +136,8 @@ export function CreationTemplate({
 }: CreationTemplateProps) {
   const router = useRouter()
   const authAdapter = useAuthAdapter()
-  
-  // Use UserContext - it should always be available in dashboard pages
-  let userContext: ReturnType<typeof useUserContext> | null = null
-  let navConfig: ReturnType<typeof useNavigationConfig> | null = null
-  
-  try {
-    userContext = useUserContext()
-    navConfig = useNavigationConfig(userContext.entity?.type ?? null)
-  } catch (error) {
-    // UserContext not available, will use navBarProps fallback
-    console.warn("UserContext not available in CreationTemplate, using fallback props:", error)
-  }
+  const userContext = useUserContext()
+  const navConfig = useNavigationConfig(userContext.entity?.type ?? null)
 
   // State for profile edit modal
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false)

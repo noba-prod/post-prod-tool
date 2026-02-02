@@ -123,15 +123,8 @@ export function CollectionTemplate({
   const router = useRouter()
   const authAdapter = useAuthAdapter()
 
-  let userContext: ReturnType<typeof useUserContext> | null = null
-  let navConfig: ReturnType<typeof useNavigationConfig> | null = null
-
-  try {
-    userContext = useUserContext()
-    navConfig = useNavigationConfig(userContext?.entity?.type ?? null)
-  } catch {
-    // UserContext not available (e.g. dev preview); use navBarProps
-  }
+  const userContext = useUserContext()
+  const navConfig = useNavigationConfig(userContext.entity?.type ?? null)
 
   const [isSearchOpen, setIsSearchOpen] = React.useState(false)
   const [openStepId, setOpenStepId] = React.useState<string | null>(null)
