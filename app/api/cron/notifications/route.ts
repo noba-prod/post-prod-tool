@@ -41,13 +41,30 @@ function createServiceClient() {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify cron secret (Vercel sends this header for cron jobs)
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
+    // Verify cron secret (cron-job.org sends Authorization: Bearer <CRON_SECRET>)
+    const rawHeader = request.headers.get("authorization")
+    const authHeader = rawHeader?.trim() ?? ""
+    const cronSecret = (process.env.CRON_SECRET ?? "").trim()
 
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn("[Cron] Unauthorized cron request")
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!cronSecret) {
+      console.warn("[Cron] CRON_SECRET not set for this environment (set it for Preview if using a branch URL)")
+      return NextResponse.json(
+        { error: "Unauthorized", hint: "CRON_SECRET is not configured for this deployment (check Vercel env: Production vs Preview)." },
+        { status: 401 }
+      )
+    }
+
+    const expected = `Bearer ${cronSecret}`
+    if (authHeader !== expected) {
+      const hasHeader = rawHeader != null
+      console.warn("[Cron] Unauthorized: header present =", hasHeader, "format OK =", authHeader.startsWith("Bearer "))
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+          hint: "Use header: Authorization = Bearer <CRON_SECRET> (exact value, no extra spaces). For branch/preview URLs, set CRON_SECRET in Vercel for 'Preview' environment.",
+        },
+        { status: 401 }
+      )
     }
 
     const supabase = createServiceClient()
