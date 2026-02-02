@@ -15,21 +15,20 @@ type CreateMemberPayload = {
 
 async function getSessionProfile() {
   const supabase = await createClient()
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  const { data: userData, error: userError } = await supabase.auth.getUser()
 
-  if (sessionError || !sessionData.session) {
-    return { session: null, profile: null, error: sessionError?.message || "No session" }
+  if (userError || !userData.user) {
+    return { profile: null, error: userError?.message || "No session" }
   }
 
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
     .select("id,is_internal,organization_id,role")
-    .eq("id", sessionData.session.user.id)
+    .eq("id", userData.user.id)
     .maybeSingle()
 
   const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
   return {
-    session: sessionData.session,
     profile,
     error: profileError?.message || null,
   }
