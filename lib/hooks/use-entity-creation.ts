@@ -4,7 +4,6 @@ import * as React from "react"
 import { toast } from "sonner"
 
 // Service imports
-import { getRepositoryInstances } from "@/lib/services"
 import {
   mapFormToEntityDraft,
   mapEntityToFormData,
@@ -534,7 +533,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
   }, [])
 
   /**
-   * Handle edit user submit. PATCH /api/users/[id]. On success updates teamMembers; on 404 updates local state for in-memory users.
+   * Handle edit user submit. PATCH /api/users/[id]. On success updates teamMembers.
    */
   const handleEditUserSubmit = React.useCallback(async (userData: {
     firstName: string
@@ -582,31 +581,6 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
 
       if (!response.ok) {
         const body = (await response.json()) as { error?: string }
-        // 404: user may exist only in-memory (e.g. added via "Register member" in creation flow)
-        if (response.status === 404) {
-          const repos = getRepositoryInstances()
-          const inMemoryUpdate: Partial<Omit<User, "id" | "entityId">> = {
-            firstName: formData.firstName.trim(),
-            lastName: formData.lastName?.trim() || undefined,
-            email: formData.email.trim(),
-            phoneNumber: [formData.countryCode, formData.phoneNumber].filter(Boolean).join(" ").trim(),
-            role: formData.role,
-            ...(profilePictureUrl && { profilePictureUrl }),
-          }
-          const updated = repos.userRepository
-            ? await repos.userRepository.updateUser(editingUserId, inMemoryUpdate)
-            : null
-          if (updated) {
-            setTeamMembers((prev) =>
-              prev.map((u) => (u.id === editingUserId ? updated : u))
-            )
-            setEditingUserId(null)
-            toast.success("User updated", {
-              description: `${updated.firstName} ${updated.lastName || ""}`.trim() + " has been updated.",
-            })
-            return
-          }
-        }
         throw new Error(body.error || "Failed to update user")
       }
 

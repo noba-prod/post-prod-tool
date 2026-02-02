@@ -31,8 +31,7 @@ import { SearchCommand } from "../search-command"
 import { UserCreationForm, type UserFormData } from "../user-creation-form"
 import { EntityBasicInformationForm } from "../entity-basic-information-form"
 import { ModalWindow } from "../modal-window"
-import { getRepositoryInstances } from "@/lib/services"
-import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft } from "@/lib/utils/form-mappers"
+import { mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
 import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
@@ -365,19 +364,8 @@ export function ViewTemplate({
 
     setIsUpdatingCompany(true)
     try {
-      const repos = getRepositoryInstances()
       const draft = mapFormToEntityDraft(companyFormData)
-
-      // Update entity: try in-memory repo first (mock auth); if null, update in Supabase (real auth)
-      let updatedEntity =
-        repos.entityRepository
-          ? await repos.entityRepository.updateEntity(userContext.entity.id, draft)
-          : null
-
-      if (!updatedEntity) {
-        const result = await updateOrganizationFromDraft(userContext.entity.id, draft)
-        updatedEntity = result.entity
-      }
+      await updateOrganizationFromDraft(userContext.entity.id, draft)
 
       // Dispatch session-changed event to refresh UserContext
       if (typeof window !== "undefined") {
@@ -410,24 +398,26 @@ export function ViewTemplate({
 
     setIsUpdatingProfile(true)
     try {
-      const repos = getRepositoryInstances()
-      if (!repos.userRepository) {
-        throw new Error("User repository not available")
+      let profilePictureUrl: string | undefined
+      if (userData.profilePicture) {
+        const formData = new FormData()
+        formData.append("file", userData.profilePicture)
+        const uploadRes = await fetch(`/api/users/${userContext.user.id}/profile-picture`, {
+          method: "POST",
+          body: formData,
+        })
+        const uploadData = await uploadRes.json().catch(() => ({}))
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        profilePictureUrl = uploadData.profilePictureUrl
       }
-
-      // Update user data (email, entityId, and role cannot be changed by user editing their own profile)
-      const phoneNumber = `${userData.countryCode} ${userData.phoneNumber}`.trim()
-      
-      const updatedUser = await repos.userRepository.updateUser(userContext.user.id, {
-        firstName: userData.firstName.trim(),
-        lastName: userData.lastName?.trim() || undefined,
-        phoneNumber: phoneNumber,
-        // Note: email, entityId, and role are not updated when user edits their own profile
+      const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
+      const res = await fetch(`/api/users/${userContext.user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       })
-
-      if (!updatedUser) {
-        throw new Error("Failed to update user")
-      }
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to update user")
 
       // Dispatch session-changed event to refresh UserContext
       if (typeof window !== "undefined") {

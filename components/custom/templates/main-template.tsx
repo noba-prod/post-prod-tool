@@ -13,7 +13,6 @@ import { SearchCommand } from "../search-command"
 import { useUserContext } from "@/lib/contexts/user-context"
 import { useNavigationConfig } from "@/lib/hooks/use-navigation-config"
 import { useAuthAdapter } from "@/lib/auth"
-import { getRepositoryInstances } from "@/lib/services"
 import { toast } from "sonner"
 import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
@@ -130,23 +129,8 @@ export function MainTemplate({
 
     setIsUpdatingCompany(true)
     try {
-      const repos = getRepositoryInstances()
-      if (!repos.entityRepository) {
-        throw new Error("Entity repository not available")
-      }
-
-      // Convert form data to entity draft
       const draft = mapFormToEntityDraft(companyFormData)
-
-      // Update entity: try in-memory repo first (mock auth); if null, update in Supabase (real auth)
-      let updatedEntity = repos.entityRepository
-        ? await repos.entityRepository.updateEntity(userContext.entity.id, draft)
-        : null
-
-      if (!updatedEntity) {
-        const result = await updateOrganizationFromDraft(userContext.entity.id, draft)
-        updatedEntity = result.entity
-      }
+      await updateOrganizationFromDraft(userContext.entity.id, draft)
 
       // Dispatch session-changed event to refresh UserContext
       if (typeof window !== "undefined") {
@@ -170,8 +154,6 @@ export function MainTemplate({
     }
   }, [userContext?.entity, companyFormData, isCompanyFormValid])
 
-  const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-
   // Handle profile update
   const handleProfileUpdate = React.useCallback(async (userData: UserFormData) => {
     if (!userContext?.user) {
@@ -194,28 +176,14 @@ export function MainTemplate({
         profilePictureUrl = uploadData.profilePictureUrl
       }
 
-      if (USE_MOCK_AUTH) {
-        const repos = getRepositoryInstances()
-        if (!repos.userRepository) {
-          throw new Error("User repository not available")
-        }
-
-        const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
-        const updatedUser = await repos.userRepository.updateUser(userContext.user.id, payload)
-
-        if (!updatedUser) {
-          throw new Error("Failed to update user")
-        }
-      } else {
-        const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
-        const res = await fetch(`/api/users/${userContext.user.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(data.error ?? "Failed to update user")
-      }
+      const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
+      const res = await fetch(`/api/users/${userContext.user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to update user")
 
       // Dispatch session-changed event to refresh UserContext
       if (typeof window !== "undefined") {

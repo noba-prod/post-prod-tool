@@ -7,7 +7,6 @@ import { RowVariants } from "./row-variants"
 import { EntitySelected } from "./entity-selected"
 import { DatePicker } from "./date-picker"
 import { TimePicker } from "./time-picker"
-import { getRepositoryInstances } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
@@ -19,8 +18,6 @@ import { cn } from "@/lib/utils"
 // ============================================================================
 
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -99,7 +96,13 @@ export function PhotoSelectionStepContent({
         if (cancelled) return
         setPhotographerName(name ?? "—")
       } else {
-        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
+        const res = await fetch(`/api/organizations/${eid}`)
+        if (!res.ok) {
+          setPhotographerName("—")
+          return
+        }
+        const data = await res.json().catch(() => null)
+        const entity = data?.entity as { name?: string } | null
         if (cancelled) return
         setPhotographerName(entity?.name ?? "—")
       }
@@ -123,7 +126,13 @@ export function PhotoSelectionStepContent({
         if (cancelled) return
         setClientName(name ?? "—")
       } else {
-        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
+        const res = await fetch(`/api/organizations/${eid}`)
+        if (!res.ok) {
+          setClientName("—")
+          return
+        }
+        const data = await res.json().catch(() => null)
+        const entity = data?.entity as { name?: string } | null
         if (cancelled) return
         setClientName(entity?.name ?? "—")
       }

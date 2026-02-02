@@ -14,7 +14,7 @@ import type { Session } from "@/lib/auth/adapter"
 import { useUserContext } from "@/lib/contexts/user-context"
 import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
 import type { Collection as TableCollection } from "@/components/custom/tables"
-import { createCollectionsService, createEntityCreationService, getRepositoryInstances } from "@/lib/services"
+import { createCollectionsService } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import type { Collection } from "@/lib/domain/collections"
 import type { Organization } from "@/lib/supabase/database.types"
@@ -24,8 +24,6 @@ import type { Organization } from "@/lib/supabase/database.types"
 // ============================================================================
 
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -197,18 +195,8 @@ export default function CollectionsPage() {
         setClientOptions(clients)
         setPhotographerOptions(photographers)
       } else {
-        createEntityCreationService()
-        const entityRepo = getRepositoryInstances().entityRepository
-        if (!entityRepo) return
-        const entities = await entityRepo.getAllEntities()
-        const clients = entities
-          .filter((e) => e.type === "client")
-          .map((e) => ({ id: e.id, name: e.name }))
-        const photographers = entities
-          .filter((e) => e.type === "self-photographer")
-          .map((e) => ({ id: e.id, name: e.name }))
-        setClientOptions(clients)
-        setPhotographerOptions(photographers)
+        setClientOptions([])
+        setPhotographerOptions([])
       }
     }
     load()
@@ -230,20 +218,7 @@ export default function CollectionsPage() {
         const map = await fetchOrganizationNamesFromSupabase(ids)
         setClientNamesByEntityId(map)
       } else {
-        createEntityCreationService() // ensure entity repo exists
-        const entityRepo = getRepositoryInstances().entityRepository
-        if (!entityRepo) {
-          setClientNamesByEntityId({})
-          return
-        }
-        const map: Record<string, string> = {}
-        await Promise.all(
-          ids.map(async (eid) => {
-            const entity = await entityRepo.getEntityById(eid)
-            if (entity?.name) map[eid] = entity.name
-          })
-        )
-        setClientNamesByEntityId(map)
+        setClientNamesByEntityId({})
       }
     }
     load()
@@ -386,6 +361,7 @@ export default function CollectionsPage() {
             showAction={false}
             clientOptions={clientOptions}
             photographerOptions={photographerOptions}
+            createdByOptions={[]}
           />
         </LayoutSection>
         <LayoutSection>

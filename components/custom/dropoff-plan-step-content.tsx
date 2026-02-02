@@ -11,7 +11,6 @@ import { OptionPicker } from "./option-picker"
 import { InformativeToast } from "./informative-toast"
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { getRepositoryInstances } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
@@ -23,8 +22,6 @@ import type { Organization } from "@/lib/supabase/database.types"
 // ============================================================================
 
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -165,7 +162,13 @@ export function DropoffPlanStepContent({
         if (cancelled) return
         setLabAddress(address)
       } else {
-        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
+        const res = await fetch(`/api/organizations/${eid}`)
+        if (!res.ok) {
+          setLabAddress("—")
+          return
+        }
+        const data = await res.json().catch(() => null)
+        const entity = data?.entity as { location?: Location } | null
         if (cancelled) return
         address = entity?.location ? formatEntityLocation(entity.location) : "—"
         setLabAddress(address)

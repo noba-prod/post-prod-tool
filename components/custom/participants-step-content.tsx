@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getRepositoryInstances, NOBA_ORGANIZATION_ID } from "@/lib/services"
+import { NOBA_ORGANIZATION_ID } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import { useUserContext } from "@/lib/contexts/user-context"
 import type {
@@ -41,8 +41,6 @@ import type { Organization, OrganizationType, Profile } from "@/lib/supabase/dat
 // ============================================================================
 
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -771,11 +769,16 @@ function useParticipantData(entityId: string, entityType: EntityType | EntityTyp
         if (cancelled) return
         setEntities(fetched)
       } else {
-        const repos = getRepositoryInstances()
-        const all = await repos.entityRepository?.getAllEntities() ?? []
+        const res = await fetch("/api/organizations", { cache: "no-store" })
+        if (!res.ok) {
+          setEntities([])
+          return
+        }
+        const data = await res.json().catch(() => null) as { organizations?: Array<{ id: string; name: string; type: string }> } | null
+        const orgTypes = types.flatMap((t) => entityTypeToOrgTypes(t))
+        const filtered = (data?.organizations ?? []).filter((org) => orgTypes.includes(org.type as OrganizationType))
         if (cancelled) return
-        const filtered = all.filter((e) => types.includes(e.type))
-        setEntities(filtered)
+        setEntities(filtered.map((org) => ({ id: org.id, name: org.name, type: orgTypeToEntityType(org.type as OrganizationType) } as Entity)))
       }
     }
     load()
@@ -790,15 +793,28 @@ function useParticipantData(entityId: string, entityType: EntityType | EntityTyp
       return
     }
     let cancelled = false
-    
+
     const load = async () => {
       if (isSupabaseConfigured()) {
         const fetched = await fetchUsersByOrganization(entityId)
         if (cancelled) return
         setUsers(fetched)
       } else {
-        const repos = getRepositoryInstances()
-        const list = await repos.userRepository?.listUsersByEntityId(entityId) ?? []
+        const res = await fetch(`/api/organizations/${entityId}`)
+        if (!res.ok) {
+          setUsers([])
+          return
+        }
+        const data = await res.json().catch(() => null) as { teamMembers?: Array<{ id: string; firstName?: string; lastName?: string; email?: string; phoneNumber?: string; role?: string; entityId?: string }> } | null
+        const list = (data?.teamMembers ?? []).map((u) => ({
+          id: u.id,
+          firstName: u.firstName ?? "",
+          lastName: u.lastName ?? undefined,
+          email: u.email ?? "",
+          phoneNumber: u.phoneNumber ?? "",
+          entityId: u.entityId ?? "",
+          role: (u.role as User["role"]) ?? "viewer",
+        } as User))
         if (cancelled) return
         setUsers(list)
       }
@@ -837,17 +853,21 @@ function useUsersFromAllEntitiesOfType(entityType: EntityType | null): User[] {
         }
         setUsers(Array.from(byId.values()))
       } else {
-        const repos = getRepositoryInstances()
-        const all = await repos.entityRepository?.getAllEntities() ?? []
+        const res = await fetch("/api/organizations", { cache: "no-store" })
+        if (!res.ok) {
+          setUsers([])
+          return
+        }
+        const data = await res.json().catch(() => null) as { organizations?: Array<{ id: string; type: string }> } | null
+        const orgTypes = entityTypeToOrgTypes(entityType)
+        const entities = (data?.organizations ?? []).filter((org) => orgTypes.includes(org.type as OrganizationType))
         if (cancelled) return
-        const entities = all.filter((e) => e.type === entityType)
-        const lists = await Promise.all(
-          entities.map((e) => repos.userRepository?.listUsersByEntityId(e.id) ?? Promise.resolve([]))
-        )
+        const memberResList = await Promise.all(entities.map((e) => fetch(`/api/organizations/${e.id}`).then((r) => (r.ok ? r.json() : null))))
         if (cancelled) return
         const byId = new Map<string, User>()
-        for (const list of lists) {
-          for (const u of list ?? []) byId.set(u.id, u)
+        for (const memberData of memberResList) {
+          const teamMembers = (memberData as { teamMembers?: User[] })?.teamMembers ?? []
+          for (const u of teamMembers) byId.set(u.id, u)
         }
         setUsers(Array.from(byId.values()))
       }
@@ -882,13 +902,11 @@ function useUsersByIds(userIds: string[]): Map<string, User> {
         })
         setById(map)
       } else {
-        const repos = getRepositoryInstances()
-        const userRepo = repos.userRepository
-        if (!userRepo) {
-          setById(new Map())
-          return
-        }
-        const results = await Promise.all(userIds.map((id) => userRepo.getUserById(id)))
+        const results = await Promise.all(
+          userIds.map((id) =>
+            fetch(`/api/users/${id}`).then((r) => (r.ok ? r.json() : null)).then((data: { user?: User } | null) => data?.user ?? null)
+          )
+        )
         if (cancelled) return
         const map = new Map<string, User>()
         results.forEach((u) => {

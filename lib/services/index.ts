@@ -1,6 +1,5 @@
-// Entity Creation Service
+// Entity Creation Service (validation types and helpers only)
 export {
-  EntityCreationService,
   EntityCreationError,
   validateStandardEntityDraft,
   validateUserPayload,
@@ -24,11 +23,8 @@ export {
 
 // Factories
 export {
-  createEntityCreationService,
   createEntitiesListService,
   createEntityDetailService,
-  resetEntityCreationService,
-  getRepositoryInstances,
 } from "./factories/entity-creation-service.factory"
 
 // Collections Service

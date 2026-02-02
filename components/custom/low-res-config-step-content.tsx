@@ -11,7 +11,6 @@ import { TimePicker } from "./time-picker"
 import { OptionPicker } from "./option-picker"
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { getRepositoryInstances } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
@@ -33,8 +32,6 @@ function formatEntityLocation(loc: Location): string {
 // ============================================================================
 
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -162,10 +159,24 @@ export function LowResConfigStepContent({
         address = org?.address ?? "—"
         setLabAddress(address)
       } else {
-        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
+        const res = await fetch(`/api/organizations/${eid}`)
+        if (!res.ok) {
+          setLabName("—")
+          setLabAddress("—")
+          return
+        }
+        const data = await res.json().catch(() => null)
+        const entity = data?.entity as { name?: string; location?: { streetAddress?: string; zipCode?: string; city?: string; country?: string } } | null
         if (cancelled) return
         setLabName(entity?.name ?? "—")
-        address = entity?.location ? formatEntityLocation(entity.location) : "—"
+        address = entity?.location
+          ? formatEntityLocation({
+              streetAddress: entity.location.streetAddress ?? "",
+              zipCode: entity.location.zipCode ?? "",
+              city: entity.location.city ?? "",
+              country: entity.location.country ?? "",
+            })
+          : "—"
         setLabAddress(address)
       }
       // Save origin address (lab address) to config
@@ -194,9 +205,22 @@ export function LowResConfigStepContent({
         address = org?.address ?? "—"
         setHandprintLabAddress(address)
       } else {
-        const entity = await getRepositoryInstances().entityRepository?.getEntityById(eid)
+        const res = await fetch(`/api/organizations/${eid}`)
+        if (!res.ok) {
+          setHandprintLabAddress("—")
+          return
+        }
+        const data = await res.json().catch(() => null)
+        const entity = data?.entity as { location?: { streetAddress?: string; zipCode?: string; city?: string; country?: string } } | null
         if (cancelled) return
-        address = entity?.location ? formatEntityLocation(entity.location) : "—"
+        address = entity?.location
+          ? formatEntityLocation({
+              streetAddress: entity.location.streetAddress ?? "",
+              zipCode: entity.location.zipCode ?? "",
+              city: entity.location.city ?? "",
+              country: entity.location.country ?? "",
+            })
+          : "—"
         setHandprintLabAddress(address)
       }
       // Save destination address (hand print lab address) to config

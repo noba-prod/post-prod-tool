@@ -71,7 +71,7 @@ export default function AppPage() {
           <CardHeader>
             <CardTitle>Your Account</CardTitle>
             <CardDescription>
-              You are successfully logged in (Mock Auth Mode)
+              You are successfully logged in
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

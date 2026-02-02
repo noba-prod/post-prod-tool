@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { createCollectionsService } from "@/lib/services"
-import { getRepositoryInstances } from "@/lib/services"
 import { deriveCompletedBlockIds } from "@/lib/utils/collection-mappers"
 import {
   computeCreationTemplate,
@@ -49,8 +48,6 @@ import { useUserContext } from "@/lib/contexts/user-context"
 // ============================================================================
 
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -246,14 +243,14 @@ export default function CollectionCreatePage({
         })
         setParticipantSummaries(list)
       } else {
-        const repos = getRepositoryInstances()
-        const entities = await Promise.all(
-          entityIds.map((eid) => repos.entityRepository?.getEntityById(eid) ?? Promise.resolve(null))
+        const entityResList = await Promise.all(
+          entityIds.map((eid) => fetch(`/api/organizations/${eid}`).then((r) => (r.ok ? r.json() : null)))
         )
         if (cancelled) return
+        const entities = entityResList.map((data: { entity?: { name?: string } } | null) => data?.entity?.name ?? null)
         const list = relevant.map((p, i) => ({
           role: ROLE_DISPLAY[p.role] ?? p.role,
-          name: `@${entities[i]?.name ?? "—"}`,
+          name: `@${entities[i] ?? "—"}`,
         }))
         setParticipantSummaries(list)
       }
@@ -533,10 +530,10 @@ export default function CollectionCreatePage({
       const clientEntityId = draft.config.clientEntityId
       let clientName = "Client"
       if (clientEntityId) {
-        const entityRepo = getRepositoryInstances().entityRepository
-        const clientEntity = await entityRepo?.getEntityById(clientEntityId)
-        if (clientEntity?.name) {
-          clientName = clientEntity.name
+        const res = await fetch(`/api/organizations/${clientEntityId}`)
+        if (res.ok) {
+          const data = await res.json().catch(() => null) as { entity?: { name?: string } } | null
+          if (data?.entity?.name) clientName = data.entity.name
         }
       }
 

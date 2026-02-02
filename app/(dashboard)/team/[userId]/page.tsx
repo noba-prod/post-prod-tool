@@ -11,14 +11,11 @@ import { UserCreationForm } from "@/components/custom/user-creation-form"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import { useUserContext } from "@/lib/contexts/user-context"
-import { getRepositoryInstances } from "@/lib/services"
 import { roleToLabel } from "@/lib/types"
 import { mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import { toast } from "sonner"
 import type { User } from "@/lib/types"
 import { ArrowLeft, Pencil } from "lucide-react"
-
-const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
 
 export default function TeamMemberProfilePage() {
   const router = useRouter()
@@ -39,33 +36,15 @@ export default function TeamMemberProfilePage() {
     if (!userId) return
     setLoadingUser(true)
     try {
-      if (USE_MOCK_AUTH) {
-        const repos = getRepositoryInstances()
-        if (!repos.userRepository) {
-          setUser(null)
-          return
-        }
-        const u = await repos.userRepository.getUserById(userId)
-        if (!u) {
-          setUser(null)
-          return
-        }
-        if (userContext.user?.entityId && u.entityId !== userContext.user.entityId) {
-          setUser(null)
-          return
-        }
-        setUser(u)
-      } else {
-        const res = await fetch(`/api/users/${userId}`)
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          if (res.status === 404) setUser(null)
-          else throw new Error(data.error ?? "Failed to load user")
-          return
-        }
-        const data = await res.json()
-        setUser(data.user)
+      const res = await fetch(`/api/users/${userId}`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 404) setUser(null)
+        else throw new Error(data.error ?? "Failed to load user")
+        return
       }
+      const data = await res.json()
+      setUser(data.user)
     } catch (error) {
       console.error("Failed to load user:", error)
       setUser(null)
@@ -136,33 +115,18 @@ export default function TeamMemberProfilePage() {
           },
           profilePictureUrl
         )
-        if (USE_MOCK_AUTH) {
-          const repos = getRepositoryInstances()
-          if (!repos.userRepository) throw new Error("User repository not available")
-          const updated = await repos.userRepository.updateUser(userId, payload)
-          if (updated) {
-            setUser(updated)
-            setIsEditModalOpen(false)
-            toast.success("User updated", {
-              description: `${updated.firstName} ${updated.lastName ?? ""}`.trim() + " has been updated.",
-            })
-          } else {
-            throw new Error("User not found")
-          }
-        } else {
-          const res = await fetch(`/api/users/${userId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
-          const data = await res.json().catch(() => ({}))
-          if (!res.ok) throw new Error(data.error ?? "Failed to update user")
-          setUser(data.user)
-          setIsEditModalOpen(false)
-          toast.success("User updated", {
-            description: `${data.user.firstName} ${data.user.lastName ?? ""}`.trim() + " has been updated.",
-          })
-        }
+        const res = await fetch(`/api/users/${userId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? "Failed to update user")
+        setUser(data.user)
+        setIsEditModalOpen(false)
+        toast.success("User updated", {
+          description: `${data.user.firstName} ${data.user.lastName ?? ""}`.trim() + " has been updated.",
+        })
       } catch (error) {
         console.error("Failed to update user:", error)
         toast.error("Failed to update user", {

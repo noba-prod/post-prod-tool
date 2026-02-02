@@ -18,14 +18,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Check if using mock auth - if so, skip Supabase authentication
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  const hasSupabaseConfig = 
-    process.env.NEXT_PUBLIC_SUPABASE_URL && 
+  // Require Supabase config for server-side auth; otherwise allow through (client-side will handle)
+  const hasSupabaseConfig =
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // If using mock auth or no Supabase config, allow access (mock auth handles auth client-side)
-  if (useMockAuth || !hasSupabaseConfig) {
+  if (!hasSupabaseConfig) {
     return NextResponse.next()
   }
 

@@ -83,49 +83,13 @@ interface ParticipantSetupBoxProps {
 }
 
 // ============================================================================
-// MOCK DATA
-// ============================================================================
-
-const sampleEntities: Entity[] = [
-  { id: "1", name: "Zara", type: "Client" },
-  { id: "2", name: "Kodak Scanner", type: "Photo Lab" },
-  { id: "3", name: "Tom Haser", type: "Photographer" },
-  { id: "4", name: "Photo LUX", type: "Photo Agency" },
-  { id: "5", name: "Reveal Coruña", type: "Printer Lab" },
-  { id: "6", name: "Mango", type: "Client" },
-  { id: "7", name: "Studio Madrid", type: "Retouch/Post Studio" },
-  { id: "8", name: "Snapshot Creations", type: "Photo Agency" },
-  { id: "9", name: "Loewe", type: "Client" },
-]
-
-const sampleUsers: User[] = [
-  { id: "1", name: "Tom Haser", company: "Freelance" },
-  { id: "2", name: "Michael Smith", company: "Snapshot Creations" },
-  { id: "3", name: "Emily Davis", company: "Freelance" },
-  { id: "4", name: "James Brown", company: "Freelance" },
-  { id: "5", name: "Sophia Garcia", company: "Snapshot Creations" },
-  { id: "6", name: "Daniel Martinez", company: "Snapshot Creations" },
-  { id: "7", name: "Olivia Rodriguez", company: "Snapshot Creations" },
-  { id: "8", name: "Benjamin Wilson", company: "Freelance" },
-  { id: "9", name: "Emma Taylor", company: "Snapshot Creations" },
-]
-
-const sampleParticipants: Participant[] = [
-  { id: "1", name: "Erika Goldner", email: "erika.goldner@zara.com", phone: "+34 649 393 291", editPermission: true, collections: 0 },
-  { id: "2", name: "Sophia Johnson", email: "sophia.johnson@zara.com", phone: "+34 672 271 218", editPermission: false, collections: 0 },
-  { id: "3", name: "Aiden Smith", email: "kevin.brown@zara.com", phone: "555-555-5555", editPermission: true, collections: 0 },
-  { id: "4", name: "Mia Clark", email: "sarah.davis@zara.com", phone: "666-666-6666", editPermission: false, collections: 0 },
-  { id: "5", name: "Noah Garcia", email: "james.wilson@zara.com", phone: "777-777-7777", editPermission: false, collections: 0 },
-]
-
-// ============================================================================
 // CUSTOM DIALOG WITH DARKER OVERLAY
 // ============================================================================
 
 function NewMemberDialog({
   open,
   onOpenChange,
-  users = sampleUsers,
+  users = [],
   onUserSelect,
 }: {
   open: boolean
@@ -268,8 +232,8 @@ function ParticipantsTableInline({
 export function ParticipantSetupBox({
   title = "This is a title",
   placeholder = "Select one",
-  entities = sampleEntities,
-  users = sampleUsers,
+  entities = [],
+  users = [],
   participants: initialParticipants,
   onEntitySelect,
   onUserSelect,

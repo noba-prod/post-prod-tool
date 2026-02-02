@@ -8,11 +8,9 @@ import { CollectionsService } from "./collections.service"
 import { NoopNotificationsService } from "../notifications/noop-notifications.service"
 
 /**
- * True when Supabase should be used for collections (mock auth off + URL and anon key set).
+ * True when Supabase URL and anon key are set for collections.
  */
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -23,8 +21,7 @@ function isSupabaseConfigured(): boolean {
 
 /**
  * Returns the collections repository for the current runtime.
- * When NEXT_PUBLIC_USE_MOCK_AUTH=false and Supabase is configured, uses Supabase.
- * Otherwise: SSR uses in-memory; browser uses localStorage (mock data).
+ * When Supabase is configured, uses Supabase; otherwise SSR uses in-memory, browser uses localStorage.
  */
 export function getCollectionsRepository(): ICollectionsRepository {
   if (typeof window === "undefined") {

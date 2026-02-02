@@ -43,28 +43,13 @@ interface FilterBarProps {
   actionDisabled?: boolean
   /** Whether to hide the Client filter (useful in entity view context) */
   hideClientFilter?: boolean
-  /** Client options for collections variant (from registered entities). When provided, used instead of mock. */
+  /** Client options for collections variant (from registered entities). */
   clientOptions?: { id: string; name: string }[]
   /** Photographer options for collections variant (from registered entities). Enables Photographer filter. */
   photographerOptions?: { id: string; name: string }[]
+  /** Created-by user options for collections variant. When provided, enables "Created by" filter. */
+  createdByOptions?: { id: string; name: string }[]
 }
-
-// Mock data
-const MOCK_CLIENTS = [
-  { id: "1", name: "Acme Corp" },
-  { id: "2", name: "Globex Inc" },
-  { id: "3", name: "Wayne Enterprises" },
-  { id: "4", name: "Stark Industries" },
-  { id: "5", name: "Umbrella Corp" },
-]
-
-const MOCK_USERS = [
-  { id: "1", name: "John Doe" },
-  { id: "2", name: "Jane Smith" },
-  { id: "3", name: "Carlos García" },
-  { id: "4", name: "Ana López" },
-  { id: "5", name: "Mike Johnson" },
-]
 
 const COLLECTION_STATUSES = [
   { value: "draft", label: "Draft" },
@@ -231,6 +216,7 @@ export function FilterBar({
   hideClientFilter = false,
   clientOptions,
   photographerOptions = [],
+  createdByOptions,
 }: FilterBarProps) {
   // State for popover open/close
   const [clientOpen, setClientOpen] = React.useState(false)
@@ -249,7 +235,8 @@ export function FilterBar({
   const [selectedType, setSelectedType] = React.useState<string | null>(null)
   const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">("desc")
 
-  const clientsForFilter = clientOptions?.length ? clientOptions : MOCK_CLIENTS
+  const clientsForFilter = clientOptions ?? []
+  const createdByForFilter = createdByOptions ?? []
 
   // Handlers
   const handleClientSelect = (clientId: string, clientName: string) => {
@@ -321,7 +308,7 @@ export function FilterBar({
 
   const getCreatedByLabel = () => {
     if (selectedCreatedBy) {
-      const user = MOCK_USERS.find(u => u.id === selectedCreatedBy)
+      const user = createdByForFilter.find((u) => u.id === selectedCreatedBy)
       return `Created by: ${user?.name || "all"}`
     }
     return "Created by: all"
@@ -455,7 +442,7 @@ export function FilterBar({
                 <CommandList>
                   <CommandEmpty>No user found.</CommandEmpty>
                   <CommandGroup>
-                    {MOCK_USERS.map((user) => (
+                    {createdByForFilter.map((user) => (
                       <CommandItem
                         key={user.id}
                         value={user.name}

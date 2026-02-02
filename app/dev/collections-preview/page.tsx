@@ -1,17 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Grid } from "@/components/custom/grid"
 import { Tables, type Collection } from "@/components/custom/tables"
 import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
-
-// ============================================================================
-// MOCK DATA
-// ============================================================================
+import { createCollectionsService } from "@/lib/services"
+import type { Collection as DomainCollection } from "@/lib/domain/collections"
 
 type CollectionStatus = "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
 
@@ -29,142 +27,25 @@ interface CollectionData {
   createdAt: Date
 }
 
-const MOCK_COLLECTIONS: CollectionData[] = [
-  {
-    id: "1",
-    name: "kids summer'25",
-    status: "draft",
-    clientId: "1",
-    clientName: "zara",
-    location: "a coruña, spain",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "1",
-    participants: 0,
-    createdAt: new Date("2025-01-05"),
-  },
-  {
-    id: "2",
-    name: "Sakura: Cherry blossom",
-    status: "upcoming",
-    clientId: "2",
-    clientName: "loewe",
-    location: "tokyo, japan",
-    startDate: "apr 4, 2025",
-    endDate: "apr 14, 2025",
-    createdBy: "2",
-    participants: 6,
-    createdAt: new Date("2025-01-04"),
-  },
-  {
-    id: "3",
-    name: "Beach resort 2025",
-    status: "in-progress",
-    clientId: "3",
-    clientName: "maisondumonde",
-    location: "miami, usa",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "1",
-    participants: 8,
-    createdAt: new Date("2025-01-03"),
-  },
-  {
-    id: "4",
-    name: "streetwear collection 2025",
-    status: "completed",
-    clientId: "4",
-    clientName: "mango",
-    location: "los angeles, usa",
-    startDate: "nov 24, 2025",
-    endDate: "dec 4, 2025",
-    createdBy: "3",
-    participants: 4,
-    createdAt: new Date("2025-01-02"),
-  },
-  {
-    id: "5",
-    name: "luxury evening coffee 2025",
-    status: "draft",
-    clientId: "5",
-    clientName: "dior",
-    location: "paris, france",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "2",
-    participants: 0,
-    createdAt: new Date("2025-01-01"),
-  },
-  {
-    id: "6",
-    name: "Speed run 2025",
-    status: "completed",
-    clientId: "1",
-    clientName: "zaraathleticz",
-    location: "madrid, spain",
-    startDate: "nov 19, 2025",
-    endDate: "nov 29, 2025",
-    createdBy: "1",
-    participants: 1,
-    createdAt: new Date("2024-12-28"),
-  },
-  {
-    id: "7",
-    name: "spring/summer 2025",
-    status: "draft",
-    clientId: "3",
-    clientName: "ecoalf",
-    location: "menorca, spain",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "4",
-    participants: 0,
-    createdAt: new Date("2024-12-25"),
-  },
-  {
-    id: "8",
-    name: "fall lookbook 2025",
-    status: "canceled",
-    clientId: "4",
-    clientName: "renatta&go",
-    location: "madrid, spain",
-    startDate: "dec 4, 2025",
-    endDate: "dec 14, 2025",
-    createdBy: "5",
-    participants: 0,
-    createdAt: new Date("2024-12-20"),
-  },
-  {
-    id: "9",
-    name: "Holiday special 2025",
-    status: "upcoming",
-    clientId: "2",
-    clientName: "loewe",
-    location: "barcelona, spain",
-    startDate: "jan 10, 2026",
-    endDate: "jan 20, 2026",
-    createdBy: "1",
-    participants: 5,
-    createdAt: new Date("2025-01-06"),
-  },
-  {
-    id: "10",
-    name: "Resort collection 2026",
-    status: "in-progress",
-    clientId: "5",
-    clientName: "dior",
-    location: "cannes, france",
-    startDate: "jan 5, 2026",
-    endDate: "jan 15, 2026",
-    createdBy: "3",
-    participants: 12,
-    createdAt: new Date("2025-01-07"),
-  },
-]
-
-// ============================================================================
-// FILTER TYPES
-// ============================================================================
+function mapDomainToCollectionData(c: DomainCollection): CollectionData {
+  const location = [c.config.shootingCity, c.config.shootingCountry].filter(Boolean).join(", ") || "—"
+  const startDate = c.config.shootingStartDate || "—"
+  const endDate = c.config.shootingEndDate || "—"
+  const status: CollectionStatus = c.status === "in_progress" ? "in-progress" : c.status
+  return {
+    id: c.id,
+    name: c.config.name || "Untitled",
+    status,
+    clientId: c.config.clientEntityId || "",
+    clientName: "—",
+    location,
+    startDate,
+    endDate,
+    createdBy: c.config.managerUserId || "",
+    participants: c.participants?.length ?? 0,
+    createdAt: c.updatedAt ? new Date(c.updatedAt) : new Date(),
+  }
+}
 
 interface Filters {
   client: string | null
@@ -173,15 +54,10 @@ interface Filters {
   sortOrder: "asc" | "desc"
 }
 
-// ============================================================================
-// PAGE COMPONENT
-// ============================================================================
-
 export default function CollectionsPreviewPage() {
-  // View state (Gallery or List)
   const [activeView, setActiveView] = useState<string>("Gallery")
-  
-  // Filters state
+  const [collections, setCollections] = useState<CollectionData[]>([])
+  const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<Filters>({
     client: null,
     status: null,
@@ -189,50 +65,42 @@ export default function CollectionsPreviewPage() {
     sortOrder: "desc",
   })
 
-  // Handle filter changes
+  useEffect(() => {
+    const service = createCollectionsService()
+    service.listCollections().then((list) => {
+      setCollections(list.map(mapDomainToCollectionData))
+      setLoading(false)
+    }).catch(() => {
+      setCollections([])
+      setLoading(false)
+    })
+  }, [])
+
   const handleFilterChange = (filterId: string, value: string) => {
-    setFilters(prev => ({
+    setFilters((prev) => ({
       ...prev,
       [filterId]: prev[filterId as keyof Filters] === value ? null : value,
     }))
   }
 
-  // Handle sort changes
   const handleSortChange = (order: "asc" | "desc") => {
-    setFilters(prev => ({ ...prev, sortOrder: order }))
+    setFilters((prev) => ({ ...prev, sortOrder: order }))
   }
 
-  // Filter and sort collections
   const filteredCollections = React.useMemo(() => {
-    let result = [...MOCK_COLLECTIONS]
-
-    // Apply client filter
-    if (filters.client) {
-      result = result.filter(c => c.clientId === filters.client)
-    }
-
-    // Apply status filter
-    if (filters.status) {
-      result = result.filter(c => c.status === filters.status)
-    }
-
-    // Apply createdBy filter
-    if (filters.createdBy) {
-      result = result.filter(c => c.createdBy === filters.createdBy)
-    }
-
-    // Apply sort
+    let result = [...collections]
+    if (filters.client) result = result.filter((c) => c.clientId === filters.client)
+    if (filters.status) result = result.filter((c) => c.status === filters.status)
+    if (filters.createdBy) result = result.filter((c) => c.createdBy === filters.createdBy)
     result.sort((a, b) => {
       const dateA = a.createdAt.getTime()
       const dateB = b.createdAt.getTime()
       return filters.sortOrder === "desc" ? dateB - dateA : dateA - dateB
     })
-
     return result
-  }, [filters])
+  }, [collections, filters])
 
-  // Transform to Grid format
-  const gridItems: CollectionCardProps[] = filteredCollections.map(c => ({
+  const gridItems: CollectionCardProps[] = filteredCollections.map((c) => ({
     status: c.status,
     collectionName: c.name,
     clientName: `@${c.clientName}`,
@@ -241,14 +109,13 @@ export default function CollectionsPreviewPage() {
     endDate: c.endDate,
   }))
 
-  // Transform to Table format
-  const tableItems: Collection[] = filteredCollections.map(c => ({
+  const tableItems: Collection[] = filteredCollections.map((c) => ({
     id: c.id,
     name: c.name,
     status: c.status,
     client: c.clientName.charAt(0).toUpperCase() + c.clientName.slice(1),
     starting: c.startDate.charAt(0).toUpperCase() + c.startDate.slice(1),
-    location: c.location.split(", ").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(", "),
+    location: c.location.split(", ").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(", "),
     participants: c.participants,
   }))
 
@@ -257,7 +124,7 @@ export default function CollectionsPreviewPage() {
       title="Collections"
       navBarProps={{
         variant: "noba",
-        userName: "Martin Becerra",
+        userName: "Dev Preview",
         organization: "noba",
         role: "admin",
         isAdmin: true,
@@ -272,27 +139,38 @@ export default function CollectionsPreviewPage() {
             onFilterChange={handleFilterChange}
             onSortChange={handleSortChange}
             showAction={false}
+            clientOptions={[]}
+            photographerOptions={[]}
+            createdByOptions={[]}
           />
         </LayoutSection>
         <LayoutSection>
-          {activeView === "Gallery" ? (
-            <Grid items={gridItems} />
-          ) : (
-            <Tables
-              variant="collections"
-              collectionsData={tableItems}
-              onSettings={(id) => console.log("Settings for collection:", id)}
-            />
-          )}
-          {filteredCollections.length === 0 && (
+          {loading ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-lg font-medium text-muted-foreground">
-                No collections found
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Try adjusting your filters
-              </p>
+              <p className="text-sm text-muted-foreground">Loading collections...</p>
             </div>
+          ) : (
+            <>
+              {activeView === "Gallery" ? (
+                <Grid items={gridItems} />
+              ) : (
+                <Tables
+                  variant="collections"
+                  collectionsData={tableItems}
+                  onSettings={(id) => console.log("Settings for collection:", id)}
+                />
+              )}
+              {filteredCollections.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="text-lg font-medium text-muted-foreground">
+                    No collections found
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Try adjusting your filters or create a collection from the main app
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </LayoutSection>
       </Layout>

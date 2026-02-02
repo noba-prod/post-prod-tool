@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { CollectionTemplate } from "@/components/custom/templates/collection-template"
 import type { CollectionTemplateStep } from "@/components/custom/templates/collection-template"
 import { createCollectionsService } from "@/lib/services"
-import { getRepositoryInstances } from "@/lib/services"
 import { useUserContext } from "@/lib/contexts/user-context"
 import {
   getViewStepDefinitions,
@@ -97,65 +96,41 @@ export default function CollectionViewPage({
     }
   }, [id, service, router])
 
-  // Resolve client and photographer names from collection data (Supabase API or in-memory repos)
-  const useSupabase = process.env.NEXT_PUBLIC_USE_MOCK_AUTH === "false"
+  // Resolve client and photographer names from collection data via API
   React.useEffect(() => {
     if (!collection) return
     const clientId = collection.config.clientEntityId
     const photographer = collection.participants.find((p) => p.role === "photographer")
     const photographerUserId = photographer?.userIds?.[0]
 
-    if (useSupabase) {
-      if (clientId) {
-        fetch(`/api/organizations/${clientId}`)
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data: { entity?: { name?: string } } | null) => {
-            const name = data?.entity?.name
-            setClientName(name ? `@${name.toLowerCase()}` : "—")
-          })
-          .catch(() => setClientName("—"))
-      } else {
-        setClientName("—")
-      }
-      if (photographerUserId) {
-        fetch(`/api/users/${photographerUserId}`)
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data: { user?: { firstName?: string; lastName?: string; email?: string } } | null) => {
-            const u = data?.user
-            if (!u) {
-              setPhotographerName(undefined)
-              return
-            }
-            const name = [u.firstName, u.lastName].filter(Boolean).join(" ")
-            setPhotographerName(name || u.email || undefined)
-          })
-          .catch(() => setPhotographerName(undefined))
-      } else {
-        setPhotographerName(undefined)
-      }
+    if (clientId) {
+      fetch(`/api/organizations/${clientId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { entity?: { name?: string } } | null) => {
+          const name = data?.entity?.name
+          setClientName(name ? `@${name.toLowerCase()}` : "—")
+        })
+        .catch(() => setClientName("—"))
     } else {
-      const repos = getRepositoryInstances()
-      if (clientId) {
-        repos.entityRepository?.getEntityById(clientId).then((entity) => {
-          setClientName(entity?.name ? `@${entity.name.toLowerCase()}` : "—")
-        })
-      } else {
-        setClientName("—")
-      }
-      if (photographerUserId) {
-        repos.userRepository?.getUserById(photographerUserId).then((user) => {
-          if (user) {
-            const name = [user.firstName, user.lastName].filter(Boolean).join(" ")
-            setPhotographerName(name || user.email)
-          } else {
-            setPhotographerName(undefined)
-          }
-        })
-      } else {
-        setPhotographerName(undefined)
-      }
+      setClientName("—")
     }
-  }, [collection, useSupabase])
+    if (photographerUserId) {
+      fetch(`/api/users/${photographerUserId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { user?: { firstName?: string; lastName?: string; email?: string } } | null) => {
+          const u = data?.user
+          if (!u) {
+            setPhotographerName(undefined)
+            return
+          }
+          const name = [u.firstName, u.lastName].filter(Boolean).join(" ")
+          setPhotographerName(name || u.email || undefined)
+        })
+        .catch(() => setPhotographerName(undefined))
+    } else {
+      setPhotographerName(undefined)
+    }
+  }, [collection])
 
   if (loading) {
     return (

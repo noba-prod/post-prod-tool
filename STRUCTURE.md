@@ -34,7 +34,7 @@ noba-poc/
 │   │   └── rpc.ts               # Funciones RPC
 │   ├── auth/                     # Adaptadores de autenticación
 │   │   ├── adapter.ts
-│   │   ├── mock-adapter.ts
+│   │   ├── supabase-adapter.ts
 │   │   └── index.ts
 │   └── utils.ts                  # Utilidades generales
 ├── hooks/                        # React hooks personalizados

@@ -14,7 +14,6 @@ import { CheckSelection } from "./check-selection"
 import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { getRepositoryInstances } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionConfig } from "@/lib/domain/collections"
 import type { Organization, Profile } from "@/lib/supabase/database.types"
@@ -24,8 +23,6 @@ import type { Organization, Profile } from "@/lib/supabase/database.types"
 // ============================================================================
 
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -171,11 +168,15 @@ export function NewCollectionModal({
           setClientOptions(clients)
           if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
         } else {
-          const repos = getRepositoryInstances()
-          const entities = (await repos.entityRepository?.getAllEntities()) ?? []
-          const clients = entities
-            .filter((e) => e.type === "client")
-            .map((e) => ({ id: e.id, name: e.name }))
+          const res = await fetch("/api/organizations", { cache: "no-store" })
+          if (!res.ok) {
+            setClientOptions([])
+            return
+          }
+          const data = await res.json().catch(() => null) as { organizations?: Array<{ id: string; name: string; type: string }> } | null
+          const clients = (data?.organizations ?? [])
+            .filter((org) => org.type === "client")
+            .map((org) => ({ id: org.id, name: org.name }))
           setClientOptions(clients)
           if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
         }
@@ -197,12 +198,16 @@ export function NewCollectionModal({
         if (isSupabaseConfigured()) {
           opts = await fetchUsersFromSupabase(clientEntityId)
         } else {
-          const repos = getRepositoryInstances()
-          const users =
-            (await repos.userRepository?.listUsersByEntityId(clientEntityId)) ?? []
+          const res = await fetch(`/api/organizations/${clientEntityId}`)
+          if (!res.ok) {
+            setManagerOptions([])
+            return
+          }
+          const data = await res.json().catch(() => null) as { teamMembers?: Array<{ id: string; firstName?: string; lastName?: string; email?: string }> } | null
+          const users = data?.teamMembers ?? []
           opts = users.map((u) => ({
             value: u.id,
-            label: `${u.firstName} ${u.lastName ?? ""}`.trim() || u.email,
+            label: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || (u.email ?? ""),
           }))
         }
         setManagerOptions(opts)

@@ -16,8 +16,7 @@ import type { Entity } from "@/components/custom/tables"
 import { useUserContext } from "@/lib/contexts/user-context"
 
 // Service imports
-import { createEntitiesListService, createEntityCreationService } from "@/lib/services"
-import { getRepositoryInstances } from "@/lib/services/factories/entity-creation-service.factory"
+import { createEntitiesListService } from "@/lib/services"
 import { mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 
 // ============================================================================
@@ -186,19 +185,30 @@ export default function OrganizationsPage() {
     setEditingEntityId(entityId)
     setIsEditAdminModalOpen(true)
     setLoadingEditData(true)
-    
+
     try {
-      const { userRepository, entityRepository } = getRepositoryInstances()
-      if (!userRepository || !entityRepository) {
-        toast.error("Failed to load repositories", { description: "Repository instances are not available." })
+      const [userRes, entityRes] = await Promise.all([
+        fetch(`/api/users/${userId}`),
+        fetch(`/api/organizations/${entityId}`),
+      ])
+
+      if (!userRes.ok || !entityRes.ok) {
+        if (userRes.status === 404 || entityRes.status === 404) {
+          toast.error("Failed to load user data", { description: "The user or organization could not be found." })
+        } else {
+          const err = await userRes.json().catch(() => ({}))
+          toast.error("Failed to load data", { description: (err as { error?: string }).error ?? "An error occurred." })
+        }
         setIsEditAdminModalOpen(false)
+        setEditingAdminUserId(null)
+        setEditingEntityId(null)
         return
       }
 
-      const [user, entity] = await Promise.all([
-        userRepository.getUserById(userId),
-        entityRepository.getEntityById(entityId),
-      ])
+      const userJson = await userRes.json()
+      const entityJson = await entityRes.json()
+      const user = (userJson as { user: import("@/lib/types").User }).user
+      const entity = (entityJson as { entity: import("@/lib/types").Entity }).entity
 
       if (!user || !entity) {
         toast.error("Failed to load user data", { description: "The user or organization could not be found." })
@@ -257,7 +267,6 @@ export default function OrganizationsPage() {
         if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
         profilePictureUrl = uploadData.profilePictureUrl
       }
-      const service = createEntityCreationService()
       const userFormData: import("@/lib/utils/form-mappers").UserFormData = {
         firstName: userData.firstName,
         lastName: userData.lastName,
@@ -270,7 +279,13 @@ export default function OrganizationsPage() {
         role: userData.role,
       }
       const payload = mapFormToUpdateUserPayload(userFormData, profilePictureUrl)
-      await service.updateUser(editingAdminUserId, payload)
+      const res = await fetch(`/api/users/${editingAdminUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed to update user")
       await loadEntities()
       setIsEditAdminModalOpen(false)
       setEditingAdminUserId(null)

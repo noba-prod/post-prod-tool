@@ -3,10 +3,7 @@
 import * as React from "react"
 import type { User, Entity } from "@/lib/types"
 import { useAuthAdapter } from "@/lib/auth"
-import { getRepositoryInstances, fetchSupabaseUserData } from "@/lib/services"
-
-// Check if using mock auth
-const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
+import { fetchSupabaseUserData } from "@/lib/services"
 
 /**
  * User context value interface.
@@ -75,60 +72,12 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
   React.useEffect(() => {
     let cancelled = false
 
-    async function loadUserDataFromMock(session: { userId: string; email: string }) {
-      // Get repository instances (mock/in-memory)
-      const { userRepository, entityRepository } = getRepositoryInstances()
-      
-      if (!userRepository || !entityRepository) {
-        console.warn("Repositories not initialized")
-        return null
-      }
-
-      // Fetch user by ID first, if not found try by email as fallback
-      let fetchedUser = await userRepository.getUserById(session.userId)
-      
-      // Fallback: if user not found by ID, try to find by email
-      if (!fetchedUser && session.email) {
-        const allUsers = await userRepository.getAllUsers()
-        fetchedUser = allUsers.find(
-          (u) => u.email.toLowerCase() === session.email.toLowerCase()
-        ) || null
-        
-        if (fetchedUser) {
-          console.log(`[UserContext] Found user by email fallback: ${fetchedUser.id} for email ${session.email}`)
-        }
-      }
-      
-      if (!fetchedUser) {
-        console.warn(`[UserContext] User not found for userId: ${session.userId}, email: ${session.email}`)
-        return null
-      }
-
-      console.log(`[UserContext] Loaded user: ${fetchedUser.id}, entityId: ${fetchedUser.entityId}, entityType: ${fetchedUser.entityId ? 'loading...' : 'none'}`)
-
-      // Fetch entity
-      let fetchedEntity = null
-      if (fetchedUser.entityId) {
-        fetchedEntity = await entityRepository.getEntityById(fetchedUser.entityId)
-        
-        if (fetchedEntity) {
-          console.log(`[UserContext] Loaded entity: ${fetchedEntity.id}, type: ${fetchedEntity.type}, name: ${fetchedEntity.name}`)
-        } else {
-          console.warn(`[UserContext] Entity not found for entityId: ${fetchedUser.entityId}`)
-        }
-      }
-
-      const isNobaProducer =
-        fetchedEntity?.type === "noba"
-      return { user: fetchedUser, entity: fetchedEntity, isNobaProducerUser: isNobaProducer }
-    }
-
     async function loadUserData() {
       setLoading(true)
-      
+
       try {
         const session = await authAdapter.getSession()
-        
+
         if (!session || !session.userId) {
           if (!cancelled) {
             setUser(null)
@@ -139,17 +88,8 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
           return
         }
 
-        let userData: { user: User; entity: Entity | null } | null = null
+        const userData = await fetchSupabaseUserData(session.userId)
 
-        if (USE_MOCK_AUTH) {
-          // Use mock/in-memory repositories
-          userData = await loadUserDataFromMock(session)
-        } else {
-          // Use Supabase to fetch profile and organization data
-          console.log(`[UserContext] Fetching user data from Supabase for userId: ${session.userId}`)
-          userData = await fetchSupabaseUserData(session.userId)
-        }
-        
         if (cancelled) return
 
         if (!userData) {
@@ -178,25 +118,14 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
 
     loadUserData()
 
-    // Listen for storage changes (when session is updated in another tab or same tab)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "mock_auth_session") {
-        loadUserData()
-      }
-    }
-
-    // Also listen for custom storage events (for same-tab updates)
     const handleCustomStorageChange = () => {
       loadUserData()
     }
 
-    window.addEventListener("storage", handleStorageChange)
-    // Listen for custom event dispatched when session changes in same tab
     window.addEventListener("session-changed", handleCustomStorageChange)
 
     return () => {
       cancelled = true
-      window.removeEventListener("storage", handleStorageChange)
       window.removeEventListener("session-changed", handleCustomStorageChange)
     }
   }, [authAdapter])

@@ -8,7 +8,6 @@ import { RowVariants } from "./row-variants"
 import { EntitySelected } from "./entity-selected"
 import { DatePicker } from "./date-picker"
 import { TimePicker } from "./time-picker"
-import { getRepositoryInstances } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
@@ -19,8 +18,6 @@ import type { Organization, Profile } from "@/lib/supabase/database.types"
 // ============================================================================
 
 function isSupabaseConfigured(): boolean {
-  const useMockAuth = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-  if (useMockAuth) return false
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   return Boolean(
@@ -134,23 +131,20 @@ export function LrToHrSetupStepContent({
           const name = preferred ? `${preferred.firstName} ${preferred.lastName ?? ""}`.trim() : ""
           if (!cancelled) setOwnerName(name || preferred?.email || "—")
         } else {
-          const repos = getRepositoryInstances()
-          const userRepo = repos.userRepository
-          if (!userRepo) {
-            setOwnerName("—")
-            return
-          }
-
-          const users = (
-            await Promise.all(photographerUserIds.map((id) => userRepo.getUserById(id)))
-          ).filter(Boolean)
+          const userResList = await Promise.all(
+            photographerUserIds.map((id) => fetch(`/api/users/${id}`).then((r) => (r.ok ? r.json() : null)))
+          )
+          const users = userResList
+            .filter(Boolean)
+            .map((data: { user?: { firstName?: string; lastName?: string; email?: string; entityId?: string } }) => data?.user)
+            .filter(Boolean) as { firstName?: string; lastName?: string; email?: string; entityId?: string }[]
 
           const preferred =
             ownerParticipant?.entityId
               ? users.find((u) => u?.entityId && u.entityId !== ownerParticipant.entityId) ?? users[0]
               : users[0]
 
-          const name = preferred ? `${preferred.firstName} ${preferred.lastName ?? ""}`.trim() : ""
+          const name = preferred ? `${preferred.firstName ?? ""} ${preferred.lastName ?? ""}`.trim() : ""
           if (!cancelled) setOwnerName(name || preferred?.email || "—")
         }
         return
@@ -166,8 +160,13 @@ export function LrToHrSetupStepContent({
         const name = await fetchOrganizationById(entityId)
         if (!cancelled) setOwnerName(name ?? "—")
       } else {
-        const repos = getRepositoryInstances()
-        const entity = await repos.entityRepository?.getEntityById(entityId)
+        const res = await fetch(`/api/organizations/${entityId}`)
+        if (!res.ok) {
+          if (!cancelled) setOwnerName("—")
+          return
+        }
+        const data = await res.json().catch(() => null)
+        const entity = data?.entity as { name?: string } | null
         if (!cancelled) setOwnerName(entity?.name ?? "—")
       }
     }

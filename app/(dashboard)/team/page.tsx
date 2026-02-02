@@ -21,18 +21,11 @@ import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import type { TeamMember } from "@/components/custom/tables"
 import { useUserContext } from "@/lib/contexts/user-context"
-import { getRepositoryInstances } from "@/lib/services"
 import { roleToLabel } from "@/lib/types"
 import { toast } from "sonner"
 import type { CreateUserPayload, User } from "@/lib/types"
 import { mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import { createTeamMemberInvitation } from "@/app/actions/team-invite"
-
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
 
 // ============================================================================
 // FILTER TYPES
@@ -85,55 +78,35 @@ export default function TeamPage() {
 
       setLoadingTeam(true)
       try {
-        if (USE_MOCK_AUTH) {
-          const { userRepository } = getRepositoryInstances()
-          if (!userRepository) {
-            setTeamMembers([])
-            return
-          }
-          const users = await userRepository.listUsersByEntityId(organizationId)
-          const mappedMembers: TeamMember[] = users.map((u) => ({
-            id: u.id,
-            name: `${u.firstName} ${u.lastName || ""}`.trim(),
-            email: u.email,
-            phone: u.phoneNumber,
-            role: roleToLabel(u.role) as TeamMember["role"],
-            collections: 0,
-            status: "Active",
-          }))
-          setTeamMembers(mappedMembers)
-        } else {
-          // Supabase: query profiles by same organization_id via API
-          const res = await fetch(`/api/organizations/${organizationId}`)
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}))
-            console.warn("Failed to load team members:", err.error || res.status)
-            setTeamMembers([])
-            return
-          }
-          const data = await res.json()
-          const users = data.teamMembers ?? []
-          const mappedMembers: TeamMember[] = users.map(
-            (u: {
-              id: string
-              firstName: string
-              lastName?: string
-              email: string
-              phoneNumber: string
-              role: string
-              status?: "Invite sent" | "Active"
-            }) => ({
-              id: u.id,
-              name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
-              email: u.email,
-              phone: u.phoneNumber ?? "",
-              role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
-              collections: 0,
-              status: u.status ?? "Active",
-            })
-          )
-          setTeamMembers(mappedMembers)
+        const res = await fetch(`/api/organizations/${organizationId}`)
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          console.warn("Failed to load team members:", err.error || res.status)
+          setTeamMembers([])
+          return
         }
+        const data = await res.json()
+        const users = data.teamMembers ?? []
+        const mappedMembers: TeamMember[] = users.map(
+          (u: {
+            id: string
+            firstName: string
+            lastName?: string
+            email: string
+            phoneNumber: string
+            role: string
+            status?: "Invite sent" | "Active"
+          }) => ({
+            id: u.id,
+            name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+            email: u.email,
+            phone: u.phoneNumber ?? "",
+            role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
+            collections: 0,
+            status: u.status ?? "Active",
+          })
+        )
+        setTeamMembers(mappedMembers)
       } catch (error) {
         console.error("Failed to load team members:", error)
         setTeamMembers([])
@@ -200,42 +173,6 @@ export default function TeamPage() {
 
     setIsCreatingMember(true)
     try {
-      if (USE_MOCK_AUTH) {
-        const repos = getRepositoryInstances()
-        if (!repos.userRepository) {
-          throw new Error("User repository not available")
-        }
-        const payload: CreateUserPayload = {
-          firstName: userData.firstName.trim(),
-          lastName: userData.lastName?.trim() || undefined,
-          email: userData.email.trim(),
-          phoneNumber: `${userData.countryCode} ${userData.phoneNumber}`.trim(),
-          countryCode: userData.countryCode,
-          role: userData.role,
-        }
-        const newUser = await repos.userRepository.createUser({
-          ...payload,
-          entityId: organizationId,
-          notes: `Team member for ${entity.name}`,
-        })
-        const allUsers = await repos.userRepository.listUsersByEntityId(organizationId)
-        const mappedMembers: TeamMember[] = allUsers.map((u) => ({
-          id: u.id,
-          name: `${u.firstName} ${u.lastName || ""}`.trim(),
-          email: u.email,
-          phone: u.phoneNumber,
-          role: roleToLabel(u.role) as TeamMember["role"],
-          collections: 0,
-          status: "Active",
-        }))
-        setTeamMembers(mappedMembers)
-        setIsNewMemberModalOpen(false)
-        toast.success("Team member added successfully", {
-          description: `${newUser.firstName} ${newUser.lastName || ""}`.trim() + " has been added to the team.",
-        })
-        return
-      }
-
       // noba* (internal org): create profile in DB first so they appear in the table, then send invitation email
       const isNobaOrg = entity.name?.trim() === "noba*"
       if (isNobaOrg) {
@@ -360,32 +297,6 @@ export default function TeamPage() {
     const name = member?.name || "this member"
 
     try {
-      if (USE_MOCK_AUTH) {
-        const repos = getRepositoryInstances()
-        if (!repos.userRepository) {
-          toast.error("Cannot remove member", { description: "User repository not available." })
-          return
-        }
-        const deleted = await repos.userRepository.deleteUser(id)
-        if (!deleted) {
-          toast.error("Member not found", { description: "The user may have already been removed." })
-          return
-        }
-        const users = await repos.userRepository.listUsersByEntityId(organizationId)
-        const mappedMembers: TeamMember[] = users.map((u) => ({
-          id: u.id,
-          name: `${u.firstName} ${u.lastName || ""}`.trim(),
-          email: u.email,
-          phone: u.phoneNumber,
-          role: roleToLabel(u.role) as TeamMember["role"],
-          collections: 0,
-          status: "Active",
-        }))
-        setTeamMembers(mappedMembers)
-        toast.success("Member removed", { description: `${name} has been removed from the team.` })
-        return
-      }
-
       const res = await fetch(`/api/organizations/${organizationId}/members/${id}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -466,29 +377,15 @@ export default function TeamPage() {
       setMemberUserData(null)
       setLoadingMemberData(true)
       try {
-        if (USE_MOCK_AUTH) {
-          const repos = getRepositoryInstances()
-          if (!repos.userRepository) {
-            setMemberUserData(null)
-            return
-          }
-          const u = await repos.userRepository.getUserById(memberId)
-          if (u && userContext.user?.entityId && u.entityId === userContext.user.entityId) {
-            setMemberUserData(u)
-          } else {
-            setMemberUserData(null)
-          }
-        } else {
-          const res = await fetch(`/api/users/${memberId}`)
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            if (res.status === 404) setMemberUserData(null)
-            else toast.error("Failed to load member", { description: data.error ?? "Unknown error" })
-            return
-          }
-          const data = await res.json()
-          setMemberUserData(data.user)
+        const res = await fetch(`/api/users/${memberId}`)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          if (res.status === 404) setMemberUserData(null)
+          else toast.error("Failed to load member", { description: data.error ?? "Unknown error" })
+          return
         }
+        const data = await res.json()
+        setMemberUserData(data.user)
       } catch (error) {
         console.error("Failed to load member:", error)
         toast.error("Failed to load member", {
@@ -535,65 +432,42 @@ export default function TeamPage() {
             : null,
         }
         const payload = mapFormToUpdateUserPayload(formDataForPayload, profilePictureUrl)
-        if (USE_MOCK_AUTH) {
-          const repos = getRepositoryInstances()
-          if (!repos.userRepository) throw new Error("User repository not available")
-          const updated = await repos.userRepository.updateUser(selectedMemberId, payload)
-          if (updated) {
-            const users = await repos.userRepository.listUsersByEntityId(userContext.user.entityId!)
-            const mapped: TeamMember[] = users.map((u) => ({
-              id: u.id,
-              name: `${u.firstName} ${u.lastName || ""}`.trim(),
-              email: u.email,
-              phone: u.phoneNumber,
-              role: roleToLabel(u.role) as TeamMember["role"],
-              collections: 0,
-              status: "Active",
-            }))
-            setTeamMembers(mapped)
-            handleCloseUserDetailModal()
-            toast.success("User updated", {
-              description: `${updated.firstName} ${updated.lastName ?? ""}`.trim() + " has been updated.",
-            })
-          } else throw new Error("User not found")
-        } else {
-          const res = await fetch(`/api/users/${selectedMemberId}`, {
+        const res = await fetch(`/api/users/${selectedMemberId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           })
-          const data = await res.json().catch(() => ({}))
-          if (!res.ok) throw new Error(data.error ?? "Failed to update user")
-          const listRes = await fetch(`/api/organizations/${userContext.user.entityId}`)
-          if (listRes.ok) {
-            const listData = await listRes.json()
-            const users = listData.teamMembers ?? []
-            const mapped: TeamMember[] = users.map(
-              (u: {
-                id: string
-                firstName: string
-                lastName?: string
-                email: string
-                phoneNumber: string
-                role: string
-                status?: "Invite sent" | "Active"
-              }) => ({
-                id: u.id,
-                name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
-                email: u.email,
-                phone: u.phoneNumber ?? "",
-                role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
-                collections: 0,
-                status: u.status ?? "Active",
-              })
-            )
-            setTeamMembers(mapped)
-          }
-          handleCloseUserDetailModal()
-          toast.success("User updated", {
-            description: `${data.user?.firstName ?? ""} ${data.user?.lastName ?? ""}`.trim() + " has been updated.",
-          })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? "Failed to update user")
+        const listRes = await fetch(`/api/organizations/${userContext.user.entityId}`)
+        if (listRes.ok) {
+          const listData = await listRes.json()
+          const users = listData.teamMembers ?? []
+          const mapped: TeamMember[] = users.map(
+            (u: {
+              id: string
+              firstName: string
+              lastName?: string
+              email: string
+              phoneNumber: string
+              role: string
+              status?: "Invite sent" | "Active"
+            }) => ({
+              id: u.id,
+              name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim(),
+              email: u.email,
+              phone: u.phoneNumber ?? "",
+              role: roleToLabel(u.role as "admin" | "editor" | "viewer") as TeamMember["role"],
+              collections: 0,
+              status: u.status ?? "Active",
+            })
+          )
+          setTeamMembers(mapped)
         }
+        handleCloseUserDetailModal()
+        toast.success("User updated", {
+          description: `${data.user?.firstName ?? ""} ${data.user?.lastName ?? ""}`.trim() + " has been updated.",
+        })
       } catch (error) {
         console.error("Failed to update user:", error)
         toast.error("Failed to update user", {

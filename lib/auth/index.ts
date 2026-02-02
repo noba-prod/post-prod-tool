@@ -1,25 +1,13 @@
 /**
  * Auth adapter factory
- * Switch between Mock and Supabase based on environment variable
- * 
- * IMPORTANT: This adapter is client-side only (uses localStorage)
- * For server-side, use Supabase adapter when implemented
+ * Uses Supabase for authentication. Supabase configuration is required.
  */
 "use client"
 
-import { mockAuthAdapter } from "./mock-adapter"
 import { supabaseAuthAdapter } from "./supabase-adapter"
 import type { AuthAdapter } from "./adapter"
 
-// Use mock adapter if MOCK_AUTH is enabled, otherwise use Supabase
-// For now, we'll use mock by default for development
-const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== "false"
-
 export function getAuthAdapter(): AuthAdapter {
-  if (USE_MOCK_AUTH) {
-    return mockAuthAdapter
-  }
-
   return supabaseAuthAdapter
 }
 
@@ -30,4 +18,3 @@ export function useAuthAdapter(): AuthAdapter {
 
 // For backward compatibility, but only use in client components
 export const authAdapter = typeof window !== "undefined" ? getAuthAdapter() : null as any
-
