@@ -78,12 +78,14 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
   const [isNobaProducerUser, setIsNobaProducerUser] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
 
-  // Load user and entity data when session changes
+  // Load user and entity data when session changes.
+  // When refetching due to "session-changed" (e.g. token refresh on tab return), do not set loading
+  // so that pages depending on userContext.loading (organizations, team) don't re-run and "refresh".
   React.useEffect(() => {
     let cancelled = false
 
-    async function loadUserData() {
-      setLoading(true)
+    async function loadUserData(silent = false) {
+      if (!silent) setLoading(true)
 
       try {
         const session = await authAdapter.getSession()
@@ -128,15 +130,15 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
 
     loadUserData()
 
-    const handleCustomStorageChange = () => {
-      loadUserData()
+    const handleSessionChanged = () => {
+      loadUserData(true)
     }
 
-    window.addEventListener("session-changed", handleCustomStorageChange)
+    window.addEventListener("session-changed", handleSessionChanged)
 
     return () => {
       cancelled = true
-      window.removeEventListener("session-changed", handleCustomStorageChange)
+      window.removeEventListener("session-changed", handleSessionChanged)
     }
   }, [authAdapter])
 

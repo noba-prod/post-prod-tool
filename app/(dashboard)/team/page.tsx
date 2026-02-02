@@ -67,15 +67,26 @@ export default function TeamPage() {
     search: "",
   })
 
-  // Load team members: from profiles table by organization_id (Supabase) or repository (mock)
+  // Auth check only (stable deps like collections — no refetch on tab return)
   useEffect(() => {
-    async function loadTeamMembers() {
-      const organizationId = userContext.user?.entityId
-      if (!organizationId) {
-        setTeamMembers([])
+    const checkSession = async () => {
+      const currentSession = await authAdapter.getSession()
+      if (!currentSession) {
+        router.push("/auth/login")
         return
       }
+      setSession(currentSession)
+      setLoading(false)
+    }
+    checkSession()
+  }, [router, authAdapter])
 
+  // Load team members when session and organization are ready (no userContext.loading — avoid refetch on tab return)
+  useEffect(() => {
+    const organizationId = userContext.user?.entityId
+    if (!session || !organizationId) return
+
+    async function loadTeamMembers() {
       setLoadingTeam(true)
       try {
         const res = await fetch(`/api/organizations/${organizationId}`)
@@ -115,24 +126,8 @@ export default function TeamPage() {
       }
     }
 
-    if (!userContext.loading && userContext.user) {
-      loadTeamMembers()
-    }
-  }, [userContext.user?.entityId, userContext.loading])
-
-  // Auth check
-  useEffect(() => {
-    const checkSession = async () => {
-      const currentSession = await authAdapter.getSession()
-      if (!currentSession) {
-        router.push("/auth/login")
-        return
-      }
-      setSession(currentSession)
-      setLoading(false)
-    }
-    checkSession()
-  }, [router, authAdapter])
+    loadTeamMembers()
+  }, [session, userContext.user?.entityId])
 
   // Handle filter changes
   const handleFilterChange = (filterId: string, value: string) => {

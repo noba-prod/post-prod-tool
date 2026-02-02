@@ -129,17 +129,7 @@ export default function OrganizationsPage() {
     }
   }, [])
 
-  // Route guard: Check if user can access Organizations section
-  useEffect(() => {
-    if (!userContext.loading && !userContext.canAccessEntities) {
-      toast.error("Access Denied", {
-        description: "You don't have access to the Organizations section. Only noba users can access this page.",
-      })
-      router.push("/collections")
-    }
-  }, [userContext.loading, userContext.canAccessEntities, router])
-
-  // Auth check and initial load
+  // Auth check only (stable deps like collections — no refetch on tab return)
   useEffect(() => {
     const checkSession = async () => {
       const currentSession = await authAdapter.getSession()
@@ -149,11 +139,7 @@ export default function OrganizationsPage() {
       }
       setSession(currentSession)
       setLoading(false)
-      
-      if (userContext.canAccessEntities) {
-        loadEntities()
-      }
-      
+
       const pendingToast = consumePendingToast()
       if (pendingToast) {
         if (pendingToast.type === "success") {
@@ -164,7 +150,23 @@ export default function OrganizationsPage() {
       }
     }
     checkSession()
-  }, [router, authAdapter, loadEntities, userContext.canAccessEntities])
+  }, [router, authAdapter])
+
+  // Route guard: redirect when user context is ready and user cannot access Organizations
+  useEffect(() => {
+    if (!userContext.loading && !userContext.canAccessEntities) {
+      toast.error("Access Denied", {
+        description: "You don't have access to the Organizations section. Only noba users can access this page.",
+      })
+      router.push("/collections")
+    }
+  }, [userContext.loading, userContext.canAccessEntities, router])
+
+  // Load entities when session and access are ready (no userContext.loading — avoid refetch on tab return)
+  useEffect(() => {
+    if (!session || !userContext.canAccessEntities) return
+    loadEntities()
+  }, [session, userContext.canAccessEntities, loadEntities])
 
   const handleFilterChange = (filterId: string, value: string) => {
     if (filterId === "type") {
