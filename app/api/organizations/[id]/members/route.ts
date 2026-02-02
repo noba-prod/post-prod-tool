@@ -76,6 +76,7 @@ export async function POST(
   if (createUserError) {
     const message = createUserError.message.toLowerCase()
     if (message.includes("already") || message.includes("exists")) {
+      // Resolve existing user: try profile first, then Auth (user may exist in Auth without a profile)
       const { data: existingProfileData } = await adminClient
         .from("profiles")
         .select("id")
@@ -83,15 +84,35 @@ export async function POST(
         .maybeSingle()
       const existingProfile = existingProfileData as Pick<Profile, "id"> | null
       userId = existingProfile?.id || null
+      if (!userId) {
+        const { data: listData } = await adminClient.auth.admin.listUsers({
+          perPage: 1000,
+          page: 1,
+        })
+        const authUser = listData?.users?.find(
+          (u) => u.email?.toLowerCase() === email
+        )
+        userId = authUser?.id ?? null
+      }
     } else {
       return NextResponse.json({ error: createUserError.message }, { status: 500 })
     }
   } else {
-    userId = createdUser.user?.id || null
+    userId = createdUser?.user?.id ?? null
   }
 
   if (!userId) {
-    return NextResponse.json({ error: "Unable to resolve user ID" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error:
+          createUserError &&
+          (String(createUserError.message).toLowerCase().includes("already") ||
+            String(createUserError.message).toLowerCase().includes("exists"))
+            ? "User with this email already exists but could not be resolved. Try a different email or contact support."
+            : "Unable to resolve user ID",
+      },
+      { status: 500 }
+    )
   }
 
   const profilePayload = {
