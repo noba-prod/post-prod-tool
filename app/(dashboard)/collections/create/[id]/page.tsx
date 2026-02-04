@@ -136,8 +136,9 @@ export default function CollectionCreatePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { id } = React.use(params)
-  // Unwrap for Next.js async request API (avoid sync dynamic API warnings)
-  React.use(searchParams)
+  const resolvedSearchParams = React.use(searchParams)
+  const stepFromUrl =
+    typeof resolvedSearchParams?.step === "string" ? resolvedSearchParams.step : undefined
   const router = useRouter()
   const [draft, setDraft] = React.useState<Awaited<
     ReturnType<ReturnType<typeof createCollectionsService>["getCollectionById"]>
@@ -173,7 +174,12 @@ export default function CollectionCreatePage({
           const nextIncomplete = steps.find((step) =>
             !isCreationStepComplete(step, d.creationData.completedBlockIds)
           )
-          setActiveStep(nextIncomplete?.stepId ?? steps[0]?.stepId ?? "participants")
+          const validStepIds = new Set(steps.map((s) => s.stepId))
+          const initialStep =
+            stepFromUrl && validStepIds.has(stepFromUrl)
+              ? stepFromUrl
+              : nextIncomplete?.stepId ?? steps[0]?.stepId ?? "participants"
+          setActiveStep(initialStep as CreationBlockId)
         }
       }
       setLoading(false)
@@ -181,7 +187,7 @@ export default function CollectionCreatePage({
     return () => {
       cancelled = true
     }
-  }, [id, service])
+  }, [id, service, stepFromUrl])
 
   React.useEffect(() => {
     if (!draft || !id) return
@@ -218,6 +224,21 @@ export default function CollectionCreatePage({
       })
     }
   }, [draft?.id, id, draft?.participants, draft?.config?.clientEntityId, draft?.config?.ownerUserId, service])
+
+  // Persist "point of origin" for breadcrumb when user opens Create new (e.g. Photo Lab) from this collection
+  React.useEffect(() => {
+    if (!draft || !id) return
+    const path = `/collections/create/${id}`
+    const label = draft.config.name?.trim() || "Collection"
+    try {
+      sessionStorage.setItem(
+        "create-flow-origin",
+        JSON.stringify({ path, label })
+      )
+    } catch {
+      // ignore
+    }
+  }, [draft?.id, id, draft?.config?.name])
 
   React.useEffect(() => {
     if (!draft) {

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { NavBar } from "../nav-bar"
 import { SideBar } from "../side-bar"
@@ -27,6 +27,43 @@ import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft, mapFormToU
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
 import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
+
+const CREATE_FLOW_ORIGIN_KEY = "create-flow-origin"
+
+/** Map "from" pathname to breadcrumb section (label + href). Used so the first crumb is where the user came from. */
+function getBreadcrumbFromSection(fromPath: string): { label: string; href: string } | null {
+  const path = fromPath.startsWith("/") ? fromPath : `/${fromPath}`
+  if (path === "/organizations" || path.startsWith("/organizations/")) {
+    return { label: "Players", href: "/organizations" }
+  }
+  // /collections/create/[id] is handled via sessionStorage (collection name as label, back to that collection)
+  if (path.startsWith("/collections/create/")) {
+    return null
+  }
+  if (path === "/collections" || path.startsWith("/collections")) {
+    return { label: "Collections", href: "/collections" }
+  }
+  if (path === "/team" || path.startsWith("/team/")) {
+    return { label: "Team", href: "/team" }
+  }
+  return null
+}
+
+/** When "from" is a collection create page, get label from sessionStorage (set by collection create page). */
+function getCollectionCreateOrigin(fromPath: string): { label: string; href: string } | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = sessionStorage.getItem(CREATE_FLOW_ORIGIN_KEY)
+    if (!raw) return null
+    const { path, label } = JSON.parse(raw) as { path?: string; label?: string }
+    if (path && label && path === fromPath) {
+      return { label, href: path }
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
 
 interface CreationBlockParticipant {
   role: string
@@ -138,9 +175,34 @@ export function CreationTemplate({
   className,
 }: CreationTemplateProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const authAdapter = useAuthAdapter()
   const userContext = useUserContext()
   const navConfig = useNavigationConfig(userContext.entity?.type ?? null)
+
+  // First breadcrumb: "where user came from" (point of origin) when ?from= is present
+  const effectiveBreadcrumbs = React.useMemo(() => {
+    const fromParam = searchParams.get("from")
+    if (fromParam && breadcrumbs.length > 0) {
+      try {
+        const decoded = decodeURIComponent(fromParam)
+        // When coming from collection create flow: use collection name as label and link back to that collection
+        if (decoded.startsWith("/collections/create/")) {
+          const origin = getCollectionCreateOrigin(decoded)
+          if (origin) {
+            return [{ label: origin.label, href: origin.href }, ...breadcrumbs.slice(1)]
+          }
+        }
+        const section = getBreadcrumbFromSection(decoded)
+        if (section) {
+          return [{ label: section.label, href: section.href }, ...breadcrumbs.slice(1)]
+        }
+      } catch {
+        // ignore invalid from param
+      }
+    }
+    return breadcrumbs
+  }, [searchParams, breadcrumbs])
 
   // State for profile edit modal
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false)
@@ -353,10 +415,10 @@ export function CreationTemplate({
         <div className="border-border px-6 py-8 relative z-10 shrink-0">
           <Breadcrumb>
             <BreadcrumbList>
-              {breadcrumbs.map((crumb, index) => (
+              {effectiveBreadcrumbs.map((crumb, index) => (
                 <React.Fragment key={index}>
                   <BreadcrumbItem>
-                    {crumb.href && index < breadcrumbs.length - 1 ? (
+                    {crumb.href && index < effectiveBreadcrumbs.length - 1 ? (
                       <BreadcrumbLink
                         href={crumb.href}
                         onClick={(e) => {
@@ -370,7 +432,7 @@ export function CreationTemplate({
                       <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
                     )}
                   </BreadcrumbItem>
-                  {index < breadcrumbs.length - 1 && <BreadcrumbSeparator />}
+                  {index < effectiveBreadcrumbs.length - 1 && <BreadcrumbSeparator />}
                 </React.Fragment>
               ))}
             </BreadcrumbList>

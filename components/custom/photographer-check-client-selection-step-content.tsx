@@ -7,7 +7,7 @@ import { Forms } from "./forms"
 import { RowVariants } from "./row-variants"
 import { EntitySelected } from "./entity-selected"
 import { DatePicker } from "./date-picker"
-import { TimePicker } from "./time-picker"
+import { SlotPicker } from "./slot-picker"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
@@ -139,7 +139,7 @@ export function PhotographerCheckClientSelectionStepContent({
             disabled={constraint?.isEnabled === false}
             helperText={constraint?.reason}
           />
-          <TimePicker
+          <SlotPicker
             label="Time"
             value={c.photographerCheckDueTime}
             onValueChange={(v) =>

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -108,6 +108,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
   } = config
 
   const router = useRouter()
+  const pathname = usePathname()
   const [commandOpen, setCommandOpen] = React.useState(false)
   const [selfPhotographerModalOpen, setSelfPhotographerModalOpen] = React.useState(false)
   const [newCollectionModalOpen, setNewCollectionModalOpen] = React.useState(false)
@@ -159,16 +160,17 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
       return
     }
 
-    // If option has a route, navigate to it
+    // If option has a route, navigate to it (pass current path so breadcrumb "back" shows where user came from)
     if (option.route) {
-      router.push(option.route)
+      const from = pathname ? encodeURIComponent(pathname) : ""
+      router.push(from ? `${option.route}?from=${from}` : option.route)
       return
     }
 
     if (optionId === "self-photographer") {
       setSelfPhotographerModalOpen(true)
     }
-  }, [router, isNobaProducerUser])
+  }, [router, pathname, isNobaProducerUser])
 
   // Handle self-photographer form submit
   const handleSelfPhotographerSubmit = React.useCallback(async (formData: SelfPhotographerFormData) => {

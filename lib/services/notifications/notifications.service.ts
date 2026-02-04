@@ -543,8 +543,8 @@ export class NotificationsService implements INotificationsService {
   }
 
   /**
-   * Map semantic time presets (from TimePicker) to HH:mm for Date parsing.
-   * Matches components/custom/time-picker.tsx and lib/domain/collections/workflow.ts.
+   * Map semantic time presets (from SlotPicker) to HH:mm for Date parsing.
+   * Matches components/custom/slot-picker.tsx and lib/domain/collections/workflow.ts.
    */
   private static readonly TIME_PRESET_TO_HHMM: Record<string, string> = {
     morning: "09:00",
@@ -559,7 +559,7 @@ export class NotificationsService implements INotificationsService {
 
   /**
    * Parse a deadline from date and time fields.
-   * Handles semantic time presets (morning, midday, end-of-day) from the TimePicker.
+   * Handles semantic time presets (morning, midday, end-of-day) from the SlotPicker.
    * Date field may be "YYYY-MM-DD" or "YYYY-MM-DD end-of-day" (preset stored in date column).
    * Returns null if the string cannot be parsed or the result is an invalid date.
    */

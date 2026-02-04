@@ -7,7 +7,7 @@ import { Titles } from "./titles"
 import { RowVariants } from "./row-variants"
 import { OptionPicker } from "./option-picker"
 import { DatePicker } from "./date-picker"
-import { TimePicker } from "./time-picker"
+import { SlotPicker } from "./slot-picker"
 import { SwitchList } from "./switch-list"
 import { Input } from "@/components/ui/input"
 import { CheckSelection } from "./check-selection"
@@ -374,7 +374,7 @@ export function NewCollectionModal({
                 }
                 placeholder="Select date"
               />
-              <TimePicker
+              <SlotPicker
                 label="Publishing time"
                 value={publishingTime}
                 onValueChange={setPublishingTime}

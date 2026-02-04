@@ -35,7 +35,7 @@ export interface ParticipantsModalProps {
   title?: string
   /** Modal subtitle (Figma) */
   subtitle?: string
-  /** When true (noba / is_internal=TRUE), show action bar with primary "Edit participantes"; when false, no action bar */
+  /** When true (noba / is_internal=TRUE), show action bar with primary "Edit participants"; when false, no action bar */
   isInternalUser?: boolean
   /** Primary action label in footer (only when isInternalUser) */
   primaryLabel?: string
@@ -72,7 +72,7 @@ export function ParticipantsModal({
   isInternalUser = false,
   title = "Participants",
   subtitle = "Get always at a hand the information of the main players in this collection and the support of our team.",
-  primaryLabel = "Edit participantes",
+  primaryLabel = "Edit participants",
   secondaryLabel = "Close",
   showPrimary,
   showSecondary,
@@ -108,7 +108,7 @@ export function ParticipantsModal({
           <h3 className="text-lg font-semibold text-card-foreground">
             Noba team
           </h3>
-          <div className="flex flex-wrap gap-4">
+          <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
             {nobaTeam.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No internal users in this collection.
@@ -123,7 +123,6 @@ export function ParticipantsModal({
                   imageUrl={user.imageUrl}
                   email={user.email}
                   phone={user.phone}
-                  className="w-[237px] shrink-0"
                 />
               ))
             )}
@@ -135,7 +134,7 @@ export function ParticipantsModal({
           <h3 className="text-lg font-semibold text-card-foreground">
             Main players
           </h3>
-          <div className="flex flex-wrap gap-4">
+          <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
             {mainPlayersIndividuals.map((user, i) => (
               <ParticipantsCard
                 key={`main-ind-${i}-${user.name}`}
@@ -145,7 +144,6 @@ export function ParticipantsModal({
                 imageUrl={user.imageUrl}
                 email={user.email}
                 phone={user.phone}
-                className="w-[237px] shrink-0"
               />
             ))}
             {mainPlayersEntities.map((entity, i) => (
@@ -156,7 +154,6 @@ export function ParticipantsModal({
                 imageUrl={entity.imageUrl}
                 managerName={entity.managerName}
                 teamMembersCount={entity.teamMembersCount}
-                className="w-[237px] shrink-0"
               />
             ))}
             {mainPlayersIndividuals.length === 0 && mainPlayersEntities.length === 0 && (

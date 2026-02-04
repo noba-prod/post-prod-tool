@@ -43,7 +43,7 @@ import {
 } from "@/components/custom/demos"
 import { PhoneInput } from "@/components/custom/phone-input"
 import { DatePicker } from "@/components/custom/date-picker"
-import { TimePicker } from "@/components/custom/time-picker"
+import { SlotPicker } from "@/components/custom/slot-picker"
 import { OptionPicker } from "@/components/custom/option-picker"
 import { EntitySelected } from "@/components/custom/entity-selected"
 import { StepDetails } from "@/components/custom/step-details"
@@ -527,19 +527,19 @@ Gap: 16px | Padding: 40px`,
     ),
   },
   {
-    id: "time-picker",
-    name: "time-picker",
+    id: "slot-picker",
+    name: "slot-picker",
     title: "Time Picker",
     description: "Time slot selector dropdown. Wraps Shadcn Select components with predefined time slots. Fully keyboard accessible.",
     demo: (
       <div className="flex flex-col gap-4 w-full">
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">Default</p>
-          <TimePicker className="max-w-[176px]" />
+          <SlotPicker className="max-w-[176px]" />
         </div>
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">Disabled</p>
-          <TimePicker disabled className="max-w-[176px]" />
+          <SlotPicker disabled className="max-w-[176px]" />
         </div>
       </div>
     ),

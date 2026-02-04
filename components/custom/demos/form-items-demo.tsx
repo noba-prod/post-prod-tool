@@ -3,7 +3,7 @@
 import * as React from "react"
 import { PhoneInput } from "../phone-input"
 import { DatePicker } from "../date-picker"
-import { TimePicker } from "../time-picker"
+import { SlotPicker } from "../slot-picker"
 import { OptionPicker } from "../option-picker"
 import { EntitySelected } from "../entity-selected"
 import { SwitchList } from "../switch-list"
@@ -108,7 +108,7 @@ export function FormItemsDemo() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Default (interactive)</p>
-            <TimePicker
+            <SlotPicker
               value={time}
               onValueChange={setTime}
               className="max-w-[176px]"
@@ -116,7 +116,7 @@ export function FormItemsDemo() {
           </div>
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Disabled</p>
-            <TimePicker
+            <SlotPicker
               disabled
               className="max-w-[176px]"
             />

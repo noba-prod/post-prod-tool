@@ -6,7 +6,7 @@ import { Titles } from "./titles"
 import { RowVariants } from "./row-variants"
 import { Forms } from "./forms"
 import { DatePicker } from "./date-picker"
-import { TimePicker } from "./time-picker"
+import { TimePicker } from "@/components/ui/date-picker"
 import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -152,7 +152,7 @@ export function ShootingSetupStepContent({
                 onValueChange={(v) =>
                   onShootingSetupChange({ shootingStartTime: v })
                 }
-                placeholder="Morning - 09:00am"
+                placeholder="00:00:00"
                 disabled={startConstraint?.isEnabled === false}
               />
             </RowVariants>
@@ -179,7 +179,7 @@ export function ShootingSetupStepContent({
                 onValueChange={(v) =>
                   onShootingSetupChange({ shootingEndTime: v })
                 }
-                placeholder="Midday - 12:00pm"
+                placeholder="00:00:00"
                 disabled={endConstraint?.isEnabled === false}
               />
             </RowVariants>

@@ -51,12 +51,14 @@ import { NativeSelect } from "@/components/ui/native-select"
 import { Empty } from "@/components/ui/empty"
 
 // Icons
+import { format } from "date-fns"
 import { 
   AlertCircle, 
   Bell, 
   Bold, 
   Calendar as CalendarIcon, 
   Check, 
+  ChevronDownIcon,
   ChevronRight, 
   ChevronsUpDown,
   Cloud,
@@ -78,6 +80,58 @@ import {
   Users,
   Inbox,
 } from "lucide-react"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+
+/**
+ * Shadcn "Time Picker" variant — exact copy from https://ui.shadcn.com/docs/components/radix/date-picker
+ * A date picker component with a time input field for selecting a time.
+ */
+function DatePickerTime() {
+  const [open, setOpen] = React.useState(false)
+  const [date, setDate] = React.useState<Date | undefined>(undefined)
+
+  return (
+    <FieldGroup className="mx-auto max-w-xs flex-row">
+      <Field>
+        <FieldLabel htmlFor="date-picker-optional">Date</FieldLabel>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              id="date-picker-optional"
+              className="w-32 justify-between font-normal"
+            >
+              {date ? format(date, "PPP") : "Select date"}
+              <ChevronDownIcon />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={date}
+              captionLayout="dropdown"
+              defaultMonth={date}
+              onSelect={(date) => {
+                setDate(date)
+                setOpen(false)
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+      </Field>
+      <Field className="w-32">
+        <FieldLabel htmlFor="time-picker-optional">Time</FieldLabel>
+        <Input
+          type="time"
+          id="time-picker-optional"
+          step={1}
+          defaultValue="10:30:00"
+          className="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+        />
+      </Field>
+    </FieldGroup>
+  )
+}
 
 export interface ComponentEntry {
   id: string
@@ -440,20 +494,8 @@ export const shadcnRegistry: ComponentEntry[] = [
     id: "date-picker",
     name: "date-picker",
     title: "Date Picker",
-    description: "A date picker component with range and presets. Combines calendar with popover for intuitive date selection experiences.",
-    demo: (
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="outline" className="w-[240px] justify-start text-left font-normal">
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            Pick a date
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar mode="single" />
-        </PopoverContent>
-      </Popover>
-    ),
+    description: "A date picker component with a time input field for selecting a time. Time Picker variant from shadcn/ui: Popover + Calendar for date, native Input type=\"time\" for time.",
+    demo: <DatePickerTime />,
   },
   {
     id: "dialog",

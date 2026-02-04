@@ -6,7 +6,7 @@ import { Forms } from "./forms"
 import { RowVariants } from "./row-variants"
 import { EntitySelected } from "./entity-selected"
 import { DatePicker } from "./date-picker"
-import { TimePicker } from "./time-picker"
+import { SlotPicker } from "./slot-picker"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
@@ -187,7 +187,7 @@ export function CheckFinalsStepContent({
                 disabled={photographerConstraint?.isEnabled === false}
                 helperText={photographerConstraint?.reason}
               />
-              <TimePicker
+              <SlotPicker
                 label="Time"
                 value={c.checkFinalsPhotographerDueTime}
                 onValueChange={(v) =>
@@ -226,7 +226,7 @@ export function CheckFinalsStepContent({
                 disabled={clientConstraint?.isEnabled === false}
                 helperText={clientConstraint?.reason}
               />
-              <TimePicker
+              <SlotPicker
                 label="Time"
                 value={c.clientFinalsDeadlineTime}
                 onValueChange={(v) =>

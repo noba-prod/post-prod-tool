@@ -139,7 +139,7 @@ export default function CollectionViewPage({
     }
   }, [collection])
 
-  // Load participants for modal: noba team (individuals), main players (photographer as individuals, client/lab/edition/handprint as entities)
+  // Load participants for modal: noba team (individuals), main players (photographer as individual, client/agency/lab/edition/handprint as entities; order: photographer, client, then rest)
   React.useEffect(() => {
     if (!collection) {
       setParticipantsNobaTeam([])
@@ -154,20 +154,25 @@ export default function CollectionViewPage({
     const producer = participants.find((p) => p.role === "producer")
     const nobaUserIds = config.nobaUserIds ?? producer?.userIds ?? []
     const photographer = participants.find((p) => p.role === "photographer")
-    const photographerUserIds = photographer?.userIds ?? []
+    const agencyParticipant = participants.find((p) => p.role === "agency")
+    const agencyUserIds = new Set(agencyParticipant?.userIds ?? [])
+    const photographerUserIds = (photographer?.userIds ?? []).filter(
+      (uid) => !agencyUserIds.has(uid)
+    )
 
-    const entityRoles = [
-      { role: "client" as const, entityId: config.clientEntityId },
-      { role: "lab" as const, participant: participants.find((p) => p.role === "lab") },
-      { role: "edition_studio" as const, participant: participants.find((p) => p.role === "edition_studio") },
-      { role: "handprint_lab" as const, participant: participants.find((p) => p.role === "handprint_lab") },
-    ]
+    // Main players order: 1. Photographer (individual), 2. Client (entity), 3. Agency (entity, if invited),
+    // 4. Photo Lab (entity, if invited), 5. Hand print lab (entity, if invited), 6. Retouch studio (entity, if invited)
+    const clientId = config.clientEntityId?.trim() ? config.clientEntityId : undefined
+    const agencyId = config.hasAgency && photographer?.entityId ? photographer.entityId : undefined
+    const labParticipant = participants.find((p) => p.role === "lab")
+    const handprintLabParticipant = participants.find((p) => p.role === "handprint_lab")
+    const editionStudioParticipant = participants.find((p) => p.role === "edition_studio")
     const entityIds: string[] = []
-    if (entityRoles[0].entityId) entityIds.push(entityRoles[0].entityId)
-    for (const r of entityRoles.slice(1)) {
-      const eid = r.participant?.entityId
-      if (eid) entityIds.push(eid)
-    }
+    if (clientId) entityIds.push(clientId)
+    if (agencyId) entityIds.push(agencyId)
+    if (labParticipant?.entityId) entityIds.push(labParticipant.entityId)
+    if (handprintLabParticipant?.entityId) entityIds.push(handprintLabParticipant.entityId)
+    if (editionStudioParticipant?.entityId) entityIds.push(editionStudioParticipant.entityId)
 
     async function load() {
       const userToIndividual = (u: {
@@ -200,25 +205,54 @@ export default function CollectionViewPage({
         )
         .filter(Boolean) as ParticipantsModalIndividual[]
 
-      const photoUsers = await Promise.all(
-        photographerUserIds.map((uid) =>
-          fetch(`/api/users/${uid}`).then((r) => (r.ok ? r.json() : null))
-        )
-      )
+      const [photoUsers, orgResponses] = await Promise.all([
+        Promise.all(
+          photographerUserIds.map((uid) =>
+            fetch(`/api/users/${uid}`).then((r) => (r.ok ? r.json() : null))
+          )
+        ),
+        Promise.all(
+          entityIds.map((eid) =>
+            fetch(`/api/organizations/${eid}`).then((r) => (r.ok ? r.json() : null))
+          )
+        ),
+      ])
       if (cancelled) return
+
+      const agencyIndex = agencyId ? entityIds.indexOf(agencyId) : -1
+      const agencyResponse =
+        agencyIndex >= 0 && agencyIndex < orgResponses.length
+          ? (orgResponses[agencyIndex] as {
+              teamMembers?: Array<{ id?: string }>
+            } | null)
+          : null
+      const agencyTeamMemberIds = new Set(
+        (agencyResponse?.teamMembers ?? []).map((m) => m.id).filter(Boolean) as string[]
+      )
+
       const mainIndividuals: ParticipantsModalIndividual[] = photoUsers
-        .map((data: { user?: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string; profilePictureUrl?: string } } | null) =>
-          data?.user ? userToIndividual(data.user) : null
+        .filter(
+          (data: { user?: { id?: string } } | null) =>
+            data?.user?.id && !agencyTeamMemberIds.has(data.user.id)
+        )
+        .map(
+          (data: {
+            user?: {
+              id?: string
+              firstName?: string
+              lastName?: string
+              email?: string
+              phoneNumber?: string
+              profilePictureUrl?: string
+            }
+          } | null) =>
+            data?.user ? userToIndividual(data.user) : null
         )
         .filter(Boolean) as ParticipantsModalIndividual[]
 
-      const orgResponses = await Promise.all(
-        entityIds.map((eid) => fetch(`/api/organizations/${eid}`).then((r) => (r.ok ? r.json() : null)))
-      )
-      if (cancelled) return
       const entities: ParticipantsModalEntity[] = orgResponses
         .map((data: {
-          entity?: { name?: string }
+          entity?: { name?: string; profilePictureUrl?: string | null }
           adminUser?: { firstName?: string; lastName?: string }
           teamMembers?: unknown[]
         } | null) => {
@@ -226,10 +260,15 @@ export default function CollectionViewPage({
           const managerName = data.adminUser
             ? [data.adminUser.firstName, data.adminUser.lastName].filter(Boolean).join(" ").trim() || undefined
             : undefined
+          const imageUrl =
+            data.entity?.profilePictureUrl && data.entity.profilePictureUrl.trim() !== ""
+              ? data.entity.profilePictureUrl
+              : undefined
           return {
             entityName: data.entity.name,
             managerName: managerName ?? undefined,
             teamMembersCount: Array.isArray(data.teamMembers) ? data.teamMembers.length : undefined,
+            imageUrl,
           }
         })
         .filter(Boolean) as ParticipantsModalEntity[]

@@ -4,7 +4,7 @@ import * as React from "react"
 import { Forms } from "../forms"
 import { RowVariants, SlotPlaceholder } from "../row-variants"
 import { DatePicker } from "../date-picker"
-import { TimePicker } from "../time-picker"
+import { SlotPicker } from "../slot-picker"
 import { OptionPicker } from "../option-picker"
 import { EntitySelected } from "../entity-selected"
 import { InformativeToast } from "../informative-toast"
@@ -89,7 +89,7 @@ export function FormsDemo() {
               date={date1}
               onDateChange={setDate1}
             />
-            <TimePicker
+            <SlotPicker
               label="Time slot"
               value={time1}
               onValueChange={setTime1}
@@ -133,7 +133,7 @@ export function FormsDemo() {
                   date={date1}
                   onDateChange={setDate1}
                 />
-                <TimePicker
+                <SlotPicker
                   label="Estimated time"
                   value={time1}
                   onValueChange={setTime1}
@@ -154,7 +154,7 @@ export function FormsDemo() {
                   date={date2}
                   onDateChange={setDate2}
                 />
-                <TimePicker
+                <SlotPicker
                   label="Estimated time"
                   value={time2}
                   onValueChange={setTime2}
@@ -242,7 +242,7 @@ export function FormsDemo() {
                   date={date1}
                   onDateChange={setDate1}
                 />
-                <TimePicker
+                <SlotPicker
                   label="Time slot"
                   value={time1}
                   onValueChange={setTime1}
@@ -259,7 +259,7 @@ export function FormsDemo() {
                   date={date2}
                   onDateChange={setDate2}
                 />
-                <TimePicker
+                <SlotPicker
                   label="Time slot"
                   value={time2}
                   onValueChange={setTime2}

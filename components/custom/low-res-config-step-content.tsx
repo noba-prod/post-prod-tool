@@ -7,7 +7,8 @@ import { Forms } from "./forms"
 import { RowVariants } from "./row-variants"
 import { EntitySelected } from "./entity-selected"
 import { DatePicker } from "./date-picker"
-import { TimePicker } from "./time-picker"
+import { SlotPicker } from "./slot-picker"
+import { TimePicker } from "@/components/ui/date-picker"
 import { OptionPicker } from "./option-picker"
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -272,7 +273,7 @@ export function LowResConfigStepContent({
             disabled={deadlineConstraint?.isEnabled === false}
             helperText={deadlineConstraint?.reason}
           />
-          <TimePicker
+          <SlotPicker
             label="Time"
             value={c.lowResScanDeadlineTime}
             onValueChange={(v) =>
@@ -325,7 +326,7 @@ export function LowResConfigStepContent({
                       lowResShippingPickupTime: v || undefined,
                     })
                   }
-                  placeholder="Midday - 12:00pm"
+                  placeholder="00:00:00"
                 />
               </RowVariants>
             </>
@@ -359,7 +360,7 @@ export function LowResConfigStepContent({
                       lowResShippingDeliveryTime: v || undefined,
                     })
                   }
-                  placeholder="End of day - 05:00pm"
+                  placeholder="00:00:00"
                 />
               </RowVariants>
             </>

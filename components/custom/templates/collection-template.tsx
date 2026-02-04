@@ -12,9 +12,12 @@ import {
   type ParticipantsModalIndividual,
   type ParticipantsModalEntity,
 } from "../participants-modal"
+import { UserCreationForm, type UserFormData } from "../user-creation-form"
+import { EntityBasicInformationForm } from "../entity-basic-information-form"
 import { useUserContext } from "@/lib/contexts/user-context"
 import { useNavigationConfig } from "@/lib/hooks/use-navigation-config"
 import { useAuthAdapter } from "@/lib/auth"
+import { toast } from "sonner"
 import { SearchCommand } from "../search-command"
 import {
   Dialog,
@@ -25,6 +28,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
+import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
+import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
+import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
 
 // =============================================================================
 // STEP CONFIGURATION (aligned with collections-logic.md §10)
@@ -156,6 +163,12 @@ export function CollectionTemplate({
   const [openStepId, setOpenStepId] = React.useState<string | null>(null)
   const [participantsModalOpen, setParticipantsModalOpen] = React.useState(false)
   const [editCollectionDialogOpen, setEditCollectionDialogOpen] = React.useState(false)
+  const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false)
+  const [isUpdatingProfile, setIsUpdatingProfile] = React.useState(false)
+  const [isCompanyModalOpen, setIsCompanyModalOpen] = React.useState(false)
+  const [isUpdatingCompany, setIsUpdatingCompany] = React.useState(false)
+  const [companyFormData, setCompanyFormData] = React.useState<EntityBasicInformationFormData | null>(null)
+  const [isCompanyFormValid, setIsCompanyFormValid] = React.useState(false)
 
   const effectiveShowSettingsButton =
     showSettingsButton && (userContext?.isNobaUser ?? false)
@@ -172,6 +185,96 @@ export function CollectionTemplate({
       router.push("/auth/login")
     }
   }, [authAdapter, router])
+
+  const handleEditProfile = React.useCallback(() => {
+    setIsProfileModalOpen(true)
+  }, [])
+
+  const handleEditCompany = React.useCallback(() => {
+    if (userContext?.entity && isStandardEntityType(userContext.entity.type)) {
+      const formData = mapEntityToFormData(userContext.entity)
+      setCompanyFormData(formData)
+      setIsCompanyModalOpen(true)
+    }
+  }, [userContext?.entity])
+
+  const handleCompanyFormDataChange = React.useCallback((data: EntityBasicInformationFormData) => {
+    setCompanyFormData(data)
+  }, [])
+
+  const handleCompanyFormValidationChange = React.useCallback((isValid: boolean) => {
+    setIsCompanyFormValid(isValid)
+  }, [])
+
+  const handleCompanyUpdate = React.useCallback(async () => {
+    if (!userContext?.entity || !companyFormData || !isCompanyFormValid) {
+      toast.error("Please fill in all required fields")
+      return
+    }
+    setIsUpdatingCompany(true)
+    try {
+      const draft = mapFormToEntityDraft(companyFormData)
+      await updateOrganizationFromDraft(userContext.entity.id, draft)
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("session-changed"))
+      }
+      setIsCompanyModalOpen(false)
+      toast.success("Company details updated successfully", {
+        description: "Your company information has been updated.",
+      })
+    } catch (error) {
+      console.error("Failed to update company details:", error)
+      toast.error("Failed to update company details", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+      })
+    } finally {
+      setIsUpdatingCompany(false)
+    }
+  }, [userContext?.entity, companyFormData, isCompanyFormValid])
+
+  const handleProfileUpdate = React.useCallback(async (userData: UserFormData) => {
+    if (!userContext?.user) {
+      toast.error("User information not available")
+      return
+    }
+    setIsUpdatingProfile(true)
+    try {
+      let profilePictureUrl: string | undefined
+      if (userData.profilePicture) {
+        const formData = new FormData()
+        formData.append("file", userData.profilePicture)
+        const uploadRes = await fetch(`/api/users/${userContext.user.id}/profile-picture`, {
+          method: "POST",
+          body: formData,
+        })
+        const uploadData = await uploadRes.json().catch(() => ({}))
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        profilePictureUrl = uploadData.profilePictureUrl
+      }
+      const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
+      const res = await fetch(`/api/users/${userContext.user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? "Failed to update user")
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("session-changed"))
+      }
+      setIsProfileModalOpen(false)
+      toast.success("Profile updated successfully", {
+        description: "Your profile information has been updated.",
+      })
+    } catch (error) {
+      console.error("Failed to update profile:", error)
+      toast.error("Failed to update profile", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+      })
+    } finally {
+      setIsUpdatingProfile(false)
+    }
+  }, [userContext?.user])
 
   const variant =
     userContext?.navBarVariant ??
@@ -218,6 +321,9 @@ export function CollectionTemplate({
         isSelfPhotographer={userContext?.isSelfPhotographer ?? false}
         avatarSrc={userContext?.user?.profilePictureUrl || navBarProps?.avatarSrc}
         onSearch={() => setIsSearchOpen(true)}
+        onEditProfile={handleEditProfile}
+        onEditCompany={handleEditCompany}
+        onLogout={handleLogout}
       />
 
       <div className="flex flex-1 flex-col min-h-0">
@@ -298,6 +404,12 @@ export function CollectionTemplate({
         nobaTeam={participantsNobaTeam}
         mainPlayersIndividuals={participantsMainPlayersIndividuals}
         mainPlayersEntities={participantsMainPlayersEntities}
+        onPrimaryClick={() => {
+          setParticipantsModalOpen(false)
+          if (collectionId) {
+            router.push(`/collections/create/${collectionId}?step=participants`)
+          }
+        }}
         onSecondaryClick={() => setParticipantsModalOpen(false)}
       />
 
@@ -324,6 +436,55 @@ export function CollectionTemplate({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {userContext?.user && userContext?.entity && (
+        <UserCreationForm
+          open={isProfileModalOpen}
+          onOpenChange={(open) => {
+            if (!open) setIsProfileModalOpen(false)
+          }}
+          mode="edit"
+          initialUserData={userContext.user}
+          entity={{
+            type: userContext.entity.type,
+            name: userContext.entity.name,
+          }}
+          isAdminUser={false}
+          onSubmit={handleProfileUpdate}
+          onCancel={() => setIsProfileModalOpen(false)}
+          primaryLabel="Save changes"
+          secondaryLabel="Cancel"
+        />
+      )}
+
+      {userContext?.entity && companyFormData && isStandardEntityType(userContext.entity.type) && (
+        <ModalWindow
+          open={isCompanyModalOpen}
+          onOpenChange={(open) => {
+            if (!open) setIsCompanyModalOpen(false)
+          }}
+          title="Edit Company Details"
+          subtitle="Update your company's basic information"
+          primaryLabel="Save changes"
+          secondaryLabel="Cancel"
+          showSecondary={true}
+          primaryDisabled={!isCompanyFormValid || isUpdatingCompany}
+          onPrimaryClick={handleCompanyUpdate}
+          onSecondaryClick={() => setIsCompanyModalOpen(false)}
+          width="644px"
+        >
+          <div className="p-5">
+            <EntityBasicInformationForm
+              entityType={userContext.entity.type}
+              initialData={companyFormData}
+              showLocation={entityRequiresLocation(userContext.entity.type)}
+              disabled={isUpdatingCompany}
+              onDataChange={handleCompanyFormDataChange}
+              onValidationChange={handleCompanyFormValidationChange}
+            />
+          </div>
+        </ModalWindow>
+      )}
 
       {isSearchOpen && (
         <SearchCommand

@@ -6,7 +6,7 @@ import { Forms } from "./forms"
 import { RowVariants } from "./row-variants"
 import { EntitySelected } from "./entity-selected"
 import { DatePicker } from "./date-picker"
-import { TimePicker } from "./time-picker"
+import { TimePicker } from "@/components/ui/date-picker"
 import { OptionPicker } from "./option-picker"
 import { InformativeToast } from "./informative-toast"
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
@@ -239,7 +239,7 @@ export function DropoffPlanStepContent({
                 onValueChange={(v) =>
                   onDropoffPlanChange({ dropoff_shipping_time: v })
                 }
-                placeholder="Select time"
+                placeholder="00:00:00"
                 disabled={shippingConstraint?.isEnabled === false}
               />
             </RowVariants>
@@ -273,7 +273,7 @@ export function DropoffPlanStepContent({
                 onValueChange={(v) =>
                   onDropoffPlanChange({ dropoff_delivery_time: v })
                 }
-                placeholder="Select time"
+                placeholder="00:00:00"
                 disabled={deliveryConstraint?.isEnabled === false}
               />
             </RowVariants>

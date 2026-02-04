@@ -73,12 +73,12 @@ export function ParticipantsCard({
         {variant === "default" && (
           <>
             {line1 != null && line1 !== "" && (
-              <span className="text-sm font-normal text-muted-foreground">
+              <span className="truncate text-sm font-normal text-muted-foreground">
                 {line1}
               </span>
             )}
             {line2 != null && line2 !== "" && (
-              <span className="text-sm font-normal text-muted-foreground">
+              <span className="truncate text-sm font-normal text-muted-foreground">
                 {line2}
               </span>
             )}
@@ -88,12 +88,12 @@ export function ParticipantsCard({
         {variant === "individual" && (
           <>
             {email != null && email !== "" && (
-              <span className="text-sm font-normal text-muted-foreground">
+              <span className="truncate text-sm font-normal text-muted-foreground">
                 {email}
               </span>
             )}
             {phone != null && phone !== "" && (
-              <span className="text-sm font-normal text-muted-foreground">
+              <span className="truncate text-sm font-normal text-muted-foreground">
                 {phone}
               </span>
             )}
@@ -103,21 +103,21 @@ export function ParticipantsCard({
         {variant === "entity" && (
           <>
             {managerName != null && managerName !== "" && (
-              <div className="flex items-center gap-1 text-sm">
-                <span className="font-normal text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-1 text-sm">
+                <span className="shrink-0 font-normal text-muted-foreground">
                   Manager:
                 </span>
-                <span className="font-normal text-foreground/90">
+                <span className="min-w-0 truncate font-normal text-foreground/90">
                   {managerName}
                 </span>
               </div>
             )}
             {teamMembersCount != null && (
-              <div className="flex items-center gap-1 text-sm">
-                <span className="font-normal text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-1 text-sm">
+                <span className="shrink-0 font-normal text-muted-foreground">
                   Team members:
                 </span>
-                <span className="font-normal text-foreground/90">
+                <span className="min-w-0 truncate font-normal text-foreground/90">
                   {String(teamMembersCount)}
                 </span>
               </div>

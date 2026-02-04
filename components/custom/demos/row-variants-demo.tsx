@@ -4,7 +4,7 @@ import * as React from "react"
 import { RowVariants, SlotPlaceholder } from "../row-variants"
 import { PhoneInput } from "../phone-input"
 import { DatePicker } from "../date-picker"
-import { TimePicker } from "../time-picker"
+import { SlotPicker } from "../slot-picker"
 import { OptionPicker } from "../option-picker"
 import { EntitySelected } from "../entity-selected"
 import { SwitchList } from "../switch-list"
@@ -84,7 +84,7 @@ export function RowVariantsDemo() {
             date={date}
             onDateChange={setDate}
           />
-          <TimePicker
+          <SlotPicker
             label="Time slot"
             value={time}
             onValueChange={setTime}
@@ -119,7 +119,7 @@ export function RowVariantsDemo() {
             entityType="@zara"
             value="Spain"
           />
-          <TimePicker
+          <SlotPicker
             label="Delivery"
             value={time}
             onValueChange={setTime}

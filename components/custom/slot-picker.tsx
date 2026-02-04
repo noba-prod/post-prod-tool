@@ -24,7 +24,7 @@ interface TimeSlot {
   label: string
 }
 
-interface TimePickerProps {
+interface SlotPickerProps {
   /** Label text */
   label?: string
   /** Selected time value */
@@ -42,12 +42,12 @@ interface TimePickerProps {
 }
 
 /**
- * Time Picker component - Dropdown for selecting predefined time slots
- * 
+ * Slot Picker component - Dropdown for selecting predefined time slots
+ *
  * Wraps Shadcn Popover components.
  * Fully keyboard accessible.
  */
-export function TimePicker({
+export function SlotPicker({
   label = "Time",
   value,
   onValueChange,
@@ -55,7 +55,7 @@ export function TimePicker({
   timeSlots = [...DEFAULT_TIME_SLOTS],
   disabled = false,
   className,
-}: TimePickerProps) {
+}: SlotPickerProps) {
   const [open, setOpen] = React.useState(false)
   const [triggerWidth, setTriggerWidth] = React.useState<number | null>(null)
   const triggerRef = React.useRef<HTMLButtonElement>(null)
