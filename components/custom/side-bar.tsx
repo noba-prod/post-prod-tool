@@ -83,7 +83,7 @@ interface SideBarCreateCollectionProps extends SideBarBaseProps {
     name: string
     status?: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
     client?: string
-    deadline?: string
+    publishingDate?: string
     lastUpdate?: string
   }
   /** Array of completed item ids (for stepper) */
@@ -92,10 +92,12 @@ interface SideBarCreateCollectionProps extends SideBarBaseProps {
   deleteLabel?: string
   /** Call when Settings (collection config) icon is clicked */
   onSettingsCollection?: () => void
-  /** Call when Publish collection is clicked */
+  /** Call when Publish collection / Save changes is clicked */
   onPublish?: () => void
   /** Disable Publish button until draft is complete */
   publishDisabled?: boolean
+  /** Primary button label (e.g. "Publish" or "Save changes") */
+  publishLabel?: string
 }
 
 type SideBarProps =
@@ -193,7 +195,7 @@ export function SideBar(props: SideBarProps) {
   }
 
   if (type === "create-collection") {
-    const { items, collection, completedItems = [], deleteLabel = "Delete collection", onDelete, onSettingsCollection, onPublish, publishDisabled = true } = props
+    const { items, collection, completedItems = [], deleteLabel = "Delete collection", onDelete, onSettingsCollection, onPublish, publishDisabled = true, publishLabel = "Publish" } = props
     return (
       <div className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}>
         {/* Content - scrollable area */}
@@ -244,7 +246,7 @@ export function SideBar(props: SideBarProps) {
               onClick={onPublish}
               disabled={publishDisabled}
             >
-              Publish
+              {publishLabel}
             </Button>
           </div>
         </div>

@@ -106,7 +106,7 @@ export default function ClientCreationPage() {
       <CreationTemplate
         title="Create new client"
         breadcrumbs={[
-          { label: "Organizations", href: "/organizations" },
+          { label: "Players", href: "/organizations" },
           { label: "Create new client" },
         ]}
         sidebarItems={[

@@ -106,7 +106,7 @@ export default function HandPrintLabCreationPage() {
       <CreationTemplate
         title="Create new hand print lab"
         breadcrumbs={[
-          { label: "Organizations", href: "/organizations" },
+          { label: "Players", href: "/organizations" },
           { label: "Create new hand print lab" },
         ]}
         sidebarItems={[

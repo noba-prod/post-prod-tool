@@ -66,7 +66,7 @@ async function fetchUsersFromSupabase(organizationId: string): Promise<{ value: 
 
 /**
  * New Collection modal — setup form per Figma (node 345-24895) and collections-logic §3.2.
- * Sections: Basic information, Low res to High-res.
+ * Sections: Basic information, Type of shoot.
  * Configures: name, client, manager, agency/lab/handprint/edition flags, deadline.
  * On submit emits CollectionConfig for createDraft.
  */
@@ -108,8 +108,8 @@ export function NewCollectionModal({
   const [name, setName] = React.useState("")
   const [clientEntityId, setClientEntityId] = React.useState("")
   const [reference, setReference] = React.useState("")
-  const [deadlineDate, setDeadlineDate] = React.useState("")
-  const [timeValue, setTimeValue] = React.useState("")
+  const [publishingDate, setPublishingDate] = React.useState("")
+  const [publishingTime, setPublishingTime] = React.useState("")
   const [hasAgency, setHasAgency] = React.useState(false)
   const [digitalOrHandprint, setDigitalOrHandprint] = React.useState<
     "digital" | "handprint" | null
@@ -125,8 +125,8 @@ export function NewCollectionModal({
       setName(initialConfig.name ?? "")
       setClientEntityId(initialConfig.clientEntityId ?? "")
       setReference(initialConfig.reference ?? "")
-      setDeadlineDate(initialConfig.clientFinalsDeadline ?? "")
-      setTimeValue(initialConfig.clientFinalsDeadlineTime ?? "")
+      setPublishingDate(initialConfig.publishingDate ?? "")
+      setPublishingTime(initialConfig.publishingTime ?? "")
       setHasAgency(initialConfig.hasAgency ?? false)
       setDigitalOrHandprint(
         initialConfig.hasHandprint === true
@@ -142,8 +142,8 @@ export function NewCollectionModal({
       setName("")
       setClientEntityId("")
       setReference("")
-      setDeadlineDate("")
-      setTimeValue("")
+      setPublishingDate("")
+      setPublishingTime("")
       setHasAgency(false)
       setDigitalOrHandprint(null)
       setHandprintIsDifferentLab(false)
@@ -246,8 +246,8 @@ export function NewCollectionModal({
       hasHandprint,
       handprintIsDifferentLab: hasHandprint ? handprintIsDifferentLab : false,
       hasEditionStudio,
-      clientFinalsDeadline: deadlineDate.trim() || undefined,
-      clientFinalsDeadlineTime: timeValue.trim() || undefined,
+      publishingDate: publishingDate.trim() || undefined,
+      publishingTime: publishingTime.trim() || undefined,
     }
     const clientName = clientOptions.find((c) => c.id === cid)?.name
     onSubmit(config, clientName)
@@ -262,8 +262,8 @@ export function NewCollectionModal({
     hasHandprint,
     handprintIsDifferentLab,
     hasEditionStudio,
-    deadlineDate,
-    timeValue,
+    publishingDate,
+    publishingTime,
     clientOptions,
     onSubmit,
   ])
@@ -276,7 +276,6 @@ export function NewCollectionModal({
 
   const switchItems = React.useMemo(() => {
     const items: { id: string; label: string; checked: boolean; disabled?: boolean }[] = [
-      { id: "edition", label: "Photographer request edition", checked: hasEditionStudio, disabled: isEditMode },
       { id: "agency", label: "Photographer collaborates with photo agency", checked: hasAgency, disabled: isEditMode },
     ]
     if (hasHandprint) {
@@ -287,6 +286,7 @@ export function NewCollectionModal({
         disabled: isEditMode,
       })
     }
+    items.push({ id: "edition", label: "Photographer requests edition", checked: hasEditionStudio, disabled: isEditMode })
     return items
   }, [hasEditionStudio, hasAgency, hasHandprint, handprintIsDifferentLab, isEditMode])
 
@@ -356,28 +356,28 @@ export function NewCollectionModal({
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
                     placeholder="ZK029291"
-                    className="w-full text-muted-foreground"
+                    className="w-full"
                   />
                 </FieldContent>
               </Field>
             </RowVariants>
             <RowVariants variant="2">
               <DatePicker
-                label="Deadline"
+                label="Publishing date"
                 date={
-                  deadlineDate
-                    ? new Date(deadlineDate + "T12:00:00")
+                  publishingDate
+                    ? new Date(publishingDate + "T12:00:00")
                     : undefined
                 }
                 onDateChange={(d) =>
-                  setDeadlineDate(d ? format(d, "yyyy-MM-dd") : "")
+                  setPublishingDate(d ? format(d, "yyyy-MM-dd") : "")
                 }
-                placeholder="December 14, 2025"
+                placeholder="Select date"
               />
               <TimePicker
-                label="Time"
-                value={timeValue}
-                onValueChange={setTimeValue}
+                label="Publishing time"
+                value={publishingTime}
+                onValueChange={setPublishingTime}
                 placeholder="End of day - 05:00pm"
               />
             </RowVariants>
@@ -385,14 +385,14 @@ export function NewCollectionModal({
 
           <Separator className="w-full" />
 
-          {/* Low res to High-res — disabled in edit mode to avoid changing workflow config */}
+          {/* Type of shoot — disabled in edit mode to avoid changing workflow config */}
           <div
             className={cn(
               "flex flex-col gap-4 w-full",
               isEditMode && "opacity-30 pointer-events-none"
             )}
           >
-            <Titles type="form" title="Low res to High-res" showSubtitle={false} />
+            <Titles type="form" title="Type of shoot" showSubtitle={false} />
             <RowVariants variant="2">
               <CheckSelection
                 label="Digital"
@@ -405,7 +405,7 @@ export function NewCollectionModal({
                 }
               />
               <CheckSelection
-                label="Hand print"
+                label="Analog"
                 selected={digitalOrHandprint === "handprint"}
                 status={isEditMode ? "disabled" : "default"}
                 onClick={() =>

@@ -27,6 +27,8 @@ interface DatePickerProps {
   disabled?: boolean
   /** Minimum selectable date (disables dates before this); ISO date string or Date */
   minDate?: Date | string
+  /** Maximum selectable date (disables dates after this); ISO date string or Date */
+  maxDate?: Date | string
   /** Helper text shown below the picker (e.g. chronology reason) */
   helperText?: string
   /** Date format string (date-fns format) */
@@ -48,6 +50,7 @@ export function DatePicker({
   placeholder = "Select date",
   disabled = false,
   minDate: minDateProp,
+  maxDate: maxDateProp,
   helperText,
   dateFormat = "PPP",
   className,
@@ -60,6 +63,13 @@ export function DatePicker({
     const d = typeof minDateProp === "string" ? new Date(minDateProp + "T12:00:00") : minDateProp
     return Number.isNaN(d.getTime()) ? undefined : startOfDay(d)
   }, [minDateProp])
+
+  // Max date (e.g. photographer check must be before LR to HR)
+  const chronologyMax = React.useMemo(() => {
+    if (!maxDateProp) return undefined
+    const d = typeof maxDateProp === "string" ? new Date(maxDateProp + "T12:00:00") : maxDateProp
+    return Number.isNaN(d.getTime()) ? undefined : startOfDay(d)
+  }, [maxDateProp])
 
   // Effective min: past dates always disabled; if chronology says "after X", use the later of today and X
   const today = startOfDay(new Date())
@@ -122,7 +132,10 @@ export function DatePicker({
               onDateChange?.(newDate)
               setOpen(false)
             }}
-            disabled={{ before: effectiveMinDate }}
+            disabled={{
+              before: effectiveMinDate,
+              ...(chronologyMax && { after: chronologyMax }),
+            }}
             defaultMonth={defaultMonth}
             initialFocus
           />

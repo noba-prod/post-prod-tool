@@ -9,6 +9,7 @@ import { ShootingSetupStepContent } from "@/components/custom/shooting-setup-ste
 import { DropoffPlanStepContent } from "@/components/custom/dropoff-plan-step-content"
 import { LowResConfigStepContent } from "@/components/custom/low-res-config-step-content"
 import { PhotoSelectionStepContent } from "@/components/custom/photo-selection-step-content"
+import { PhotographerCheckClientSelectionStepContent } from "@/components/custom/photographer-check-client-selection-step-content"
 import { LrToHrSetupStepContent } from "@/components/custom/lr-to-hr-setup-step-content"
 import { EditionConfigStepContent } from "@/components/custom/edition-config-step-content"
 import { CheckFinalsStepContent } from "@/components/custom/check-finals-step-content"
@@ -101,6 +102,7 @@ const STEP_LABELS: Record<CreationBlockId, string> = {
   photographer_selection_config: "Photographer selection",
   client_selection_config: "Client selection",
   photo_selection: "Photo selection",
+  photographer_check_client_selection: "Photographer check client selection",
   lr_to_hr_setup: "LR to HR setup",
   handprint_high_res_config: "LR to HR setup",
   edition_config: "Pre-check & Edition",
@@ -148,6 +150,8 @@ export default function CollectionCreatePage({
   const [isDeleting, setIsDeleting] = React.useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = React.useState(false)
   const [isSavingSettings, setIsSavingSettings] = React.useState(false)
+  const [saveChangesDialogOpen, setSaveChangesDialogOpen] = React.useState(false)
+  const [isSavingChanges, setIsSavingChanges] = React.useState(false)
   const { user } = useUserContext()
   const [participantSummaries, setParticipantSummaries] = React.useState<
     { role: string; name: string }[]
@@ -437,6 +441,16 @@ export default function CollectionCreatePage({
     [draft, id, service]
   )
 
+  const handlePhotographerCheckChange = React.useCallback(
+    (patch: Partial<Pick<CollectionConfig, "photographerCheckDueDate" | "photographerCheckDueTime">>) => {
+      if (!draft || !id) return
+      service.updateCollection(id, { config: patch }).then((updated) => {
+        if (updated) setDraft(updated)
+      })
+    },
+    [draft, id, service]
+  )
+
   const handleLrToHrSetupChange = React.useCallback(
     (patch: Partial<Pick<CollectionConfig, "lrToHrDueDate" | "lrToHrDueTime">>) => {
       if (!draft || !id) return
@@ -494,7 +508,7 @@ export default function CollectionCreatePage({
     [draft, id, service, setActiveStepHandler]
   )
 
-  /** Publish collection (sidebar and block primary CTA). Disabled until draft and Check Finals block are complete. */
+  /** Publish collection (sidebar and block primary CTA). Disabled until draft and Check Finals block are complete. Only used when NOT in edition mode. */
   const handlePublish = React.useCallback(() => {
     if (
       !draft ||
@@ -504,6 +518,30 @@ export default function CollectionCreatePage({
       return
     setPublishDialogOpen(true)
   }, [draft])
+
+  /** Edition mode: open Save changes confirmation dialog. */
+  const handleSaveChanges = React.useCallback(() => {
+    setSaveChangesDialogOpen(true)
+  }, [])
+
+  /** Edition mode: confirm save changes, update collection, redirect to view mode. */
+  const handleConfirmSaveChanges = React.useCallback(async () => {
+    if (!draft || !id || isSavingChanges) return
+    setIsSavingChanges(true)
+    try {
+      await service.updateCollection(id, {
+        config: draft.config,
+        participants: draft.participants,
+      })
+      toast.success("Changes saved.")
+      setSaveChangesDialogOpen(false)
+      router.push(`/collections/${id}`)
+    } catch (err) {
+      toast.error("Failed to save changes.")
+    } finally {
+      setIsSavingChanges(false)
+    }
+  }, [draft, id, service, router, isSavingChanges])
 
   const handleConfirmPublish = React.useCallback(async () => {
     if (
@@ -617,6 +655,9 @@ export default function CollectionCreatePage({
     },
     [id, draft, service]
   )
+
+  // Edition mode: collection is already published (accessed via Settings → Edit collection). Must be before blocks useMemo.
+  const isEditionMode = Boolean(draft && draft.status !== "draft")
 
   const blocks = React.useMemo(() => {
     if (!draft || steps.length === 0) return []
@@ -758,11 +799,20 @@ export default function CollectionCreatePage({
               chronologyConstraints={chronology.byBlockId}
             />
           ) : isLrToHrStep ? (
-            <LrToHrSetupStepContent
-              draft={draft}
-              onLrToHrSetupChange={handleLrToHrSetupChange}
-              chronologyConstraints={chronology.byBlockId}
-            />
+            <div className="flex flex-col gap-5 w-full">
+              {draft.config.hasHandprint && (
+                <PhotographerCheckClientSelectionStepContent
+                  draft={draft}
+                  onPhotographerCheckChange={handlePhotographerCheckChange}
+                  chronologyConstraints={chronology.byBlockId}
+                />
+              )}
+              <LrToHrSetupStepContent
+                draft={draft}
+                onLrToHrSetupChange={handleLrToHrSetupChange}
+                chronologyConstraints={chronology.byBlockId}
+              />
+            </div>
           ) : isEditionConfig ? (
             <EditionConfigStepContent
               draft={draft}
@@ -778,14 +828,16 @@ export default function CollectionCreatePage({
           ) : (
             PLACEHOLDER
           ),
-        primaryLabel: isLast ? "Publish collection" : "Next",
+        primaryLabel: isLast ? (isEditionMode ? "Save changes" : "Publish collection") : "Next",
         onPrimaryClick: isLast
-          ? handlePublish
+          ? (isEditionMode ? handleSaveChanges : handlePublish)
           : nextStepId
             ? () => handleNextClick(stepId, nextStepId)
             : undefined,
         primaryDisabled: isLast
-          ? !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
+          ? isEditionMode
+            ? false
+            : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
           : !isCreationStepContentComplete(draft, stepId),
         secondaryLabel: isFirst ? undefined : "Previous",
         onSecondaryClick: isFirst
@@ -796,7 +848,19 @@ export default function CollectionCreatePage({
         onEdit: () => setActiveStepHandler(stepId),
       }
     })
-  }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries])
+  }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleSaveChanges, isEditionMode, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handlePhotographerCheckChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries])
+
+  // Map domain status to UI status for sidebar badge (draft | upcoming | in-progress | completed | canceled)
+  const collectionStatusForUI = React.useMemo((): "draft" | "upcoming" | "in-progress" | "completed" | "canceled" => {
+    if (!draft) return "draft"
+    if (isEditionMode) {
+      if (draft.status === "in_progress") return "in-progress"
+      if (draft.status === "upcoming") return "upcoming"
+      if (draft.status === "completed") return "completed"
+      if (draft.status === "canceled") return "canceled"
+    }
+    return "draft"
+  }, [draft, isEditionMode])
 
   // Derive published status for right card preview (must run before any early return to keep hooks order stable)
   const derivedStatus = React.useMemo(() => {
@@ -869,22 +933,29 @@ export default function CollectionCreatePage({
     <>
       <CreationTemplate
         title={draft.config.name || "Create collection"}
-        breadcrumbs={[
-          { label: "Collections", href: "/collections" },
-          { label: draft.config.name || "Create collection" },
-        ]}
+        breadcrumbs={
+          isEditionMode
+            ? [
+                { label: "Collection Detail", href: `/collections/${id}` },
+                { label: `Edit '${draft.config.name || "Collection"}'` },
+              ]
+            : [
+                { label: "Collections", href: "/collections" },
+                { label: draft.config.name || "Create collection" },
+              ]
+        }
         sidebarVariant="create-collection"
         collectionSummary={{
           name: draft.config.name || "Create collection",
-          status: "draft",
+          status: collectionStatusForUI,
           client: participantSummaries.find((p) => p.role === "Client")?.name ?? "—",
-          deadline: draft.config.clientFinalsDeadline
-            ? new Date(draft.config.clientFinalsDeadline + "T12:00:00").toLocaleDateString("en-US", {
+          publishingDate: draft.config.publishingDate
+            ? new Date(draft.config.publishingDate + "T12:00:00").toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
                 year: "numeric",
               })
-            : "TBD",
+            : undefined,
           lastUpdate: draft.updatedAt,
         }}
         sidebarItems={sidebarItems}
@@ -895,10 +966,11 @@ export default function CollectionCreatePage({
         onSidebarItemClick={(stepId) => setActiveStep(stepId as CreationBlockId)}
         onDeleteCollection={handleDeleteCollection}
         onSettingsCollection={handleSettingsCollection}
-        onPublishCollection={handlePublish}
+        onPublishCollection={isEditionMode ? handleSaveChanges : handlePublish}
         publishCollectionDisabled={
-          !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
+          isEditionMode ? false : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
         }
+        publishCollectionLabel={isEditionMode ? "Save changes" : "Publish"}
         blocks={blocks}
       />
       <PublishCollectionDialog
@@ -957,6 +1029,34 @@ export default function CollectionCreatePage({
         onSubmit={handleSettingsSubmit}
         isSubmitting={isSavingSettings}
       />
+
+      {/* Edition mode: Save changes confirmation */}
+      <Dialog open={saveChangesDialogOpen} onOpenChange={setSaveChangesDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save changes?</DialogTitle>
+            <DialogDescription>
+              Making these changes means that all participants have accepted new deadlines and conditions.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => setSaveChangesDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="lg"
+              onClick={handleConfirmSaveChanges}
+              disabled={isSavingChanges}
+            >
+              {isSavingChanges ? "Saving..." : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

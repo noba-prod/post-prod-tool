@@ -14,6 +14,10 @@ import {
   canUserEditStep,
 } from "@/lib/domain/collections"
 import type { StepId, UserForPermission, CollectionDraft } from "@/lib/domain/collections"
+import type {
+  ParticipantsModalIndividual,
+  ParticipantsModalEntity,
+} from "@/components/custom/participants-modal"
 
 /**
  * Maps view-mode steps (with status and deadlines from collection) to CollectionTemplateStep.
@@ -62,6 +66,9 @@ export default function CollectionViewPage({
   > | null>(null)
   const [clientName, setClientName] = React.useState<string>("—")
   const [photographerName, setPhotographerName] = React.useState<string | undefined>(undefined)
+  const [participantsNobaTeam, setParticipantsNobaTeam] = React.useState<ParticipantsModalIndividual[]>([])
+  const [participantsMainPlayersIndividuals, setParticipantsMainPlayersIndividuals] = React.useState<ParticipantsModalIndividual[]>([])
+  const [participantsMainPlayersEntities, setParticipantsMainPlayersEntities] = React.useState<ParticipantsModalEntity[]>([])
 
   const service = React.useMemo(() => createCollectionsService(), [])
 
@@ -132,6 +139,113 @@ export default function CollectionViewPage({
     }
   }, [collection])
 
+  // Load participants for modal: noba team (individuals), main players (photographer as individuals, client/lab/edition/handprint as entities)
+  React.useEffect(() => {
+    if (!collection) {
+      setParticipantsNobaTeam([])
+      setParticipantsMainPlayersIndividuals([])
+      setParticipantsMainPlayersEntities([])
+      return
+    }
+    let cancelled = false
+    const config = collection.config
+    const participants = collection.participants
+
+    const producer = participants.find((p) => p.role === "producer")
+    const nobaUserIds = config.nobaUserIds ?? producer?.userIds ?? []
+    const photographer = participants.find((p) => p.role === "photographer")
+    const photographerUserIds = photographer?.userIds ?? []
+
+    const entityRoles = [
+      { role: "client" as const, entityId: config.clientEntityId },
+      { role: "lab" as const, participant: participants.find((p) => p.role === "lab") },
+      { role: "edition_studio" as const, participant: participants.find((p) => p.role === "edition_studio") },
+      { role: "handprint_lab" as const, participant: participants.find((p) => p.role === "handprint_lab") },
+    ]
+    const entityIds: string[] = []
+    if (entityRoles[0].entityId) entityIds.push(entityRoles[0].entityId)
+    for (const r of entityRoles.slice(1)) {
+      const eid = r.participant?.entityId
+      if (eid) entityIds.push(eid)
+    }
+
+    async function load() {
+      const userToIndividual = (u: {
+        firstName?: string
+        lastName?: string
+        email?: string
+        phoneNumber?: string
+        profilePictureUrl?: string
+      }): ParticipantsModalIndividual => {
+        const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || "—"
+        const initials = name !== "—" ? name.slice(0, 2).toUpperCase().replace(/\s/g, "") : undefined
+        return {
+          name,
+          email: u.email ?? undefined,
+          phone: u.phoneNumber ?? undefined,
+          imageUrl: u.profilePictureUrl,
+          initials: initials || undefined,
+        }
+      }
+
+      const nobaUsers = await Promise.all(
+        nobaUserIds.map((uid) =>
+          fetch(`/api/users/${uid}`).then((r) => (r.ok ? r.json() : null))
+        )
+      )
+      if (cancelled) return
+      const nobaTeam: ParticipantsModalIndividual[] = nobaUsers
+        .map((data: { user?: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string; profilePictureUrl?: string } } | null) =>
+          data?.user ? userToIndividual(data.user) : null
+        )
+        .filter(Boolean) as ParticipantsModalIndividual[]
+
+      const photoUsers = await Promise.all(
+        photographerUserIds.map((uid) =>
+          fetch(`/api/users/${uid}`).then((r) => (r.ok ? r.json() : null))
+        )
+      )
+      if (cancelled) return
+      const mainIndividuals: ParticipantsModalIndividual[] = photoUsers
+        .map((data: { user?: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string; profilePictureUrl?: string } } | null) =>
+          data?.user ? userToIndividual(data.user) : null
+        )
+        .filter(Boolean) as ParticipantsModalIndividual[]
+
+      const orgResponses = await Promise.all(
+        entityIds.map((eid) => fetch(`/api/organizations/${eid}`).then((r) => (r.ok ? r.json() : null)))
+      )
+      if (cancelled) return
+      const entities: ParticipantsModalEntity[] = orgResponses
+        .map((data: {
+          entity?: { name?: string }
+          adminUser?: { firstName?: string; lastName?: string }
+          teamMembers?: unknown[]
+        } | null) => {
+          if (!data?.entity?.name) return null
+          const managerName = data.adminUser
+            ? [data.adminUser.firstName, data.adminUser.lastName].filter(Boolean).join(" ").trim() || undefined
+            : undefined
+          return {
+            entityName: data.entity.name,
+            managerName: managerName ?? undefined,
+            teamMembersCount: Array.isArray(data.teamMembers) ? data.teamMembers.length : undefined,
+          }
+        })
+        .filter(Boolean) as ParticipantsModalEntity[]
+
+      if (!cancelled) {
+        setParticipantsNobaTeam(nobaTeam)
+        setParticipantsMainPlayersIndividuals(mainIndividuals)
+        setParticipantsMainPlayersEntities(entities)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [collection])
+
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -183,13 +297,11 @@ export default function CollectionViewPage({
       showPhotographerName={!!photographerName}
       showParticipantsButton={true}
       showSettingsButton={true}
-      onParticipants={() => {
-        // TODO: open participants modal or navigate
-      }}
-      onSettings={() => {
-        // TODO: open settings
-      }}
+      collectionId={id}
       steps={steps}
+      participantsNobaTeam={participantsNobaTeam}
+      participantsMainPlayersIndividuals={participantsMainPlayersIndividuals}
+      participantsMainPlayersEntities={participantsMainPlayersEntities}
       navBarProps={{
         variant: "noba",
         userName: "Martin Becerra",

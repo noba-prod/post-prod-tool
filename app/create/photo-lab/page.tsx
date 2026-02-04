@@ -106,7 +106,7 @@ export default function PhotoLabCreationPage() {
       <CreationTemplate
         title="Create new lab"
         breadcrumbs={[
-          { label: "Organizations", href: "/organizations" },
+          { label: "Players", href: "/organizations" },
           { label: "Create new lab" },
         ]}
         sidebarItems={[

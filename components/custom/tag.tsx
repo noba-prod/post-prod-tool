@@ -269,7 +269,7 @@ export function ShootingTypeTag({
   type = "digital",
   className,
 }: ShootingTypeTagProps) {
-  const label = type === "handprint" ? "Handprint" : "Digital"
+  const label = type === "handprint" ? "Analog" : "Digital"
   return (
     <span
       className={cn(

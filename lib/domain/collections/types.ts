@@ -31,6 +31,7 @@ export const STEP_IDS = [
   "low_res_scanning",
   "photographer_selection",
   "client_selection",
+  "photographer_check_client_selection",
   "handprint_high_res",
   "edition_request",
   "final_edits",
@@ -52,6 +53,7 @@ export const CREATION_BLOCK_IDS = [
   "photographer_selection_config",
   "client_selection_config",
   "photo_selection", // UI step "Photo selection" — requiredBlocks: [photographer_selection_config, client_selection_config]
+  "photographer_check_client_selection", // Hand print only: photographer validates client selection before LR→HR
   "lr_to_hr_setup",
   "handprint_high_res_config",
   "edition_config",
@@ -91,10 +93,14 @@ export interface CollectionConfig {
   hasEditionStudio: boolean
   /** Shooting date (key date) */
   shootingDate?: string
-  /** Client finals deadline (key date) — from New Collection modal; editable in Check Finals step */
+  /** Client finals deadline (key date) — set in Check Finals step only */
   clientFinalsDeadline?: string
-  /** Client finals deadline time — from New Collection modal; editable in Check Finals step */
+  /** Client finals deadline time — set in Check Finals step only */
   clientFinalsDeadlineTime?: string
+  /** Publishing date — from New Collection modal (optional) */
+  publishingDate?: string
+  /** Publishing time — from New Collection modal (optional) */
+  publishingTime?: string
   // Shooting setup (DB-aligned, per Figma node 697-1729404)
   shootingStartDate?: string
   shootingStartTime?: string
@@ -131,6 +137,9 @@ export interface CollectionConfig {
   photoSelectionPhotographerDueTime?: string
   photoSelectionClientDueDate?: string
   photoSelectionClientDueTime?: string
+  // Photographer check client selection (Hand print only; Figma 791-60709 — before LR→HR)
+  photographerCheckDueDate?: string
+  photographerCheckDueTime?: string
   // LR to HR setup (Figma node 712-1735600; collections-logic §10.6 — lab sends high-res selection to photographer)
   lrToHrDueDate?: string
   lrToHrDueTime?: string

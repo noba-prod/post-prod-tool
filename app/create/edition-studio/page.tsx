@@ -106,7 +106,7 @@ export default function EditionStudioCreationPage() {
       <CreationTemplate
         title="Create new Retouch/Post Studio"
         breadcrumbs={[
-          { label: "Organizations", href: "/organizations" },
+          { label: "Players", href: "/organizations" },
           { label: "Create new Retouch/Post Studio" },
         ]}
         sidebarItems={[

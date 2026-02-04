@@ -588,7 +588,7 @@ export default function OrganizationDetailPage() {
             onClick={() => router.push("/organizations")}
             className="mt-4 px-4 py-2 text-sm font-medium text-primary hover:underline"
           >
-            Back to Organizations
+            Back to Players
           </button>
         </div>
       </div>
@@ -617,7 +617,7 @@ export default function OrganizationDetailPage() {
             onClick={() => router.push("/organizations")}
             className="mt-4 px-4 py-2 text-sm font-medium text-primary hover:underline"
           >
-            Back to Organizations
+            Back to Players
           </button>
         </div>
       </div>
@@ -629,7 +629,7 @@ export default function OrganizationDetailPage() {
     <>
       <ViewTemplate
         breadcrumbs={[
-          { label: "Organizations", href: "/organizations" },
+          { label: "Players", href: "/organizations" },
           { label: entity.entity.name },
         ]}
         sections={sections}

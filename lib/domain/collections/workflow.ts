@@ -132,6 +132,7 @@ export function computeCreationTemplate(
   })
 
   // 6. LR to HR setup — digital path uses lr_to_hr_setup; handprint uses handprint_high_res_config
+  // (Hand print: photographer check client selection form is inside this block, not a separate step)
   if (config.hasHandprint) {
     steps.push({
       stepId: "handprint_high_res_config",
@@ -225,19 +226,9 @@ export function isDraftComplete(draft: CollectionDraft): boolean {
     if (!presentRoles.has(role)) return false
   }
 
-  // Each required participant must have at least one entity/user assigned (same rules as isParticipantsStepComplete)
-  const getParticipant = (role: ParticipantRole) =>
-    draft.participants.find((p) => p.role === role)
-  for (const role of requiredRoles) {
-    const p = getParticipant(role)
-    if (role === "producer") {
-      if ((p?.userIds?.length ?? 0) < 1) return false
-    } else if (role === "client") {
-      if (!((p?.entityId ?? draft.config.clientEntityId) ?? "").trim()) return false
-    } else {
-      if (!(p?.entityId ?? "").trim()) return false
-    }
-  }
+  // Each required participant must satisfy same rules as isParticipantsStepComplete
+  // (entity where applicable, users where applicable, at least one user with edit permission)
+  if (!isParticipantsStepComplete(draft)) return false
 
   return true
 }
@@ -254,9 +245,22 @@ function getRequiredParticipantRoles(config: CollectionConfig): ParticipantRole[
 }
 
 // =============================================================================
+// PARTICIPANT HAS EDIT PERMISSION — At least one user with edit permission
+// =============================================================================
+
+function hasAtLeastOneUserWithEditPermission(
+  p: { userIds?: string[]; editPermissionByUserId?: Record<string, boolean> } | undefined
+): boolean {
+  if (!p?.userIds?.length) return false
+  const editBy = p.editPermissionByUserId ?? {}
+  return p.userIds.some((id) => editBy[id] === true)
+}
+
+// =============================================================================
 // IS PARTICIPANTS STEP COMPLETE (collections-logic §4 — Participants block)
-// True when all required participant entities are set and member rules hold.
-// Used to toggle "participants" in completedBlockIds.
+// True when all required participant entities are set, each has at least one user,
+// and each has at least one user with edit permission. Used to toggle "participants"
+// in completedBlockIds and to enable/disable Next.
 // =============================================================================
 
 export function isParticipantsStepComplete(draft: CollectionDraft): boolean {
@@ -266,41 +270,45 @@ export function isParticipantsStepComplete(draft: CollectionDraft): boolean {
 
   const getParticipant = (role: ParticipantRole) =>
     participants.find((p) => p.role === role)
-  
-  // Check if a role has the required data
+
+  // Check if a role has the required data (entity where applicable + users + at least one with edit permission)
   const isRoleFilled = (role: ParticipantRole): boolean => {
     const p = getParticipant(role)
-    
-    // Producer role: requires at least one user (no entityId needed)
+
+    // Producer: at least one user and at least one with edit permission
     if (role === "producer") {
-      return (p?.userIds?.length ?? 0) > 0
+      return (p?.userIds?.length ?? 0) > 0 && hasAtLeastOneUserWithEditPermission(p)
     }
-    
-    // Client role: can use entityId from participant or config
+
+    // Client: entity only (no user/edit-permission requirement)
     if (role === "client") {
       return ((p?.entityId ?? config.clientEntityId) ?? "").trim().length > 0
     }
-    
-    // Other roles: require entityId
+
+    // Lab, handprint_lab, edition_studio: entityId + at least one user with edit permission
+    if (role === "lab" || role === "handprint_lab" || role === "edition_studio") {
+      if (!(p?.entityId ?? "").trim()) return false
+      return (p?.userIds?.length ?? 0) > 0 && hasAtLeastOneUserWithEditPermission(p)
+    }
+
+    // Photographer: handled below with extra rules
+    if (role === "photographer") {
+      if (!config.hasAgency) {
+        return (p?.userIds?.length ?? 0) > 0 && hasAtLeastOneUserWithEditPermission(p)
+      }
+      return (
+        !!(p?.entityId ?? "").trim() &&
+        (p?.userIds?.length ?? 0) > 0 &&
+        hasAtLeastOneUserWithEditPermission(p)
+      )
+    }
+
     return (p?.entityId ?? "").trim().length > 0
   }
 
-  // Check all required roles are filled
+  // Check all required roles are filled (including users + edit permission where applicable)
   for (const role of requiredRoles) {
     if (!isRoleFilled(role)) return false
-  }
-
-  // Additional photographer validation
-  const photographer = getParticipant("photographer")
-  const photographerUserIds = photographer?.userIds ?? []
-
-  if (!config.hasAgency) {
-    // Without agency: need at least 1 photographer user
-    if (photographerUserIds.length < 1) return false
-  } else {
-    // With agency: need agency entityId + at least 1 photographer user
-    if (!(photographer?.entityId?.trim())) return false
-    if (photographerUserIds.length < 1) return false
   }
 
   return true
@@ -350,8 +358,13 @@ export function isCreationStepContentComplete(
     }
 
     case "lr_to_hr_setup":
-    case "handprint_high_res_config": {
       return !!c.lrToHrDueDate?.trim()
+    case "handprint_high_res_config": {
+      // Hand print: block includes photographer check form + LR to HR form; both required
+      const hasPhotographerCheck =
+        !!c.photographerCheckDueDate?.trim() && !!c.photographerCheckDueTime?.trim()
+      const hasLrToHr = !!c.lrToHrDueDate?.trim()
+      return hasPhotographerCheck && hasLrToHr
     }
 
     case "edition_config": {
@@ -407,6 +420,8 @@ export function getStepOwner(
       return ["photographer", producer]
     case "client_selection":
       return ["client", producer]
+    case "photographer_check_client_selection":
+      return ["photographer", producer]
     case "handprint_high_res":
       return config.handprintIsDifferentLab
         ? (["handprint_lab", producer] as ParticipantRole[])
@@ -545,7 +560,19 @@ function getOrderedDateSlots(
         })
         break
       case "lr_to_hr_setup":
+        slots.push({
+          key: step.stepId,
+          dateKey: "lrToHrDueDate",
+          timeKey: "lrToHrDueTime",
+        })
+        break
       case "handprint_high_res_config":
+        // Photographer check form is inside this block; add its slot first for chronology
+        slots.push({
+          key: "photographer_check_client_selection",
+          dateKey: "photographerCheckDueDate",
+          timeKey: "photographerCheckDueTime",
+        })
         slots.push({
           key: step.stepId,
           dateKey: "lrToHrDueDate",

@@ -273,7 +273,7 @@ export interface ViewTemplateProps {
  */
 export function ViewTemplate({
   breadcrumbs = [
-    { label: "Organizations", href: "/organizations" },
+    { label: "Players", href: "/organizations" },
     { label: "View Entity" },
   ],
   sections,

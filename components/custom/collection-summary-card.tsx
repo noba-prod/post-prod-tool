@@ -2,29 +2,21 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
+import { CollectionStatusTag } from "./tag"
 import { Separator } from "@/components/ui/separator"
 
 interface CollectionSummaryCardProps {
   /** Collection name (e.g., "Kids Summer'25") */
   name: string
-  /** Collection status badge (e.g., "draft", "upcoming", "in-progress") */
+  /** Collection status (design system CollectionStatusTag: draft, upcoming, in-progress, completed, canceled) */
   status?: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
   /** Client name */
   client?: string
-  /** Deadline date */
-  deadline?: string
+  /** Publishing date (formatted for display). Optional — collection can be created without it. */
+  publishingDate?: string
   /** Last update timestamp (ISO string) — shown as relative time */
   lastUpdate?: string
   className?: string
-}
-
-const statusColors: Record<string, string> = {
-  draft: "bg-zinc-100 text-zinc-500",
-  upcoming: "bg-blue-50 text-blue-600",
-  "in-progress": "bg-amber-50 text-amber-600",
-  completed: "bg-teal-50 text-teal-600",
-  canceled: "bg-red-50 text-red-600",
 }
 
 function formatRelativeLastUpdate(isoOrLabel: string): string {
@@ -71,7 +63,7 @@ export function CollectionSummaryCard({
   name,
   status = "draft",
   client = "Zara",
-  deadline = "Dec 14, 2025",
+  publishingDate,
   lastUpdate,
   className,
 }: CollectionSummaryCardProps) {
@@ -93,12 +85,7 @@ export function CollectionSummaryCard({
         {/* Header: Name + Status Badge */}
         <div className="flex items-center justify-between gap-2 min-w-0">
           <h3 className="text-lg font-semibold text-zinc-900 truncate min-w-0">{name}</h3>
-          <Badge 
-            variant="secondary" 
-            className={cn("text-xs font-medium", statusColors[status])}
-          >
-            {status}
-          </Badge>
+          <CollectionStatusTag type="default" status={status} className="shrink-0" />
         </div>
 
         {/* Info */}
@@ -108,8 +95,8 @@ export function CollectionSummaryCard({
             <span className="text-zinc-900">{client}</span>
           </div>
           <div className="flex items-center justify-between text-xs font-medium w-full">
-            <span className="text-zinc-500">Deadline</span>
-            <span className="text-zinc-900">{deadline}</span>
+            <span className="text-zinc-500">Publishing date</span>
+            <span className="text-zinc-900">{publishingDate ?? "—"}</span>
           </div>
         </div>
 

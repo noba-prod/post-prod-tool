@@ -275,13 +275,24 @@ Action:
 - Upload final selection URL
 - Add notes
 
+10.5b Photographer Check Client Selection (Hand print only)
+Owner:
+- Photographer
+- Producer
+
+Action:
+- Set deadline and time for the photographer to review and validate the client selection.
+- The photographer must analyse the client’s final selection and validate or give comments to the lab before the lab converts the selection to high resolution.
+- This step appears only when the collection is Hand print; it is placed before “Handprint High-Res” (LR to HR).
+- Form in creation: Due date, Time, Owner (Photographer, locked). See Figma 791-60709.
+
 10.6 Handprint High-Res
 Owner:
 - Handprint Lab (if hand-print lab differs from original lab)
 - Photo Lab (if low-res lab is the same as high-res)
 
 Action:
-- Download client selection
+- Download client selection (after photographer has validated it)
 - Convert to high-res the selected photos
 - Upload high-res URL
 - Add notes

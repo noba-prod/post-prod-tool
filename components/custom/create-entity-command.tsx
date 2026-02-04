@@ -318,7 +318,7 @@ interface CreateEntityCommandProps {
  *   onCreated={loadEntities}
  * />
  */
-export function CreateEntityCommand({
+function CreateEntityCommand({
   allowedOptions,
   onCreated,
   redirectAfterCreate = true,
@@ -419,4 +419,5 @@ export function CreateEntityCommand({
 // EXPORTS
 // =============================================================================
 
+export { CreateEntityCommand }
 export type { CreateEntityCommandProps, UseCreateEntityOptions, UseCreateEntityReturn }

@@ -35,6 +35,8 @@ export { MenuItem } from "./menu-item"
 export { ContextualMenu } from "./contextual-menu"
 export { EntitySummaryCard } from "./entity-summary-card"
 export { CollectionSummaryCard } from "./collection-summary-card"
+export { ParticipantsCard } from "./participants-card"
+export { ParticipantsModal } from "./participants-modal"
 export { SideBar } from "./side-bar"
 
 // Form item components
@@ -58,6 +60,7 @@ export { ModalWindow, ModalWindowTrigger, ModalWindowRoot } from "./modal-window
 export { UserCreationForm } from "./user-creation-form"
 export { SelfPhotographerCreationForm } from "./self-photographer-creation-form"
 export { EntityBasicInformationForm } from "./entity-basic-information-form"
+export { StepDetails } from "./step-details"
 
 // Demo components (organized in demos/ folder)
 export {

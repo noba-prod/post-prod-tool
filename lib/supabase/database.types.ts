@@ -173,6 +173,8 @@ export interface Collection {
   reference: string | null
   project_deadline: string | null
   project_deadline_time: string | null
+  publishing_date: string | null
+  publishing_time: string | null
   // Configuration Options
   low_res_to_high_res_digital: boolean
   low_res_to_high_res_hand_print: boolean
@@ -220,6 +222,9 @@ export interface Collection {
   photo_selection_photographer_preselection_time: string | null
   photo_selection_client_selection_date: string | null
   photo_selection_client_selection_time: string | null
+  // Photographer check client selection (Hand print only)
+  photographer_check_due_date: string | null
+  photographer_check_due_time: string | null
   // Low to High
   low_to_high_date: string | null
   low_to_high_time: string | null
@@ -251,6 +256,8 @@ export interface CollectionInsert {
   reference?: string | null
   project_deadline?: string | null
   project_deadline_time?: string | null
+  publishing_date?: string | null
+  publishing_time?: string | null
   low_res_to_high_res_digital?: boolean
   low_res_to_high_res_hand_print?: boolean
   photographer_request_edition?: boolean
@@ -292,6 +299,8 @@ export interface CollectionInsert {
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
   photo_selection_client_selection_time?: string | null
+  photographer_check_due_date?: string | null
+  photographer_check_due_time?: string | null
   low_to_high_date?: string | null
   low_to_high_time?: string | null
   precheck_photographer_comments_date?: string | null
@@ -315,6 +324,8 @@ export interface CollectionUpdate {
   reference?: string | null
   project_deadline?: string | null
   project_deadline_time?: string | null
+  publishing_date?: string | null
+  publishing_time?: string | null
   low_res_to_high_res_digital?: boolean
   low_res_to_high_res_hand_print?: boolean
   photographer_request_edition?: boolean
@@ -356,6 +367,8 @@ export interface CollectionUpdate {
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
   photo_selection_client_selection_time?: string | null
+  photographer_check_due_date?: string | null
+  photographer_check_due_time?: string | null
   low_to_high_date?: string | null
   low_to_high_time?: string | null
   precheck_photographer_comments_date?: string | null

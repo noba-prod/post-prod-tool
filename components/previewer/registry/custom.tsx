@@ -46,6 +46,8 @@ import { DatePicker } from "@/components/custom/date-picker"
 import { TimePicker } from "@/components/custom/time-picker"
 import { OptionPicker } from "@/components/custom/option-picker"
 import { EntitySelected } from "@/components/custom/entity-selected"
+import { StepDetails } from "@/components/custom/step-details"
+import { ParticipantsCard } from "@/components/custom/participants-card"
 import { SwitchList } from "@/components/custom/switch-list"
 import { InformativeToast } from "@/components/custom/informative-toast"
 import { RowVariants, SlotPlaceholder } from "@/components/custom/row-variants"
@@ -566,6 +568,94 @@ Gap: 16px | Padding: 40px`,
             options={[{ value: "option-01", label: "Option 01" }]}
             disabled
             className="max-w-[176px]"
+          />
+        </div>
+      </div>
+    ),
+  },
+  {
+    id: "step-details",
+    name: "step-details",
+    title: "Step Details",
+    description: "Step detail card with 4 variants per Figma DS (node 13445-2873): primary (bg image + overlay, white text, CTA), secondary (zinc-100, dark text, CTA), notes (Notes from <entity> + additional info, no CTA), missingPhotos (Missing photos? + subtitle + repeat CTA). Uses design system typography: text-2xl font-semibold (main title), text-base (subtitle), text-sm (additional). Primary variant background image is configurable (default: /assets/bg-finals.png for documentation).",
+    demo: (
+      <div className="flex flex-wrap gap-8 items-start">
+        <div className="w-[247px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Primary (bg image)</p>
+          <StepDetails
+            variant="primary"
+            mainTitle="Check Finals"
+            subtitle="Review and approve final deliverables"
+            additionalInfo="Client and photographer sign-off"
+            onAction={() => {}}
+          />
+        </div>
+        <div className="w-[247px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Secondary</p>
+          <StepDetails
+            variant="secondary"
+            mainTitle="Main title"
+            subtitle="Subtitle"
+            additionalInfo="Additional information"
+            onAction={() => {}}
+          />
+        </div>
+        <div className="w-[247px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Notes</p>
+          <StepDetails
+            variant="notes"
+            mainTitle="Notes"
+            entityName="Client"
+            additionalInfo="Additional information"
+          />
+        </div>
+        <div className="w-[247px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Missing Photos</p>
+          <StepDetails
+            variant="missingPhotos"
+            mainTitle="Missing photos?"
+            entityName="photographer"
+            onAction={() => {}}
+          />
+        </div>
+      </div>
+    ),
+  },
+  {
+    id: "participants-card",
+    name: "participants-card",
+    title: "Participants Card",
+    description: "Card for participants list per Figma DS node 13731-2409. Three variants: default (initials + title + 2 lines), individual (person: name, email, phone), entity (entity name + manager + team count). Uses bg-zinc-100, rounded-xl, p-3, gap-3; typography text-base font-semibold (title), text-sm text-muted-foreground (secondary).",
+    demo: (
+      <div className="flex flex-wrap gap-4 items-start">
+        <div className="w-[237px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Default</p>
+          <ParticipantsCard
+            variant="default"
+            title="Title"
+            initials="T"
+            line1="Additional information 1"
+            line2="Additional information 2"
+          />
+        </div>
+        <div className="w-[237px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Individual</p>
+          <ParticipantsCard
+            variant="individual"
+            title="Name Surname"
+            initials="NS"
+            email="email@example.com"
+            phone="+34 600 000 000"
+          />
+        </div>
+        <div className="w-[237px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Entity</p>
+          <ParticipantsCard
+            variant="entity"
+            title="EntityName"
+            initials="EN"
+            managerName="AdminName"
+            teamMembersCount={4}
           />
         </div>
       </div>

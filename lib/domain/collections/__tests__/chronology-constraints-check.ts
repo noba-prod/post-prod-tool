@@ -4,12 +4,12 @@
  */
 
 import { getChronologyConstraints } from "../workflow"
-import type { CollectionDraft, CollectionConfig } from "../types"
+import type { CollectionDraft, CollectionConfig, CreationBlockId } from "../types"
 import { SCENARIO_1_DIGITAL_ONLY, SCENARIO_3_HANDPRINT_ONLY } from "../scenario-matrix"
 
 function minimalDraft(
   configOverrides: Partial<CollectionConfig>,
-  creationDataOverrides?: { completedBlockIds?: string[] }
+  creationDataOverrides?: { completedBlockIds?: CreationBlockId[] }
 ): CollectionDraft {
   const config: CollectionConfig = {
     ...SCENARIO_1_DIGITAL_ONLY,
@@ -21,7 +21,7 @@ function minimalDraft(
     config,
     participants: [],
     creationData: {
-      completedBlockIds: creationDataOverrides?.completedBlockIds ?? [],
+      completedBlockIds: creationDataOverrides?.completedBlockIds ?? ([] as CreationBlockId[]),
     },
     updatedAt: new Date().toISOString(),
   }

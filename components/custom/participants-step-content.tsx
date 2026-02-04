@@ -232,7 +232,8 @@ export function ParticipantsStepContent({
       { role: "client", prefilled: true },
       { role: "photographer", prefilled: false },
     ]
-    // Agency is selected via Photographer's "Select agency" — no separate Agency section (collections-logic)
+    // When hasAgency: separate Agency section (Select agency + Add agency users). Photographer section = self-photographer only.
+    if (config.hasAgency) out.push({ role: "agency", prefilled: false })
     // Lab only in handprint workflow; digital-only has no lab (collections-logic)
     if (config.hasHandprint) out.push({ role: "lab", prefilled: false })
     // Hand print lab only when it is a different lab than low-res (collections-logic)
@@ -320,23 +321,26 @@ export function ParticipantsStepContent({
         draft={draft}
         onConfigChange={onConfigChange}
       />
-      {sections.map(({ role, prefilled }) => (
-        <ParticipantSection
-          key={role}
-          role={role}
-          label={ROLE_LABELS[role]}
-          draft={draft}
-          prefilled={prefilled}
-          onEntitySelect={(entityId) => setEntityId(role, entityId)}
-          onAddMember={(userId, entityIdForNew) => addMember(role, userId, entityIdForNew)}
-          onRemoveMember={(userId, roleOverride) =>
-            removeMember(roleOverride ?? role, userId)
-          }
-          onEditPermissionChange={(userId, value, roleOverride) =>
-            setEditPermission(roleOverride ?? role, userId, value)
-          }
-        />
-      ))}
+      {sections.map(({ role, prefilled }) => {
+        const dataRole = role === "agency" ? "photographer" : role
+        return (
+          <ParticipantSection
+            key={role}
+            role={role}
+            label={ROLE_LABELS[role]}
+            draft={draft}
+            prefilled={prefilled}
+            onEntitySelect={(entityId) => setEntityId(dataRole, entityId)}
+            onAddMember={(userId, entityIdForNew) => addMember(dataRole, userId, entityIdForNew)}
+            onRemoveMember={(userId, roleOverride) =>
+              removeMember(roleOverride ?? dataRole, userId)
+            }
+            onEditPermissionChange={(userId, value, roleOverride) =>
+              setEditPermission(roleOverride ?? dataRole, userId, value)
+            }
+          />
+        )
+      })}
     </div>
   )
 }
@@ -470,7 +474,7 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
           className="h-10 gap-2 rounded-xl"
         >
           <Plus className="h-4 w-4" />
-          New member
+          Add user
         </Button>
       </div>
       {memberUsers.length > 0 && (
@@ -561,28 +565,32 @@ function ParticipantSection({
 }: ParticipantSectionProps) {
   const [addMemberOpen, setAddMemberOpen] = React.useState(false)
   const config = draft.config
-  const participant = getParticipantByRole(draft.participants, role)
-  const entityId = effectiveEntityId(participant, role, draft.config)
+  // When role is "agency", data lives in photographer participant (DB has photographer_id only)
+  const dataRole = role === "agency" ? "photographer" : role
+  const participant = getParticipantByRole(draft.participants, dataRole)
+  const entityId = effectiveEntityId(participant, dataRole, draft.config)
   const isPhotographerNoAgency = role === "photographer" && !config.hasAgency
   const isPhotographerWithAgency = role === "photographer" && config.hasAgency
-  
-  // For photographer role, query both agency and self-photographer types
+  const isAgencySection = role === "agency"
+
+  // Photographer (no agency): self-photographer only. Photographer (with agency): self-photographer only in this section. Agency section: agency entity + agency users.
   const effectiveEntityType: EntityType | EntityType[] =
-    role === "photographer" ? ["agency", "self-photographer"] : ROLE_ENTITY_TYPES[role]
+    isAgencySection
+      ? "agency"
+      : role === "photographer"
+        ? (isPhotographerWithAgency ? "self-photographer" : ["agency", "self-photographer"])
+        : ROLE_ENTITY_TYPES[role]
 
   const { entities, users, usersById } = useParticipantData(entityId, effectiveEntityType)
   const selfPhotographerUsers = useUsersFromAllEntitiesOfType(
-    isPhotographerNoAgency || isPhotographerWithAgency ? "self-photographer" : null
+    role === "photographer" ? "self-photographer" : null
   )
   const usersForAddMember = React.useMemo(() => {
     if (isPhotographerNoAgency) return selfPhotographerUsers
-    if (isPhotographerWithAgency) {
-      const byId = new Map(users.map((u) => [u.id, u]))
-      for (const u of selfPhotographerUsers) byId.set(u.id, u)
-      return Array.from(byId.values())
-    }
+    if (isPhotographerWithAgency) return selfPhotographerUsers
+    if (isAgencySection) return users
     return users
-  }, [isPhotographerNoAgency, isPhotographerWithAgency, users, selfPhotographerUsers])
+  }, [isPhotographerNoAgency, isPhotographerWithAgency, isAgencySection, users, selfPhotographerUsers])
 
   // Client section shows only client members (role='manager' in DB).
   // Producer/noba* members are shown separately in NobaSection.
@@ -603,22 +611,32 @@ function ParticipantSection({
   }, [role, participant?.userIds])
 
   const usersByIdsResolved = useUsersByIds(memberUserIds)
-  const memberUsers = React.useMemo(
+  const memberUsersRaw = React.useMemo(
     () =>
       memberUserIds
         .map((id) => usersById.get(id) ?? usersByIdsResolved.get(id))
         .filter((u): u is User => u != null),
     [memberUserIds, usersById, usersByIdsResolved]
   )
+  // Photographer (with agency): show only self-photographer users. Agency section: show only users from selected agency.
+  const memberUsers = React.useMemo(() => {
+    if (isPhotographerWithAgency) {
+      return memberUsersRaw.filter((u) => selfPhotographerUsers.some((s) => s.id === u.id))
+    }
+    if (isAgencySection && entityId) {
+      return memberUsersRaw.filter((u) => u.entityId === entityId)
+    }
+    return memberUsersRaw
+  }, [isPhotographerWithAgency, isAgencySection, entityId, memberUsersRaw, selfPhotographerUsers])
 
   const entityOptions = React.useMemo(
     () => entities.map((e) => ({ value: e.id, label: e.name })),
     [entities]
   )
 
-  const showEntityPicker = !isPhotographerNoAgency
-  const addButtonLabel = isPhotographerNoAgency ? "Add photographer" : "New member"
-  const pickerPlaceholder = isPhotographerWithAgency ? "Select agency" : `Select ${label.toLowerCase()}`
+  const showEntityPicker = isAgencySection || role !== "photographer"
+  const addButtonLabel = isPhotographerNoAgency ? "Add photographer" : "Add user"
+  const pickerPlaceholder = isAgencySection ? "Select agency" : `Select ${label.toLowerCase()}`
 
   const handleOverlaySelect = React.useCallback(
     (u: User) => {
@@ -658,7 +676,7 @@ function ParticipantSection({
               className="w-[224px] min-w-[224px] shrink-0"
             />
           )}
-          {isPhotographerNoAgency ? (
+          {(isPhotographerNoAgency || isPhotographerWithAgency) ? (
             <Button
               variant="secondary"
               onClick={() => setAddMemberOpen(true)}
@@ -733,18 +751,13 @@ function ParticipantSection({
         open={addMemberOpen}
         onOpenChange={setAddMemberOpen}
         users={usersForAddMember}
-        existingIds={new Set(memberUserIds)}
+        existingIds={new Set(memberUsers.map((u) => u.id))}
         onSelect={handleOverlaySelect}
         getSupportiveText={
-          isPhotographerWithAgency
-            ? (u) => {
-                const isFromAgency = users.some((au) => au.id === u.id)
-                return isFromAgency
-                  ? (entities.find((e) => e.id === entityId)?.name ?? "Agency")
-                  : "Photographer"
-              }
-            : isPhotographerNoAgency
-              ? () => "Photographer"
+          isPhotographerNoAgency || isPhotographerWithAgency
+            ? () => "Photographer"
+            : isAgencySection && entityId
+              ? () => entities.find((e) => e.id === entityId)?.name ?? "Agency"
               : undefined
         }
       />

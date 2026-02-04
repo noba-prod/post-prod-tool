@@ -360,7 +360,7 @@ export function FilterBar({
       showSearch: true,
       showViewTabs: false,
       showAction: true,
-      actionLabel: "New organization",
+      actionLabel: "New player",
       actionIcon: <Plus className="size-4" />,
       viewLabels: viewLabels,
     },

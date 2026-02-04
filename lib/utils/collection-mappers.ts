@@ -64,6 +64,8 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     hasEditionStudio: row.photographer_request_edition,
     clientFinalsDeadline: dbDateToIso(row.project_deadline),
     clientFinalsDeadlineTime: row.project_deadline_time ?? undefined,
+    publishingDate: dbDateToIso(row.publishing_date ?? null),
+    publishingTime: row.publishing_time ?? undefined,
     shootingStartDate: dbDateToIso(row.shooting_start_date),
     shootingStartTime: row.shooting_start_time ?? undefined,
     shootingEndDate: dbDateToIso(row.shooting_end_date),
@@ -96,6 +98,8 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     photoSelectionPhotographerDueTime: row.photo_selection_photographer_preselection_time ?? undefined,
     photoSelectionClientDueDate: dbDateToIso(row.photo_selection_client_selection_date),
     photoSelectionClientDueTime: row.photo_selection_client_selection_time ?? undefined,
+    photographerCheckDueDate: dbDateToIso(row.photographer_check_due_date ?? null),
+    photographerCheckDueTime: row.photographer_check_due_time ?? undefined,
     lrToHrDueDate: dbDateToIso(row.low_to_high_date),
     lrToHrDueTime: row.low_to_high_time ?? undefined,
     editionPhotographerDueDate: dbDateToIso(row.precheck_photographer_comments_date),
@@ -270,12 +274,17 @@ export function deriveCompletedBlockIds(
     completed.push("photographer_selection_config")
     completed.push("client_selection_config")
   }
-  
-  // LR to HR setup: needs due date
+
+  // LR to HR setup: needs due date. Hand print block also includes photographer check form (both required).
   const hasLrToHrSetup = !!config.lrToHrDueDate?.trim()
-  if (hasLrToHrSetup) {
+  const hasPhotographerCheck =
+    !!config.photographerCheckDueDate?.trim() && !!config.photographerCheckDueTime?.trim()
+  if (config.hasHandprint) {
+    if (hasPhotographerCheck && hasLrToHrSetup) {
+      completed.push("handprint_high_res_config")
+    }
+  } else if (hasLrToHrSetup) {
     completed.push("lr_to_hr_setup")
-    completed.push("handprint_high_res_config")
   }
   
   // Edition config: needs both photographer and studio due dates
@@ -351,6 +360,8 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     reference: conf.reference ?? null,
     project_deadline: isoToDbDate(conf.clientFinalsDeadline),
     project_deadline_time: conf.clientFinalsDeadlineTime ?? null,
+    publishing_date: isoToDbDate(conf.publishingDate),
+    publishing_time: conf.publishingTime ?? null,
     low_res_to_high_res_digital: conf.hasLowResLab,
     low_res_to_high_res_hand_print: conf.hasHandprint,
     photographer_request_edition: conf.hasEditionStudio,
@@ -392,6 +403,10 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     photo_selection_photographer_preselection_time: conf.photoSelectionPhotographerDueTime ?? null,
     photo_selection_client_selection_date: isoToDbDate(conf.photoSelectionClientDueDate),
     photo_selection_client_selection_time: conf.photoSelectionClientDueTime ?? null,
+    // Omit photographer_check_due_date/time on INSERT so create works when migration 018 is not yet
+    // applied or PostgREST schema cache is stale. They are set on first UPDATE (e.g. when saving the step).
+    // photographer_check_due_date: isoToDbDate(conf.photographerCheckDueDate),
+    // photographer_check_due_time: conf.photographerCheckDueTime ?? null,
     low_to_high_date: isoToDbDate(conf.lrToHrDueDate),
     low_to_high_time: conf.lrToHrDueTime ?? null,
     precheck_photographer_comments_date: isoToDbDate(conf.editionPhotographerDueDate),
@@ -427,6 +442,8 @@ export function mapDomainPatchToDbUpdate(
     if (conf.reference !== undefined) u.reference = conf.reference ?? null
     if (conf.clientFinalsDeadline !== undefined) u.project_deadline = isoToDbDate(conf.clientFinalsDeadline)
     if (conf.clientFinalsDeadlineTime !== undefined) u.project_deadline_time = conf.clientFinalsDeadlineTime ?? null
+    if (conf.publishingDate !== undefined) u.publishing_date = isoToDbDate(conf.publishingDate)
+    if (conf.publishingTime !== undefined) u.publishing_time = conf.publishingTime ?? null
     if (conf.hasLowResLab !== undefined) u.low_res_to_high_res_digital = conf.hasLowResLab
     if (conf.hasHandprint !== undefined) u.low_res_to_high_res_hand_print = conf.hasHandprint
     if (conf.hasEditionStudio !== undefined) u.photographer_request_edition = conf.hasEditionStudio
@@ -464,6 +481,8 @@ export function mapDomainPatchToDbUpdate(
     if (conf.photoSelectionPhotographerDueTime !== undefined) u.photo_selection_photographer_preselection_time = conf.photoSelectionPhotographerDueTime ?? null
     if (conf.photoSelectionClientDueDate !== undefined) u.photo_selection_client_selection_date = isoToDbDate(conf.photoSelectionClientDueDate)
     if (conf.photoSelectionClientDueTime !== undefined) u.photo_selection_client_selection_time = conf.photoSelectionClientDueTime ?? null
+    if (conf.photographerCheckDueDate !== undefined) u.photographer_check_due_date = isoToDbDate(conf.photographerCheckDueDate)
+    if (conf.photographerCheckDueTime !== undefined) u.photographer_check_due_time = conf.photographerCheckDueTime ?? null
     if (conf.lrToHrDueDate !== undefined) u.low_to_high_date = isoToDbDate(conf.lrToHrDueDate)
     if (conf.lrToHrDueTime !== undefined) u.low_to_high_time = conf.lrToHrDueTime ?? null
     if (conf.editionPhotographerDueDate !== undefined) u.precheck_photographer_comments_date = isoToDbDate(conf.editionPhotographerDueDate)

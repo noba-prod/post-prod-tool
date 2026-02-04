@@ -61,7 +61,7 @@ interface NavBarProps {
 
 // Tabs según la variante
 const variantTabs: Record<NavBarVariant, string[]> = {
-  noba: ["Collections", "Organizations", "Team"],
+  noba: ["Collections", "Players", "Team"],
   collaborator: ["Collections", "Team"],
   photographer: ["Collections"],
 }
@@ -118,7 +118,7 @@ export function NavBar({
   const handleTabClick = (tab: string) => {
     const routeMap: Record<string, string> = {
       "Collections": "/collections",
-      "Organizations": "/organizations",
+      "Players": "/organizations",
       "Team": "/team",
     }
     const route = routeMap[tab]
@@ -162,7 +162,7 @@ export function NavBar({
               const handleTabClick = () => {
                 const routeMap: Record<string, string> = {
                   "Collections": "/collections",
-                  "Organizations": "/organizations",
+                  "Players": "/organizations",
                   "Team": "/team",
                 }
                 const route = routeMap[tab]

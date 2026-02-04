@@ -78,7 +78,7 @@ export default function OrganizationsPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   
-  // Organizations data from repository
+  // Players data from repository
   const [entities, setEntities] = useState<Entity[]>([])
   const [loadingEntities, setLoadingEntities] = useState(false)
   
@@ -152,11 +152,11 @@ export default function OrganizationsPage() {
     checkSession()
   }, [router, authAdapter])
 
-  // Route guard: redirect when user context is ready and user cannot access Organizations
+  // Route guard: redirect when user context is ready and user cannot access Players
   useEffect(() => {
     if (!userContext.loading && !userContext.canAccessEntities) {
       toast.error("Access Denied", {
-        description: "You don't have access to the Organizations section. Only noba users can access this page.",
+        description: "You don't have access to the Players section. Only noba users can access this page.",
       })
       router.push("/collections")
     }
@@ -344,7 +344,7 @@ export default function OrganizationsPage() {
   if (!session) return null
 
   return (
-    <MainTemplate title="Organizations">
+    <MainTemplate title="Players">
       <Layout padding="none" showSeparators={false}>
         <LayoutSection>
           <div className="flex items-center justify-between w-full h-10">
@@ -359,7 +359,7 @@ export default function OrganizationsPage() {
             </div>
             <CreateEntityCommand
               allowedOptions={ORGANIZATIONS_PAGE_OPTIONS}
-              buttonLabel="New organization"
+              buttonLabel="New player"
               popoverAlign="end"
               redirectAfterCreate={false}
               onCreated={handleEntityCreated}

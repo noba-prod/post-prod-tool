@@ -106,7 +106,7 @@ export default function AgencyCreationPage() {
       <CreationTemplate
         title="Create new agency"
         breadcrumbs={[
-          { label: "Organizations", href: "/organizations" },
+          { label: "Players", href: "/organizations" },
           { label: "Create new agency" },
         ]}
         sidebarItems={[

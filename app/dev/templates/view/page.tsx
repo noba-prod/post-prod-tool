@@ -258,7 +258,7 @@ export default function ViewTemplatePage() {
 
       <ViewTemplate
         breadcrumbs={[
-          { label: "Organizations", href: "/organizations" },
+          { label: "Players", href: "/organizations" },
           { label: entityDisplayName },
         ]}
         sections={sections}

@@ -7,10 +7,24 @@ import { NavBar } from "../nav-bar"
 import { CollectionHeading } from "../collection-heading"
 import { CollectionStepper } from "../collection-stepper"
 import { ModalWindow } from "../modal-window"
+import {
+  ParticipantsModal,
+  type ParticipantsModalIndividual,
+  type ParticipantsModalEntity,
+} from "../participants-modal"
 import { useUserContext } from "@/lib/contexts/user-context"
 import { useNavigationConfig } from "@/lib/hooks/use-navigation-config"
 import { useAuthAdapter } from "@/lib/auth"
 import { SearchCommand } from "../search-command"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 
 // =============================================================================
 // STEP CONFIGURATION (aligned with collections-logic.md §10)
@@ -79,8 +93,16 @@ export interface CollectionTemplateProps {
   onParticipants?: () => void
   /** Callback when Settings is clicked */
   onSettings?: () => void
+  /** Collection id (required for Settings → redirect to create mode) */
+  collectionId?: string
   /** Steps to render (from collection configuration) */
   steps?: CollectionTemplateStep[]
+  /** Participants modal: noba team (is_internal=TRUE), each as individual card */
+  participantsNobaTeam?: ParticipantsModalIndividual[]
+  /** Participants modal: main players as individuals (e.g. photographer) */
+  participantsMainPlayersIndividuals?: ParticipantsModalIndividual[]
+  /** Participants modal: main players as entities */
+  participantsMainPlayersEntities?: ParticipantsModalEntity[]
   /** NavBar props when no UserContext */
   navBarProps?: NavBarConfig
   className?: string
@@ -116,7 +138,11 @@ export function CollectionTemplate({
   showSettingsButton = true,
   onParticipants,
   onSettings,
+  collectionId,
   steps = [],
+  participantsNobaTeam,
+  participantsMainPlayersIndividuals,
+  participantsMainPlayersEntities,
   navBarProps,
   className,
 }: CollectionTemplateProps) {
@@ -128,6 +154,11 @@ export function CollectionTemplate({
 
   const [isSearchOpen, setIsSearchOpen] = React.useState(false)
   const [openStepId, setOpenStepId] = React.useState<string | null>(null)
+  const [participantsModalOpen, setParticipantsModalOpen] = React.useState(false)
+  const [editCollectionDialogOpen, setEditCollectionDialogOpen] = React.useState(false)
+
+  const effectiveShowSettingsButton =
+    showSettingsButton && (userContext?.isNobaUser ?? false)
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -202,9 +233,15 @@ export function CollectionTemplate({
             photographerName={photographerName}
             showPhotographerName={showPhotographerName}
             showParticipantsButton={showParticipantsButton}
-            showSettingsButton={showSettingsButton}
-            onParticipants={onParticipants}
-            onSettings={onSettings}
+            showSettingsButton={effectiveShowSettingsButton}
+            onParticipants={() => {
+              onParticipants?.()
+              setParticipantsModalOpen(true)
+            }}
+            onSettings={() => {
+              onSettings?.()
+              setEditCollectionDialogOpen(true)
+            }}
           />
         </div>
 
@@ -222,7 +259,7 @@ export function CollectionTemplate({
                 deadlineTime={step.deadlineTime ?? "End of day (5:00pm)"}
                 onStepClick={() => setOpenStepId(step.id)}
                 showExpandButton
-                  isFirst={index === 0}
+                isFirst={index === 0}
                 isLast={index === visibleSteps.length - 1}
               />
             ))}
@@ -253,6 +290,40 @@ export function CollectionTemplate({
           )}
         </div>
       </ModalWindow>
+
+      <ParticipantsModal
+        open={participantsModalOpen}
+        onOpenChange={setParticipantsModalOpen}
+        isInternalUser={userContext?.isNobaUser ?? false}
+        nobaTeam={participantsNobaTeam}
+        mainPlayersIndividuals={participantsMainPlayersIndividuals}
+        mainPlayersEntities={participantsMainPlayersEntities}
+        onSecondaryClick={() => setParticipantsModalOpen(false)}
+      />
+
+      <Dialog open={editCollectionDialogOpen} onOpenChange={setEditCollectionDialogOpen}>
+        <DialogContent showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Edit collection details</DialogTitle>
+            <DialogDescription>
+              Editing participants or changing deadlines may affect the final publishing date. Confirm deadlines before doing any modification.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter showCloseButton={false} className="sm:justify-start">
+            <Button
+              onClick={() => {
+                if (collectionId) {
+                  router.push(`/collections/create/${collectionId}`)
+                }
+                setEditCollectionDialogOpen(false)
+              }}
+              disabled={!collectionId}
+            >
+              Edit collection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {isSearchOpen && (
         <SearchCommand

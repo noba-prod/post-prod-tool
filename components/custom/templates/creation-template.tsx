@@ -88,10 +88,12 @@ interface CreationTemplateProps {
   onDeleteCollection?: () => void
   /** When create-collection: callback when Settings (collection config) is clicked */
   onSettingsCollection?: () => void
-  /** When create-collection: callback when Publish collection is clicked */
+  /** When create-collection: callback when Publish / Save changes is clicked */
   onPublishCollection?: () => void
-  /** When create-collection: disable Publish until draft is complete */
+  /** When create-collection: disable Publish until draft is complete (ignored in edition mode) */
   publishCollectionDisabled?: boolean
+  /** When create-collection: primary button label (e.g. "Publish" or "Save changes" in edition mode) */
+  publishCollectionLabel?: string
   /** NavBar props */
   navBarProps?: {
     variant?: "noba" | "collaborator" | "photographer"
@@ -113,7 +115,7 @@ interface CreationTemplateProps {
 export function CreationTemplate({
   title = "Create new entity",
   breadcrumbs = [
-    { label: "Organizations", href: "/organizations" },
+    { label: "Players", href: "/organizations" },
     { label: "Create Entity" },
   ],
   sidebarVariant = "create-entity",
@@ -131,6 +133,7 @@ export function CreationTemplate({
   onSettingsCollection,
   onPublishCollection,
   publishCollectionDisabled = true,
+  publishCollectionLabel = "Publish",
   navBarProps,
   className,
 }: CreationTemplateProps) {
@@ -404,6 +407,7 @@ export function CreationTemplate({
                   onSettingsCollection={onSettingsCollection}
                   onPublish={onPublishCollection}
                   publishDisabled={publishCollectionDisabled}
+                  publishLabel={publishCollectionLabel}
                 />
               ) : (
                 <SideBar

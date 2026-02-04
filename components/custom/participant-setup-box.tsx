@@ -352,14 +352,14 @@ export function ParticipantSetupBox({
             </PopoverContent>
           </Popover>
 
-          {/* New member button */}
+          {/* Add user button */}
           <Button
             variant="secondary"
             onClick={() => setModalOpen(true)}
             className="h-10 gap-2 rounded-xl"
           >
             <Plus className="h-4 w-4" />
-            New member
+            Add user
           </Button>
         </div>
       </div>
@@ -373,7 +373,7 @@ export function ParticipantSetupBox({
         />
       )}
 
-      {/* New member modal */}
+      {/* Add user modal */}
       <NewMemberDialog
         open={modalOpen}
         onOpenChange={setModalOpen}
