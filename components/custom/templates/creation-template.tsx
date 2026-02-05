@@ -100,6 +100,7 @@ interface CollectionSummaryForSidebar {
   client?: string
   deadline?: string
   lastUpdate?: string
+  publishingDate?: string
 }
 
 interface CreationTemplateProps {
