@@ -174,7 +174,7 @@ export default function CollectionCreatePage({
           const nextIncomplete = steps.find((step) =>
             !isCreationStepComplete(step, d.creationData.completedBlockIds)
           )
-          const validStepIds = new Set(steps.map((s) => s.stepId))
+          const validStepIds = new Set<string>(steps.map((s) => s.stepId))
           const initialStep =
             stepFromUrl && validStepIds.has(stepFromUrl)
               ? stepFromUrl
