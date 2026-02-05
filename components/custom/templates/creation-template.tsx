@@ -93,12 +93,11 @@ interface CreationBlock {
   onEdit?: () => void
 }
 
-/** Collection summary for create-collection sidebar variant */
+/** Collection summary for create-collection sidebar variant. Use publishingDate (not deadline); project deadline comes from project_deadline in the last step. */
 interface CollectionSummaryForSidebar {
   name: string
   status?: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
   client?: string
-  deadline?: string
   lastUpdate?: string
   publishingDate?: string
 }

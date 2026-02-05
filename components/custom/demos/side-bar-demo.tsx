@@ -108,7 +108,7 @@ export function SideBarDemo() {
                 name: "Kids Summer'25",
                 status: "draft",
                 client: "Zara",
-                deadline: "Dec 14, 2025",
+                publishingDate: "Dec 14, 2025",
                 lastUpdate: "5 minutes ago",
               }}
               deleteLabel="Delete collection"
