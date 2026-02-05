@@ -143,13 +143,22 @@ interface CreationTemplateProps {
   className?: string
 }
 
+/** Minimal fallback while searchParams (and thus breadcrumbs) are resolving during prerender/SSR. */
+function CreationTemplateFallback({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex flex-col h-screen w-full bg-background overflow-hidden", className)}>
+      <div className="flex-1 flex items-center justify-center min-h-0">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    </div>
+  )
+}
+
 /**
- * Creation Template
- * 
- * Template for creation flows.
- * Structure: NavBar + Breadcrumb + SideBar (create-entity) + Blocks with StepConnector
+ * Creation Template (inner): uses useSearchParams for ?from= breadcrumb.
+ * Must be rendered inside Suspense so prerender doesn't throw.
  */
-export function CreationTemplate({
+function CreationTemplateContent({
   title = "Create new entity",
   breadcrumbs = [
     { label: "Players", href: "/organizations" },
@@ -597,6 +606,21 @@ export function CreationTemplate({
         onOpenChange={setIsSearchOpen}
       />
     </div>
+  )
+}
+
+/**
+ * Creation Template
+ *
+ * Template for creation flows. Wraps content in Suspense so useSearchParams()
+ * (used for ?from= breadcrumb) is safe during prerender on all /create/* and
+ * collections/create/[id] routes.
+ */
+export function CreationTemplate(props: CreationTemplateProps) {
+  return (
+    <React.Suspense fallback={<CreationTemplateFallback className={props.className} />}>
+      <CreationTemplateContent {...props} />
+    </React.Suspense>
   )
 }
 
