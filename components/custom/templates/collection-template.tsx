@@ -12,6 +12,10 @@ import {
   type ParticipantsModalIndividual,
   type ParticipantsModalEntity,
 } from "../participants-modal"
+import { Titles } from "../titles"
+import { StageStatusTag, TimeStampTag, DateIndicatorTag } from "../tag"
+import { StepDetails } from "../step-details"
+import { ParticipantsCard } from "../participants-card"
 import { UserCreationForm, type UserFormData } from "../user-creation-form"
 import { EntityBasicInformationForm } from "../entity-basic-information-form"
 import { useUserContext } from "@/lib/contexts/user-context"
@@ -377,22 +381,131 @@ export function CollectionTemplate({
         open={openStepId !== null}
         onOpenChange={(open) => !open && setOpenStepId(null)}
         title={openStep?.title ?? "Step"}
-        subtitle={openStep?.canEdit ? "You can edit and perform actions in this step (OWNER)." : "You can view this step only; edits and downloads are not available (VIEWER)."}
-        showSubtitle={true}
+        headerContent={
+          openStep ? (
+            <div className="flex flex-col gap-2 w-full min-w-0">
+              <Titles
+                type="form"
+                title={openStep.title}
+                showSubtitle={false}
+                className="min-w-0"
+              />
+              <div className="flex items-center gap-2 flex-wrap">
+                <StageStatusTag
+                  status={(openStep.stageStatus ?? "in-progress") as "upcoming" | "in-progress" | "in-transit" | "done" | "delivered"}
+                />
+                <TimeStampTag
+                  status={(openStep.timeStampStatus ?? "on-track") as "on-track" | "on-time" | "delayed" | "at-risk"}
+                />
+                <DateIndicatorTag
+                  label={openStep.deadlineLabel ?? "Deadline:"}
+                  date={openStep.deadlineDate ?? "—"}
+                  time={openStep.deadlineTime ?? "End of day (5:00pm)"}
+                />
+              </div>
+            </div>
+          ) : undefined
+        }
         showPrimary={openStep?.canEdit ?? false}
         showSecondary={true}
         primaryLabel={openStep?.canEdit ? "Actions" : undefined}
         secondaryLabel="Close"
+        onPrimaryClick={
+          openStep?.canEdit && collectionId
+            ? () => router.push(`/collections/create/${collectionId}`)
+            : undefined
+        }
         onSecondaryClick={() => setOpenStepId(null)}
       >
-        <div className="px-5 pb-5 space-y-4 text-sm text-muted-foreground">
-          {openStep?.canEdit ? (
+        <div className="px-5 pb-5 flex flex-col gap-6">
+          {openStep && (
             <>
-              <p>Action block (buttons, inputs, uploads, confirmations) will appear here for step owners.</p>
-              <p className="text-xs">Download URLs are only available to owners (collections-logic §8).</p>
+              <StepDetails
+                variant="primary"
+                mainTitle={openStep.title}
+                subtitle={
+                  openStep.canEdit
+                    ? "You can edit and perform actions in this step."
+                    : "You can view this step only; edits and downloads are not available."
+                }
+                onAction={
+                  openStep.canEdit && collectionId
+                    ? () => router.push(`/collections/create/${collectionId}`)
+                    : undefined
+                }
+              />
+              {/* Noba team */}
+              <section className="flex flex-col gap-3">
+                <h3 className="text-lg font-semibold text-card-foreground">
+                  Noba team
+                </h3>
+                <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
+                  {(participantsNobaTeam ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No internal users in this collection.
+                    </p>
+                  ) : (
+                    (participantsNobaTeam ?? []).map((user, i) => (
+                      <div key={`step-noba-${i}-${user.name}`} className="flex flex-col gap-3">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {(user.roleLabel ?? "Collaborator").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
+                        </span>
+                        <ParticipantsCard
+                          variant="individual"
+                          title={user.name}
+                          initials={user.initials}
+                          imageUrl={user.imageUrl}
+                          email={user.email}
+                          phone={user.phone}
+                        />
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+              {/* Main players */}
+              <section className="flex flex-col gap-3">
+                <h3 className="text-lg font-semibold text-card-foreground">
+                  Main players
+                </h3>
+                <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
+                  {(participantsMainPlayersIndividuals ?? []).map((user, i) => (
+                    <div key={`step-main-ind-${i}-${user.name}`} className="flex flex-col gap-3">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {(user.roleLabel ?? "Photographer").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
+                      </span>
+                      <ParticipantsCard
+                        variant="individual"
+                        title={user.name}
+                        initials={user.initials}
+                        imageUrl={user.imageUrl}
+                        email={user.email}
+                        phone={user.phone}
+                      />
+                    </div>
+                  ))}
+                  {(participantsMainPlayersEntities ?? []).map((entity, i) => (
+                    <div key={`step-main-ent-${i}-${entity.entityName}`} className="flex flex-col gap-3">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {(entity.entityTypeLabel ?? "Entity").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
+                      </span>
+                      <ParticipantsCard
+                        variant="entity"
+                        title={entity.entityName}
+                        imageUrl={entity.imageUrl}
+                        managerName={entity.managerName}
+                        teamMembersCount={entity.teamMembersCount}
+                      />
+                    </div>
+                  ))}
+                  {(participantsMainPlayersIndividuals ?? []).length === 0 && (participantsMainPlayersEntities ?? []).length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No main players in this collection.
+                    </p>
+                  )}
+                </div>
+              </section>
             </>
-          ) : (
-            <p>Curated information for this step. Download links and actions are not available in VIEWER mode.</p>
           )}
         </div>
       </ModalWindow>

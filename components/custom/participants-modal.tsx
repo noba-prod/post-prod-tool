@@ -17,6 +17,8 @@ export interface ParticipantsModalIndividual {
   phone?: string
   imageUrl?: string
   initials?: string
+  /** Role label above card: "owner" | "collaborator" (noba), "photographer" (main players). */
+  roleLabel?: string
 }
 
 /** Entity shown as ParticipantsCard variant="entity". */
@@ -26,6 +28,8 @@ export interface ParticipantsModalEntity {
   managerName?: string
   teamMembersCount?: number
   imageUrl?: string
+  /** Entity type label above card: e.g. "Client", "Photo Lab", "Hand Print Lab", "Agency", "Retouch studio". */
+  entityTypeLabel?: string
 }
 
 export interface ParticipantsModalProps {
@@ -54,6 +58,17 @@ export interface ParticipantsModalProps {
   /** Main players: entities (each one entity card with manager + team count) */
   mainPlayersEntities?: ParticipantsModalEntity[]
   className?: string
+}
+
+// =============================================================================
+// HELPERS
+// =============================================================================
+
+function toTitleCase(s: string): string {
+  return s
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ")
 }
 
 // =============================================================================
@@ -115,15 +130,19 @@ export function ParticipantsModal({
               </p>
             ) : (
               nobaTeam.map((user, i) => (
-                <ParticipantsCard
-                  key={`noba-${i}-${user.name}`}
-                  variant="individual"
-                  title={user.name}
-                  initials={user.initials}
-                  imageUrl={user.imageUrl}
-                  email={user.email}
-                  phone={user.phone}
-                />
+                <div key={`noba-${i}-${user.name}`} className="flex flex-col gap-3">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {toTitleCase(user.roleLabel ?? "Collaborator")}
+                  </span>
+                  <ParticipantsCard
+                    variant="individual"
+                    title={user.name}
+                    initials={user.initials}
+                    imageUrl={user.imageUrl}
+                    email={user.email}
+                    phone={user.phone}
+                  />
+                </div>
               ))
             )}
           </div>
@@ -136,25 +155,33 @@ export function ParticipantsModal({
           </h3>
           <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
             {mainPlayersIndividuals.map((user, i) => (
-              <ParticipantsCard
-                key={`main-ind-${i}-${user.name}`}
-                variant="individual"
-                title={user.name}
-                initials={user.initials}
-                imageUrl={user.imageUrl}
-                email={user.email}
-                phone={user.phone}
-              />
+              <div key={`main-ind-${i}-${user.name}`} className="flex flex-col gap-3">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {toTitleCase(user.roleLabel ?? "Photographer")}
+                </span>
+                <ParticipantsCard
+                  variant="individual"
+                  title={user.name}
+                  initials={user.initials}
+                  imageUrl={user.imageUrl}
+                  email={user.email}
+                  phone={user.phone}
+                />
+              </div>
             ))}
             {mainPlayersEntities.map((entity, i) => (
-              <ParticipantsCard
-                key={`main-ent-${i}-${entity.entityName}`}
-                variant="entity"
-                title={entity.entityName}
-                imageUrl={entity.imageUrl}
-                managerName={entity.managerName}
-                teamMembersCount={entity.teamMembersCount}
-              />
+              <div key={`main-ent-${i}-${entity.entityName}`} className="flex flex-col gap-3">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {toTitleCase(entity.entityTypeLabel ?? "Entity")}
+                </span>
+                <ParticipantsCard
+                  variant="entity"
+                  title={entity.entityName}
+                  imageUrl={entity.imageUrl}
+                  managerName={entity.managerName}
+                  teamMembersCount={entity.teamMembersCount}
+                />
+              </div>
             ))}
             {mainPlayersIndividuals.length === 0 && mainPlayersEntities.length === 0 && (
               <p className="text-sm text-muted-foreground">

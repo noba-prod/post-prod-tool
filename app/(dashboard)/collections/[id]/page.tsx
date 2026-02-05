@@ -150,6 +150,7 @@ export default function CollectionViewPage({
     let cancelled = false
     const config = collection.config
     const participants = collection.participants
+    const currentUserId = user?.id?.trim()
 
     const producer = participants.find((p) => p.role === "producer")
     const nobaUserIds = config.nobaUserIds ?? producer?.userIds ?? []
@@ -168,20 +169,45 @@ export default function CollectionViewPage({
     const handprintLabParticipant = participants.find((p) => p.role === "handprint_lab")
     const editionStudioParticipant = participants.find((p) => p.role === "edition_studio")
     const entityIds: string[] = []
-    if (clientId) entityIds.push(clientId)
-    if (agencyId) entityIds.push(agencyId)
-    if (labParticipant?.entityId) entityIds.push(labParticipant.entityId)
-    if (handprintLabParticipant?.entityId) entityIds.push(handprintLabParticipant.entityId)
-    if (editionStudioParticipant?.entityId) entityIds.push(editionStudioParticipant.entityId)
+    const entityTypeLabels: string[] = []
+    if (clientId) {
+      entityIds.push(clientId)
+      entityTypeLabels.push("Client")
+    }
+    if (agencyId) {
+      entityIds.push(agencyId)
+      entityTypeLabels.push("Agency")
+    }
+    if (labParticipant?.entityId) {
+      entityIds.push(labParticipant.entityId)
+      entityTypeLabels.push("Photo Lab")
+    }
+    if (handprintLabParticipant?.entityId) {
+      entityIds.push(handprintLabParticipant.entityId)
+      entityTypeLabels.push("Hand Print Lab")
+    }
+    if (editionStudioParticipant?.entityId) {
+      entityIds.push(editionStudioParticipant.entityId)
+      entityTypeLabels.push("Retouch studio")
+    }
 
     async function load() {
-      const userToIndividual = (u: {
-        firstName?: string
-        lastName?: string
-        email?: string
-        phoneNumber?: string
-        profilePictureUrl?: string
-      }): ParticipantsModalIndividual => {
+      const ownerUserId = config.ownerUserId?.trim()
+      // Resolve owner: from config (DB is_owner) or fallback to current user when they're in noba list (e.g. old data)
+      const resolveOwnerUserId = (): string | undefined =>
+        ownerUserId || (currentUserId && nobaUserIds.some((id) => String(id).trim() === currentUserId) ? currentUserId : undefined)
+
+      const userToIndividual = (
+        u: {
+          id?: string
+          firstName?: string
+          lastName?: string
+          email?: string
+          phoneNumber?: string
+          profilePictureUrl?: string
+        },
+        roleLabel?: string
+      ): ParticipantsModalIndividual => {
         const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || "—"
         const initials = name !== "—" ? name.slice(0, 2).toUpperCase().replace(/\s/g, "") : undefined
         return {
@@ -190,6 +216,7 @@ export default function CollectionViewPage({
           phone: u.phoneNumber ?? undefined,
           imageUrl: u.profilePictureUrl,
           initials: initials || undefined,
+          roleLabel,
         }
       }
 
@@ -199,10 +226,15 @@ export default function CollectionViewPage({
         )
       )
       if (cancelled) return
+      const effectiveOwnerId = resolveOwnerUserId()
       const nobaTeam: ParticipantsModalIndividual[] = nobaUsers
-        .map((data: { user?: { firstName?: string; lastName?: string; email?: string; phoneNumber?: string; profilePictureUrl?: string } } | null) =>
-          data?.user ? userToIndividual(data.user) : null
-        )
+        .map((data: { user?: { id?: string; firstName?: string; lastName?: string; email?: string; phoneNumber?: string; profilePictureUrl?: string } } | null) => {
+          if (!data?.user) return null
+          const uid = data.user.id != null ? String(data.user.id).trim() : ""
+          const isOwner = !!effectiveOwnerId && uid === effectiveOwnerId
+          const roleLabel = isOwner ? "producer" : "collaborator"
+          return userToIndividual(data.user, roleLabel)
+        })
         .filter(Boolean) as ParticipantsModalIndividual[]
 
       const [photoUsers, orgResponses] = await Promise.all([
@@ -246,7 +278,7 @@ export default function CollectionViewPage({
               profilePictureUrl?: string
             }
           } | null) =>
-            data?.user ? userToIndividual(data.user) : null
+            data?.user ? userToIndividual(data.user, "photographer") : null
         )
         .filter(Boolean) as ParticipantsModalIndividual[]
 
@@ -255,7 +287,7 @@ export default function CollectionViewPage({
           entity?: { name?: string; profilePictureUrl?: string | null }
           adminUser?: { firstName?: string; lastName?: string }
           teamMembers?: unknown[]
-        } | null) => {
+        } | null, index: number) => {
           if (!data?.entity?.name) return null
           const managerName = data.adminUser
             ? [data.adminUser.firstName, data.adminUser.lastName].filter(Boolean).join(" ").trim() || undefined
@@ -264,11 +296,13 @@ export default function CollectionViewPage({
             data.entity?.profilePictureUrl && data.entity.profilePictureUrl.trim() !== ""
               ? data.entity.profilePictureUrl
               : undefined
+          const entityTypeLabel = entityTypeLabels[index] ?? "Entity"
           return {
             entityName: data.entity.name,
             managerName: managerName ?? undefined,
             teamMembersCount: Array.isArray(data.teamMembers) ? data.teamMembers.length : undefined,
             imageUrl,
+            entityTypeLabel,
           }
         })
         .filter(Boolean) as ParticipantsModalEntity[]
@@ -283,7 +317,7 @@ export default function CollectionViewPage({
     return () => {
       cancelled = true
     }
-  }, [collection])
+  }, [collection, user?.id])
 
   if (loading) {
     return (

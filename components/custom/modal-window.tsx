@@ -17,12 +17,14 @@ interface ModalWindowProps {
   open?: boolean
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void
-  /** Modal title */
+  /** Modal title (used for a11y and default header when headerContent is not set) */
   title?: string
   /** Modal subtitle */
   subtitle?: string
   /** Show subtitle */
   showSubtitle?: boolean
+  /** Custom header content (e.g. Titles + tags for step modal). When set, replaces default title/subtitle block. */
+  headerContent?: React.ReactNode
   /** Content of the modal (scrollable area) */
   children?: React.ReactNode
   /** Primary action label */
@@ -92,6 +94,7 @@ function ModalWindow({
   title = "Modal Title",
   subtitle = "Modal description",
   showSubtitle = true,
+  headerContent,
   children,
   primaryLabel = "Primary",
   secondaryLabel = "Secondary",
@@ -137,12 +140,16 @@ function ModalWindow({
           
           {/* Header: Fixed at top (no border, per Figma design) */}
           <div className="flex items-start justify-between gap-7 p-5 shrink-0">
-            <Titles
-              type="block"
-              title={title}
-              subtitle={subtitle}
-              showSubtitle={showSubtitle}
-            />
+            <div className="flex-1 min-w-0">
+              {headerContent ?? (
+                <Titles
+                  type="block"
+                  title={title}
+                  subtitle={subtitle}
+                  showSubtitle={showSubtitle}
+                />
+              )}
+            </div>
             {/* Close button (outline variant per Figma) */}
             <DialogPrimitive.Close asChild>
               <Button

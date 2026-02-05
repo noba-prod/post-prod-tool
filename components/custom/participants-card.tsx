@@ -65,65 +65,69 @@ export function ParticipantsCard({
         </AvatarFallback>
       </Avatar>
 
+      {/* Wrapper: main title + details block, gap 4px */}
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="truncate text-base font-semibold text-foreground">
           {title}
         </span>
 
-        {variant === "default" && (
-          <>
-            {line1 != null && line1 !== "" && (
-              <span className="truncate text-sm font-normal text-muted-foreground">
-                {line1}
-              </span>
-            )}
-            {line2 != null && line2 !== "" && (
-              <span className="truncate text-sm font-normal text-muted-foreground">
-                {line2}
-              </span>
-            )}
-          </>
-        )}
+        {/* First level + second level grouped with 0px gap for clearer hierarchy */}
+        <div className="flex min-w-0 flex-col gap-0">
+          {variant === "default" && (
+            <>
+              {line1 != null && line1 !== "" && (
+                <span className="truncate text-sm font-normal text-muted-foreground">
+                  {line1}
+                </span>
+              )}
+              {line2 != null && line2 !== "" && (
+                <span className="truncate text-sm font-normal text-muted-foreground">
+                  {line2}
+                </span>
+              )}
+            </>
+          )}
 
-        {variant === "individual" && (
-          <>
-            {email != null && email !== "" && (
-              <span className="truncate text-sm font-normal text-muted-foreground">
-                {email}
-              </span>
-            )}
-            {phone != null && phone !== "" && (
-              <span className="truncate text-sm font-normal text-muted-foreground">
-                {phone}
-              </span>
-            )}
-          </>
-        )}
+          {variant === "individual" && (
+            <>
+              {email != null && email !== "" && (
+                <span className="truncate text-sm font-normal text-muted-foreground">
+                  {email}
+                </span>
+              )}
+              {phone != null && phone !== "" && (
+                <span className="truncate text-sm font-normal text-muted-foreground">
+                  {phone}
+                </span>
+              )}
+            </>
+          )}
 
-        {variant === "entity" && (
-          <>
-            {managerName != null && managerName !== "" && (
-              <div className="flex min-w-0 items-center gap-1 text-sm">
-                <span className="shrink-0 font-normal text-muted-foreground">
-                  Manager:
-                </span>
-                <span className="min-w-0 truncate font-normal text-foreground/90">
-                  {managerName}
-                </span>
-              </div>
-            )}
-            {teamMembersCount != null && (
-              <div className="flex min-w-0 items-center gap-1 text-sm">
-                <span className="shrink-0 font-normal text-muted-foreground">
-                  Team members:
-                </span>
-                <span className="min-w-0 truncate font-normal text-foreground/90">
-                  {String(teamMembersCount)}
-                </span>
-              </div>
-            )}
-          </>
-        )}
+          {variant === "entity" && (
+            <>
+              {managerName != null && managerName !== "" && (
+                <div className="flex min-w-0 items-center gap-1 text-sm">
+                  <span className="shrink-0 font-normal text-muted-foreground">
+                    Manager:
+                  </span>
+                  <span className="min-w-0 truncate font-normal text-foreground/90">
+                    {managerName}
+                  </span>
+                </div>
+              )}
+              {teamMembersCount != null && (
+                <div className="flex min-w-0 items-center gap-1 text-sm">
+                  <span className="shrink-0 font-normal text-muted-foreground">
+                    Team members:
+                  </span>
+                  <span className="min-w-0 truncate font-normal text-foreground/90">
+                    {String(teamMembersCount)}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
