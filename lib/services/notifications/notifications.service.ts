@@ -121,6 +121,37 @@ export class NotificationsService implements INotificationsService {
       // Continue anyway to send notifications
     }
 
+    // 1b. dropoff_confirmed + canMeetDeadline: in-app notification to producer (owner)
+    if (
+      eventType === "dropoff_confirmed" &&
+      typeof (metadata as { canMeetDeadline?: boolean } | undefined)?.canMeetDeadline === "boolean"
+    ) {
+      const context = await getCollectionContext(this.supabase, collectionId)
+      if (context) {
+        const producers = await resolveRecipients(this.supabase, collectionId, ["producer"])
+        const canMeet = (metadata as { canMeetDeadline: boolean }).canMeetDeadline
+        const title = formatNotificationTitle("Delivery confirmed", context.name, context.reference)
+        const body = canMeet
+          ? "The lab has confirmed they can meet the next deadline."
+          : "The lab has reported they cannot meet the next deadline."
+        const ctaUrl = buildCtaUrl("/collections/{collectionId}", collectionId)
+        for (const recipient of producers) {
+          await this.createNotification({
+            collection_id: collectionId,
+            template_id: null,
+            user_id: recipient.userId,
+            channel: "in_app",
+            status: "sent",
+            title,
+            body,
+            cta_text: "View collection",
+            cta_url: ctaUrl,
+            sent_at: new Date().toISOString(),
+          })
+        }
+      }
+    }
+
     // 2. Find templates triggered by this event
     const { data: templates, error: templatesError } = await this.supabase
       .from("notification_templates")
@@ -136,19 +167,17 @@ export class NotificationsService implements INotificationsService {
 
     if (!templates || templates.length === 0) {
       console.log(`[NotificationsService] No templates for event: ${eventType}`)
-      return
-    }
-
-    // 3. Get collection context
-    const context = await getCollectionContext(this.supabase, collectionId)
-    if (!context) {
-      console.error("[NotificationsService] Collection not found:", collectionId)
-      return
-    }
-
-    // 4. Process each template
-    for (const template of templates) {
-      await this.processTemplate(template, collectionId, context)
+    } else {
+      // 3. Get collection context
+      const context = await getCollectionContext(this.supabase, collectionId)
+      if (!context) {
+        console.error("[NotificationsService] Collection not found:", collectionId)
+      } else {
+        // 4. Process each template
+        for (const template of templates) {
+          await this.processTemplate(template, collectionId, context)
+        }
+      }
     }
 
     // 5. Mark event as processed

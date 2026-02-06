@@ -217,6 +217,8 @@ export interface Collection {
   lowres_managing_shipping: string | null
   lowres_shipping_carrier: string | null
   lowres_shipping_tracking: string | null
+  lowres_selection_url: string | null
+  lowres_lab_notes: string | null
   // Photo Selection
   photo_selection_photographer_preselection_date: string | null
   photo_selection_photographer_preselection_time: string | null
@@ -295,6 +297,8 @@ export interface CollectionInsert {
   lowres_managing_shipping?: string | null
   lowres_shipping_carrier?: string | null
   lowres_shipping_tracking?: string | null
+  lowres_selection_url?: string | null
+  lowres_lab_notes?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
@@ -363,6 +367,8 @@ export interface CollectionUpdate {
   lowres_managing_shipping?: string | null
   lowres_shipping_carrier?: string | null
   lowres_shipping_tracking?: string | null
+  lowres_selection_url?: string | null
+  lowres_lab_notes?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null

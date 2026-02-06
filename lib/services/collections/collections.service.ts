@@ -10,7 +10,7 @@ import type {
   ICollectionsRepository,
   ListCollectionsFilters,
 } from "@/lib/domain/collections"
-import { isDraftComplete, derivePublishedStatus } from "@/lib/domain/collections/workflow"
+import { isDraftComplete, derivePublishedStatus, deriveCanonicalCollectionStatus } from "@/lib/domain/collections/workflow"
 import type { INotificationsService } from "../notifications/notifications.interface"
 
 export class CollectionsServiceError extends Error {
@@ -91,7 +91,19 @@ export class CollectionsService {
   }
 
   async getCollectionById(id: string): Promise<Collection | null> {
-    return this.repository.getById(id)
+    const collection = await this.repository.getById(id)
+    if (!collection) return null
+    const canonical = deriveCanonicalCollectionStatus(
+      collection.config,
+      collection.publishedAt,
+      collection.status,
+      new Date()
+    )
+    if (canonical !== collection.status) {
+      const updated = await this.repository.update(id, { status: canonical })
+      return updated ?? { ...collection, status: canonical }
+    }
+    return collection
   }
 
   async updateCollection(
@@ -113,7 +125,24 @@ export class CollectionsService {
   }
 
   async listCollections(filters?: ListCollectionsFilters): Promise<Collection[]> {
-    return this.repository.list(filters)
+    const list = await this.repository.list(filters)
+    const now = new Date()
+    const result: Collection[] = []
+    for (const c of list) {
+      const canonical = deriveCanonicalCollectionStatus(
+        c.config,
+        c.publishedAt,
+        c.status,
+        now
+      )
+      if (canonical !== c.status) {
+        const updated = await this.repository.update(c.id, { status: canonical })
+        result.push(updated ?? { ...c, status: canonical })
+      } else {
+        result.push(c)
+      }
+    }
+    return result
   }
 
   /**

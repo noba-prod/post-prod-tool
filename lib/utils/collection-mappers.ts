@@ -325,6 +325,8 @@ export function mapDbCollectionToDomain(
     : "draft"
   const publishedAt = row.published_at ?? undefined
 
+  const lowresSelectionUrl = (row as { lowres_selection_url?: string | null }).lowres_selection_url
+  const lowresLabNotes = (row as { lowres_lab_notes?: string | null }).lowres_lab_notes
   return {
     id: row.id,
     status,
@@ -333,6 +335,8 @@ export function mapDbCollectionToDomain(
     creationData,
     updatedAt: row.updated_at,
     publishedAt,
+    lowResSelectionUrl: lowresSelectionUrl ?? undefined,
+    lowResLabNotes: lowresLabNotes ?? undefined,
   }
 }
 
@@ -430,11 +434,15 @@ export function mapDomainPatchToDbUpdate(
     participants?: CollectionParticipant[]
     status?: import("@/lib/domain/collections").CollectionStatus
     publishedAt?: string
+    lowResSelectionUrl?: string
+    lowResLabNotes?: string
   }
 ): CollectionUpdate {
   const u: CollectionUpdate = {}
   if (patch.status !== undefined) u.status = patch.status
   if (patch.publishedAt !== undefined) u.published_at = patch.publishedAt ?? null
+  if (patch.lowResSelectionUrl !== undefined) u.lowres_selection_url = patch.lowResSelectionUrl ?? null
+  if (patch.lowResLabNotes !== undefined) u.lowres_lab_notes = patch.lowResLabNotes ?? null
   const conf = patch.config
   if (conf) {
     if (conf.clientEntityId !== undefined) u.client_id = conf.clientEntityId

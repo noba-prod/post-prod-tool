@@ -12,6 +12,57 @@ import {
   type ParticipantsModalIndividual,
   type ParticipantsModalEntity,
 } from "../participants-modal"
+
+/**
+ * Main players variant "mainContextual": returns the subset of players to show in the step modal.
+ * Dynamic per step (e.g. shooting → Photographer + Client only; other steps can be extended later).
+ */
+function getMainContextualPlayers(
+  stepId: string | undefined,
+  individuals: ParticipantsModalIndividual[],
+  entities: ParticipantsModalEntity[]
+): { individuals: ParticipantsModalIndividual[]; entities: ParticipantsModalEntity[] } {
+  if (!stepId) return { individuals, entities }
+  if (stepId === "shooting") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"),
+    }
+  }
+  if (stepId === "negatives_dropoff" || stepId === "low_res_scanning") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"),
+    }
+  }
+  if (stepId === "photographer_selection") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"),
+    }
+  }
+  return { individuals, entities }
+}
+
+/** Format time for display: strip seconds when value is HH:mm:ss; leave presets (e.g. "morning") as-is. */
+function formatTimeNoSeconds(time?: string): string {
+  if (!time?.trim()) return "—"
+  const t = time.trim()
+  const match = t.match(/^(\d{1,2}:\d{2})(:\d{2})?$/)
+  if (match) return match[1]!
+  return t
+}
+
+/** Build "Time: date · time" for StepDetails additionalInfo; time without seconds when numeric. */
+function formatTimeLabel(date?: string, time?: string): string {
+  const d = date?.trim() || "—"
+  const t = formatTimeNoSeconds(time)
+  if (d === "—" && t === "—") return "Time: —"
+  if (d === "—") return `Time: ${t}`
+  if (t === "—") return `Time: ${d}`
+  return `Time: ${d} · ${t}`
+}
+
 import { Titles } from "../titles"
 import { StageStatusTag, TimeStampTag, DateIndicatorTag } from "../tag"
 import { StepDetails } from "../step-details"
@@ -32,10 +83,14 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
 import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
+import { InformativeToast } from "@/components/custom/informative-toast"
 
 // =============================================================================
 // STEP CONFIGURATION (aligned with collections-logic.md §10)
@@ -114,6 +169,36 @@ export interface CollectionTemplateProps {
   participantsMainPlayersIndividuals?: ParticipantsModalIndividual[]
   /** Participants modal: main players as entities */
   participantsMainPlayersEntities?: ParticipantsModalEntity[]
+  /** Step 1 (Shooting) only: shooting location for modal card and Google Maps link */
+  shootingStreetAddress?: string
+  shootingCity?: string
+  shootingZipCode?: string
+  shootingCountry?: string
+  /** Step 2 (Negatives drop-off) only: drop-off shipping for modal (Tracking shipping card + Delivery blocks) */
+  dropoffShippingCarrier?: string
+  dropoffShippingTracking?: string
+  dropoffShippingOriginAddress?: string
+  dropoffShippingDate?: string
+  dropoffShippingTime?: string
+  dropoffShippingDestinationAddress?: string
+  dropoffDeliveryDate?: string
+  dropoffDeliveryTime?: string
+  /** Called when owner confirms pickup (Shooting step). Closes modal, updates stepper/progress, sends notification to Photo lab. */
+  onConfirmPickup?: (stepId: string) => void | Promise<void>
+  /** Called when owner confirms delivery (Negatives drop-off step). Pass canMeetDeadline from dialog Yes/No. */
+  onConfirmDropoffDelivery?: (stepId: string, canMeetDeadline: boolean) => void | Promise<void>
+  /** Called when owner uploads low-res (step 3). Payload: url (required), notes (optional). Marks step completed, notifies producer + photographer. */
+  onUploadLowRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
+  /** Upload low-res dialog: show shipping reminder only when handprint lab is different from original (configured in collection creation). */
+  uploadLowResShowShippingReminder?: boolean
+  /** Upload low-res dialog: initial notes (e.g. from collection.lowResLabNotes) to pre-fill when opening. */
+  uploadLowResInitialNotes?: string
+  /** Step 4 (Photographer selection): URL of uploaded low-res photos (link in primary card). */
+  lowResSelectionUrl?: string
+  /** Upload low-res dialog: shipping reminder — delivery date (ISO), time, and handprint lab destination. */
+  uploadLowResShippingReminderDate?: string
+  uploadLowResShippingReminderTime?: string
+  uploadLowResShippingReminderDestination?: string
   /** NavBar props when no UserContext */
   navBarProps?: NavBarConfig
   className?: string
@@ -154,6 +239,27 @@ export function CollectionTemplate({
   participantsNobaTeam,
   participantsMainPlayersIndividuals,
   participantsMainPlayersEntities,
+  shootingStreetAddress,
+  shootingCity,
+  shootingZipCode,
+  shootingCountry,
+  dropoffShippingCarrier,
+  dropoffShippingTracking,
+  dropoffShippingOriginAddress,
+  dropoffShippingDate,
+  dropoffShippingTime,
+  dropoffShippingDestinationAddress,
+  dropoffDeliveryDate,
+  dropoffDeliveryTime,
+  onConfirmPickup,
+  onConfirmDropoffDelivery,
+  onUploadLowRes,
+  uploadLowResShowShippingReminder,
+  uploadLowResInitialNotes,
+  lowResSelectionUrl,
+  uploadLowResShippingReminderDate,
+  uploadLowResShippingReminderTime,
+  uploadLowResShippingReminderDestination,
   navBarProps,
   className,
 }: CollectionTemplateProps) {
@@ -165,6 +271,10 @@ export function CollectionTemplate({
 
   const [isSearchOpen, setIsSearchOpen] = React.useState(false)
   const [openStepId, setOpenStepId] = React.useState<string | null>(null)
+  const [confirmDropoffDialogOpen, setConfirmDropoffDialogOpen] = React.useState(false)
+  const [uploadLowResDialogOpen, setUploadLowResDialogOpen] = React.useState(false)
+  const [uploadLowResUrl, setUploadLowResUrl] = React.useState("")
+  const [uploadLowResNotes, setUploadLowResNotes] = React.useState("")
   const [participantsModalOpen, setParticipantsModalOpen] = React.useState(false)
   const [editCollectionDialogOpen, setEditCollectionDialogOpen] = React.useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false)
@@ -406,34 +516,279 @@ export function CollectionTemplate({
             </div>
           ) : undefined
         }
-        showPrimary={openStep?.canEdit ?? false}
-        showSecondary={true}
-        primaryLabel={openStep?.canEdit ? "Actions" : undefined}
-        secondaryLabel="Close"
-        onPrimaryClick={
-          openStep?.canEdit && collectionId
-            ? () => router.push(`/collections/create/${collectionId}`)
-            : undefined
-        }
-        onSecondaryClick={() => setOpenStepId(null)}
+        showPrimary={false}
+        showSecondary={false}
       >
         <div className="px-5 pb-5 flex flex-col gap-6">
           {openStep && (
             <>
-              <StepDetails
-                variant="primary"
-                mainTitle={openStep.title}
-                subtitle={
-                  openStep.canEdit
-                    ? "You can edit and perform actions in this step."
-                    : "You can view this step only; edits and downloads are not available."
-                }
-                onAction={
-                  openStep.canEdit && collectionId
-                    ? () => router.push(`/collections/create/${collectionId}`)
-                    : undefined
-                }
-              />
+              {openStep.id === "shooting" ? (
+                <StepDetails
+                  variant="primary"
+                  mainTitle="Location"
+                  subtitle={[shootingStreetAddress, shootingCity].filter(Boolean).join(", ") || undefined}
+                  additionalInfo={[shootingZipCode, shootingCountry].filter(Boolean).join(", ") || undefined}
+                  backgroundImage="/assets/bg-shooting.png"
+                  makeCardClickable={true}
+                  onAction={() => {
+                    const query = [shootingStreetAddress, shootingCity, shootingZipCode, shootingCountry]
+                      .filter(Boolean)
+                      .join(", ")
+                    if (query) {
+                      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+                      window.open(url, "_blank", "noopener,noreferrer")
+                    }
+                  }}
+                />
+              ) : openStep.id === "negatives_dropoff" ? (
+                <>
+                  <StepDetails
+                    variant="primary"
+                    mainTitle="Tracking shipping"
+                    subtitle={
+                      dropoffShippingCarrier?.trim() ? (
+                        <>
+                          Provider:{" "}
+                          <span className="text-lime-400">@{dropoffShippingCarrier.trim()}</span>
+                        </>
+                      ) : (
+                        "Provider: —"
+                      )
+                    }
+                    additionalInfo={
+                      dropoffShippingTracking?.trim()
+                        ? `Tracking ID: ${dropoffShippingTracking.trim()}`
+                        : "Tracking ID: —"
+                    }
+                    backgroundImage="/assets/bg-tracking.png"
+                    onAction={
+                      openStep.canEdit && collectionId
+                        ? () => router.push(`/collections/create/${collectionId}`)
+                        : undefined
+                    }
+                  />
+                  <div className="flex flex-row gap-4 w-full">
+                    <StepDetails
+                      variant="secondary"
+                      mainTitle="Pick up details"
+                      subtitle={`Origin: ${[shootingStreetAddress, shootingZipCode, shootingCity, shootingCountry].filter(Boolean).join(" ") || "—"}`}
+                      additionalInfo={formatTimeLabel(dropoffShippingDate, dropoffShippingTime)}
+                      hideActionButton
+                      hugContent
+                      truncateSubtitle
+                      className="min-w-0 flex-1"
+                    />
+                    <StepDetails
+                      variant="secondary"
+                      mainTitle="Delivery"
+                      subtitle={`Destination: ${dropoffShippingDestinationAddress?.trim() || "—"}`}
+                      additionalInfo={formatTimeLabel(dropoffDeliveryDate, dropoffDeliveryTime)}
+                      hideActionButton
+                      hugContent
+                      truncateSubtitle
+                      className="min-w-0 flex-1"
+                    />
+                  </div>
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Has the drop-off been delivered?
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => setConfirmDropoffDialogOpen(true)}
+                      >
+                        Confirm delivery
+                      </Button>
+                    </section>
+                  )}
+                </>
+              ) : openStep.id === "low_res_scanning" ? (
+                <>
+                  <StepDetails
+                    variant="primary"
+                    mainTitle='Negatives scanning to "low-res"'
+                    subtitle="Lab has to digitize negatives to low-res and share with photographer."
+                    additionalInfo={
+                      (() => {
+                        const photoLab = (participantsMainPlayersEntities ?? []).find((e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab")
+                        const handprintLab = (participantsMainPlayersEntities ?? []).find(
+                          (e) =>
+                            (e.entityTypeLabel ?? "").toLowerCase().includes("handprint") ||
+                            (e.entityTypeLabel ?? "").toLowerCase().includes("hand print")
+                        )
+                        const photoLabName = photoLab?.entityName ?? "—"
+                        const handprintLabName = handprintLab?.entityName ?? "—"
+                        return (
+                          <>
+                            High resolution conversion will be done later by different lab.
+                            {uploadLowResShowShippingReminder && (
+                              <>
+                                {" "}
+                                After this step, shipping of negatives must be scheduled by{" "}
+                                <span className="text-lime-400">@{photoLabName}</span> to{" "}
+                                <span className="text-lime-400">@{handprintLabName}</span>
+                              </>
+                            )}
+                          </>
+                        )
+                      })()
+                    }
+                    backgroundImage="/assets/bg-lowres.png"
+                    hideActionButton
+                    onAction={
+                      openStep.canEdit && collectionId
+                        ? () => router.push(`/collections/create/${collectionId}`)
+                        : undefined
+                    }
+                  />
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Already have the low-res scanned?
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => setUploadLowResDialogOpen(true)}
+                      >
+                        Upload low-res
+                      </Button>
+                    </section>
+                  )}
+                </>
+              ) : openStep.id === "photographer_selection" ? (
+                <div className="flex flex-col gap-5 w-full">
+                  <div className="flex flex-row gap-5 w-full min-w-0">
+                    <StepDetails
+                      variant="primary"
+                      mainTitle="Selection for client"
+                      subtitle="Photographer has to do a selection of photos to share with client."
+                      backgroundImage="/assets/bg-selection.png"
+                      hideActionButton
+                      className="min-w-0 flex-1"
+                    />
+                    <StepDetails
+                      variant="primary"
+                      mainTitle="Low-res photos"
+                      subtitle={
+                        (() => {
+                          const photoLab = (participantsMainPlayersEntities ?? []).find(
+                            (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
+                          )
+                          const name = photoLab?.entityName ?? "—"
+                          return (
+                            <>
+                              Uploaded by <span className="text-lime-400">@{name}</span>
+                            </>
+                          )
+                        })()
+                      }
+                      additionalInfo={lowResSelectionUrl ? "View link" : "Not uploaded yet"}
+                      backgroundImage="/assets/bg-lowres.png"
+                      makeCardClickable={!!lowResSelectionUrl}
+                      onAction={
+                        lowResSelectionUrl
+                          ? () => window.open(lowResSelectionUrl, "_blank", "noopener,noreferrer")
+                          : undefined
+                      }
+                      className="min-w-0 flex-1"
+                    />
+                  </div>
+                  <StepDetails
+                    variant="notes"
+                    mainTitle="Notes from lab"
+                    entityName="lab"
+                    additionalInfo={uploadLowResInitialNotes?.trim() || "—"}
+                  />
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Already have the selection?
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => {
+                          if (collectionId) router.push(`/collections/create/${collectionId}`)
+                          setOpenStepId(null)
+                        }}
+                      >
+                        Already have the selection?
+                      </Button>
+                    </section>
+                  )}
+                  <StepDetails
+                    variant="missingPhotos"
+                    mainTitle="Missing photos?"
+                    entityName={
+                      (participantsMainPlayersEntities ?? []).find(
+                        (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
+                      )?.entityName ?? "photo lab"
+                    }
+                    onAction={
+                      openStep.canEdit && collectionId
+                        ? () => router.push(`/collections/create/${collectionId}`)
+                        : undefined
+                  }
+                  />
+                </div>
+              ) : (
+                <StepDetails
+                  variant="primary"
+                  mainTitle={openStep.title}
+                  subtitle={
+                    openStep.canEdit
+                      ? "You can edit and perform actions in this step."
+                      : "You can view this step only; edits and downloads are not available."
+                  }
+                  onAction={
+                    openStep.canEdit && collectionId
+                      ? () => router.push(`/collections/create/${collectionId}`)
+                      : undefined
+                  }
+                />
+              )}
+              {/* Owner-only action block (Confirm pickup) — Shooting step only; closes modal, toast, updates stepper/progress, notifies Photo lab */}
+              {openStep.canEdit && openStep.id === "shooting" && (
+                <section
+                  className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                  aria-label="Step owner action"
+                >
+                  <p className="text-center text-base font-semibold text-foreground">
+                    Have the negatives been collected?
+                  </p>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="lg"
+                    className="w-fit rounded-xl"
+                    onClick={async () => {
+                      await onConfirmPickup?.("shooting")
+                      setOpenStepId(null)
+                      toast.success("Pickup confirmed.")
+                    }}
+                  >
+                    Confirm pickup
+                  </Button>
+                </section>
+              )}
               {/* Noba team */}
               <section className="flex flex-col gap-3">
                 <h3 className="text-lg font-semibold text-card-foreground">
@@ -463,48 +818,64 @@ export function CollectionTemplate({
                   )}
                 </div>
               </section>
-              {/* Main players */}
-              <section className="flex flex-col gap-3">
-                <h3 className="text-lg font-semibold text-card-foreground">
-                  Main players
-                </h3>
-                <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
-                  {(participantsMainPlayersIndividuals ?? []).map((user, i) => (
-                    <div key={`step-main-ind-${i}-${user.name}`} className="flex flex-col gap-3">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {(user.roleLabel ?? "Photographer").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
-                      </span>
-                      <ParticipantsCard
-                        variant="individual"
-                        title={user.name}
-                        initials={user.initials}
-                        imageUrl={user.imageUrl}
-                        email={user.email}
-                        phone={user.phone}
-                      />
+              {/* Main players — variant "mainContextual": per-step subset (e.g. step shooting → Photographer + Client only) */}
+              {(() => {
+                const { individuals: mainIndividuals, entities: mainEntities } = getMainContextualPlayers(
+                  openStep?.id,
+                  participantsMainPlayersIndividuals ?? [],
+                  participantsMainPlayersEntities ?? []
+                )
+                const isLowResStep = openStep?.id === "low_res_scanning"
+                const renderEntity = (entity: (typeof mainEntities)[number], i: number) => (
+                  <div key={`step-main-ent-${i}-${entity.entityName}`} className="flex flex-col gap-3">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {(entity.entityTypeLabel ?? "Entity").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
+                    </span>
+                    <ParticipantsCard
+                      variant="entity"
+                      title={entity.entityName}
+                      imageUrl={entity.imageUrl}
+                      managerName={entity.managerName}
+                      teamMembersCount={entity.teamMembersCount}
+                    />
+                  </div>
+                )
+                const renderIndividual = (user: (typeof mainIndividuals)[number], i: number) => (
+                  <div key={`step-main-ind-${i}-${user.name}`} className="flex flex-col gap-3">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {(user.roleLabel ?? "Photographer").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
+                    </span>
+                    <ParticipantsCard
+                      variant="individual"
+                      title={user.name}
+                      initials={user.initials}
+                      imageUrl={user.imageUrl}
+                      email={user.email}
+                      phone={user.phone}
+                    />
+                  </div>
+                )
+                return (
+                  <section className="flex flex-col gap-3">
+                    <h3 className="text-lg font-semibold text-card-foreground">
+                      Main players
+                    </h3>
+                    <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
+                      {isLowResStep
+                        ? mainEntities.map((entity, i) => renderEntity(entity, i))
+                        : mainIndividuals.map((user, i) => renderIndividual(user, i))}
+                      {isLowResStep
+                        ? mainIndividuals.map((user, i) => renderIndividual(user, i))
+                        : mainEntities.map((entity, i) => renderEntity(entity, i))}
+                      {mainIndividuals.length === 0 && mainEntities.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          No main players in this collection.
+                        </p>
+                      )}
                     </div>
-                  ))}
-                  {(participantsMainPlayersEntities ?? []).map((entity, i) => (
-                    <div key={`step-main-ent-${i}-${entity.entityName}`} className="flex flex-col gap-3">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {(entity.entityTypeLabel ?? "Entity").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
-                      </span>
-                      <ParticipantsCard
-                        variant="entity"
-                        title={entity.entityName}
-                        imageUrl={entity.imageUrl}
-                        managerName={entity.managerName}
-                        teamMembersCount={entity.teamMembersCount}
-                      />
-                    </div>
-                  ))}
-                  {(participantsMainPlayersIndividuals ?? []).length === 0 && (participantsMainPlayersEntities ?? []).length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      No main players in this collection.
-                    </p>
-                  )}
-                </div>
-              </section>
+                  </section>
+                )
+              })()}
             </>
           )}
         </div>
@@ -545,6 +916,161 @@ export function CollectionTemplate({
               disabled={!collectionId}
             >
               Edit collection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm delivery (Negatives drop-off): Yes/No → close dialog + modal, mark step completed, toast, notify producer */}
+      <Dialog open={confirmDropoffDialogOpen} onOpenChange={setConfirmDropoffDialogOpen}>
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm delivery</DialogTitle>
+            <DialogDescription>
+              Will the lab meet the next deadline?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center gap-4 py-4">
+            {(() => {
+              const negIndex = steps.findIndex((s) => s.id === "negatives_dropoff")
+              const nextStep = negIndex >= 0 && negIndex < steps.length - 1 ? steps[negIndex + 1] : null
+              const hasDate = nextStep?.deadlineDate && nextStep.deadlineDate !== "—"
+              if (!hasDate) return null
+              return (
+                <DateIndicatorTag
+                  label={`${nextStep!.title} —`}
+                  date={nextStep!.deadlineDate!}
+                  time={nextStep!.deadlineTime ?? "End of day (5:00pm)"}
+                  className="bg-sidebar-accent text-foreground"
+                />
+              )
+            })()}
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start gap-2 sm:justify-start sm:gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                setConfirmDropoffDialogOpen(false)
+                await onConfirmDropoffDelivery?.("negatives_dropoff", false)
+                setOpenStepId(null)
+                toast.success("Delivery confirmed.")
+              }}
+            >
+              No
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              onClick={async () => {
+                setConfirmDropoffDialogOpen(false)
+                await onConfirmDropoffDelivery?.("negatives_dropoff", true)
+                setOpenStepId(null)
+                toast.success("Delivery confirmed.")
+              }}
+            >
+              Yes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload low-res (step 3): URL + optional notes, CTA disabled until URL filled, shipping reminder, then mark step completed + toast + notify producer & photographer */}
+      <Dialog
+        open={uploadLowResDialogOpen}
+        onOpenChange={(open) => {
+          setUploadLowResDialogOpen(open)
+          if (open) {
+            setUploadLowResNotes(uploadLowResInitialNotes ?? "")
+          } else {
+            setUploadLowResUrl("")
+            setUploadLowResNotes("")
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share low-res photos</DialogTitle>
+            <DialogDescription>
+              Upload here the low-res photos to share with client
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-lowres-url">Link or URL with photos</Label>
+              <Input
+                id="upload-lowres-url"
+                type="url"
+                placeholder="Paste here the url"
+                value={uploadLowResUrl}
+                onChange={(e) => setUploadLowResUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-lowres-notes">Notes and comments (optional)</Label>
+              <Textarea
+                id="upload-lowres-notes"
+                placeholder="Add any notes for the photographer..."
+                value={uploadLowResNotes}
+                onChange={(e) => setUploadLowResNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+            {uploadLowResShowShippingReminder &&
+              (() => {
+                const dateStr =
+                  uploadLowResShippingReminderDate?.trim() &&
+                  (() => {
+                    try {
+                      return new Date(uploadLowResShippingReminderDate + "T12:00:00").toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    } catch {
+                      return uploadLowResShippingReminderDate
+                    }
+                  })()
+                const timeStr = uploadLowResShippingReminderTime?.trim() || "End of day (5:00pm)"
+                const destStr = uploadLowResShippingReminderDestination?.trim() || "handprint lab"
+                const valueClass = "font-semibold text-primary"
+                const reminderMessage =
+                  dateStr && timeStr && destStr ? (
+                    <>
+                      Remember to schedule shipping to handprint lab. Estimated to:{" "}
+                      <span className={valueClass}>{dateStr}</span> at <span className={valueClass}>{timeStr}</span> to{" "}
+                      <span className={valueClass}>{destStr}</span>
+                    </>
+                  ) : (
+                    "Remember to schedule shipping to handprint lab."
+                  )
+                return (
+                  <InformativeToast
+                    message={reminderMessage}
+                    className="text-muted-foreground"
+                  />
+                )
+              })()}
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!uploadLowResUrl.trim()}
+              onClick={async () => {
+                const url = uploadLowResUrl.trim()
+                if (!url) return
+                await onUploadLowRes?.({ url, notes: uploadLowResNotes.trim() || undefined })
+                setUploadLowResDialogOpen(false)
+                setUploadLowResUrl("")
+                setUploadLowResNotes("")
+                setOpenStepId(null)
+                toast.success("Low-res scans uploaded.")
+              }}
+            >
+              Upload low-res
             </Button>
           </DialogFooter>
         </DialogContent>

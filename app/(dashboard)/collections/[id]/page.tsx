@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { CollectionTemplate } from "@/components/custom/templates/collection-template"
 import type { CollectionTemplateStep } from "@/components/custom/templates/collection-template"
 import { createCollectionsService } from "@/lib/services"
@@ -10,8 +10,10 @@ import {
   getViewStepDefinitions,
   configToViewStepsInput,
   viewStepsWithStatusFromCollection,
+  EVENT_TYPE_TO_STEP_ID,
   resolveUserForPermission,
   canUserEditStep,
+  deriveStageStatusFromShootingStart,
 } from "@/lib/domain/collections"
 import type { StepId, UserForPermission, CollectionDraft } from "@/lib/domain/collections"
 import type {
@@ -59,6 +61,7 @@ export default function CollectionViewPage({
 }) {
   const { id } = React.use(params)
   const router = useRouter()
+  const pathname = usePathname()
   const { user, isNobaUser } = useUserContext()
   const [loading, setLoading] = React.useState(true)
   const [collection, setCollection] = React.useState<Awaited<
@@ -69,13 +72,47 @@ export default function CollectionViewPage({
   const [participantsNobaTeam, setParticipantsNobaTeam] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersIndividuals, setParticipantsMainPlayersIndividuals] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersEntities, setParticipantsMainPlayersEntities] = React.useState<ParticipantsModalEntity[]>([])
+  const [completedStepIds, setCompletedStepIds] = React.useState<string[]>([])
 
   const service = React.useMemo(() => createCollectionsService(), [])
+
+  /** Derive completed step ids from collection_events (e.g. negatives_pickup_marked → shooting). */
+  const fetchCompletedStepIds = React.useCallback(async (collectionId: string) => {
+    try {
+      const res = await fetch(`/api/collections/${collectionId}/events`)
+      if (!res.ok) return
+      const data = (await res.json()) as { events?: Array<{ event_type?: string }> }
+      const events = data.events ?? []
+      const stepIds = new Set<string>()
+      for (const e of events) {
+        const stepId = e.event_type && EVENT_TYPE_TO_STEP_ID[e.event_type]
+        if (stepId) stepIds.add(stepId)
+      }
+      setCompletedStepIds(Array.from(stepIds))
+    } catch (err) {
+      console.error("[CollectionViewPage] Failed to fetch events:", err)
+    }
+  }, [])
 
   const userForPermission = React.useMemo(() => {
     if (!collection || !user?.id) return null
     return resolveUserForPermission(user.id, isNobaUser, collection)
   }, [collection, user?.id, isNobaUser])
+
+  const refetchCollection = React.useCallback(() => {
+    if (!id) return
+    service.getCollectionById(id).then((c) => {
+      if (!c) {
+        setCollection(null)
+        return
+      }
+      if (c.status === "draft") {
+        router.replace(`/collections/create/${id}`)
+        return
+      }
+      setCollection(c)
+    })
+  }, [id, service, router])
 
   React.useEffect(() => {
     if (!id) {
@@ -83,6 +120,7 @@ export default function CollectionViewPage({
       return
     }
     let cancelled = false
+    setLoading(true)
     service.getCollectionById(id).then((c) => {
       if (cancelled) return
       if (!c) {
@@ -90,7 +128,6 @@ export default function CollectionViewPage({
         setLoading(false)
         return
       }
-      // If draft, redirect to setup flow
       if (c.status === "draft") {
         router.replace(`/collections/create/${id}`)
         return
@@ -102,6 +139,124 @@ export default function CollectionViewPage({
       cancelled = true
     }
   }, [id, service, router])
+
+  // Refetch when we land on this page (e.g. back from edit) so status reflects latest shooting dates
+  const isViewPage = pathname === `/collections/${id}` && !pathname.startsWith("/collections/create/")
+  React.useEffect(() => {
+    if (id && isViewPage) refetchCollection()
+  }, [id, isViewPage, refetchCollection])
+
+  // Refetch when window/tab gains focus or becomes visible so that after editing shooting dates we show updated status
+  React.useEffect(() => {
+    const refetch = () => {
+      if (id && collection?.id === id) refetchCollection()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refetch()
+    }
+    window.addEventListener("focus", refetch)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      window.removeEventListener("focus", refetch)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [id, collection?.id, refetchCollection])
+
+  React.useEffect(() => {
+    if (!id || !collection || collection.status === "draft") return
+    fetchCompletedStepIds(id)
+  }, [id, collection?.id, collection?.status, fetchCompletedStepIds])
+
+  // Steps, progress, and handler — must run on every render (Rules of Hooks)
+  const steps = React.useMemo(() => {
+    if (!collection || collection.status === "draft") return []
+    const viewStepsConfig = configToViewStepsInput(collection.config)
+    const definitions = getViewStepDefinitions(viewStepsConfig)
+    const stepsWithStatus = viewStepsWithStatusFromCollection(definitions, collection.config, {
+      completedStepIds,
+    })
+    return viewStepsToTemplateSteps(stepsWithStatus, collection, userForPermission)
+  }, [collection, userForPermission, completedStepIds])
+
+  const visibleStepIds = React.useMemo(
+    () => steps.filter((s) => !s.inactive).map((s) => s.id),
+    [steps]
+  )
+
+  const progress = React.useMemo(() => {
+    if (visibleStepIds.length === 0) return 0
+    const completedCount = completedStepIds.filter((id) => visibleStepIds.includes(id)).length
+    return Math.round((completedCount / visibleStepIds.length) * 100)
+  }, [completedStepIds, visibleStepIds])
+
+  const handleConfirmPickup = React.useCallback(
+    async (stepId: string) => {
+      if (!id || stepId !== "shooting") return
+      try {
+        const res = await fetch(`/api/collections/${id}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventType: "negatives_pickup_marked" }),
+        })
+        if (!res.ok) throw new Error("Failed to trigger event")
+        await fetchCompletedStepIds(id)
+      } catch (err) {
+        console.error("[CollectionViewPage] Confirm pickup error:", err)
+      }
+    },
+    [id, fetchCompletedStepIds]
+  )
+
+  const handleConfirmDropoffDelivery = React.useCallback(
+    async (stepId: string, canMeetDeadline: boolean) => {
+      if (!id || stepId !== "negatives_dropoff") return
+      try {
+        const res = await fetch(`/api/collections/${id}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventType: "dropoff_confirmed",
+            metadata: { canMeetDeadline },
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to trigger event")
+        await fetchCompletedStepIds(id)
+      } catch (err) {
+        console.error("[CollectionViewPage] Confirm dropoff delivery error:", err)
+      }
+    },
+    [id, fetchCompletedStepIds]
+  )
+
+  const handleUploadLowRes = React.useCallback(
+    async (payload: { url: string; notes?: string }) => {
+      if (!id) return
+      try {
+        const patchRes = await fetch(`/api/collections/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lowres_selection_url: payload.url,
+            lowres_lab_notes: payload.notes?.trim() || null,
+          }),
+        })
+        if (!patchRes.ok) throw new Error("Failed to save low-res URL")
+        const res = await fetch(`/api/collections/${id}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventType: "scanning_completed",
+            metadata: { lowResUrl: payload.url, notes: payload.notes },
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to trigger event")
+        await fetchCompletedStepIds(id)
+      } catch (err) {
+        console.error("[CollectionViewPage] Upload low-res error:", err)
+      }
+    },
+    [id, fetchCompletedStepIds]
+  )
 
   // Resolve client and photographer names from collection data via API
   React.useEffect(() => {
@@ -347,16 +502,13 @@ export default function CollectionViewPage({
     )
   }
 
-  // Published collections: view steps from config (same scenarios as demo), deadlines from collection, one step active
-  const viewStepsConfig = configToViewStepsInput(collection.config)
-  const definitions = getViewStepDefinitions(viewStepsConfig)
-  const stepsWithStatus = viewStepsWithStatusFromCollection(definitions, collection.config)
-  const steps = viewStepsToTemplateSteps(stepsWithStatus, collection, userForPermission)
-
-  const stageStatus =
+  const stageStatus = deriveStageStatusFromShootingStart(
+    {
+      shootingStartDate: collection.config.shootingStartDate ?? collection.config.shootingDate,
+      shootingStartTime: collection.config.shootingStartTime,
+    },
     collection.status === "in_progress" ? "in-progress" : "upcoming"
-  const progress = collection.status === "in_progress" ? 42 : 0
-
+  )
   const shootingType = collection.config.hasHandprint ? "handprint" : "digital"
 
   return (
@@ -375,6 +527,27 @@ export default function CollectionViewPage({
       participantsNobaTeam={participantsNobaTeam}
       participantsMainPlayersIndividuals={participantsMainPlayersIndividuals}
       participantsMainPlayersEntities={participantsMainPlayersEntities}
+      shootingStreetAddress={collection.config.shootingStreetAddress}
+      shootingCity={collection.config.shootingCity}
+      shootingZipCode={collection.config.shootingZipCode}
+      shootingCountry={collection.config.shootingCountry}
+      dropoffShippingCarrier={collection.config.dropoff_shipping_carrier}
+      dropoffShippingTracking={collection.config.dropoff_shipping_tracking}
+      dropoffShippingOriginAddress={collection.config.dropoff_shipping_origin_address}
+      dropoffShippingDate={collection.config.dropoff_shipping_date}
+      dropoffShippingTime={collection.config.dropoff_shipping_time}
+      dropoffShippingDestinationAddress={collection.config.dropoff_shipping_destination_address}
+      dropoffDeliveryDate={collection.config.dropoff_delivery_date}
+      dropoffDeliveryTime={collection.config.dropoff_delivery_time}
+      onConfirmPickup={handleConfirmPickup}
+      onConfirmDropoffDelivery={handleConfirmDropoffDelivery}
+      onUploadLowRes={handleUploadLowRes}
+      uploadLowResShowShippingReminder={collection.config.handprintIsDifferentLab}
+      uploadLowResInitialNotes={collection.lowResLabNotes ?? undefined}
+      lowResSelectionUrl={collection.lowResSelectionUrl ?? undefined}
+      uploadLowResShippingReminderDate={collection.config.lowResShippingDeliveryDate}
+      uploadLowResShippingReminderTime={collection.config.lowResShippingDeliveryTime}
+      uploadLowResShippingReminderDestination={collection.config.lowResShippingDestinationAddress}
       navBarProps={{
         variant: "noba",
         userName: "Martin Becerra",

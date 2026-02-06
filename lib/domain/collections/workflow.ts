@@ -13,6 +13,7 @@ import type {
   StepId,
   UserForPermission,
   CollectionDraftStatus,
+  CollectionStatus,
 } from "./types"
 
 // =============================================================================
@@ -71,6 +72,73 @@ export function derivePublishedStatus(
   )
 
   return shootingDateOnly <= nowDateOnly ? "in_progress" : "upcoming"
+}
+
+// =============================================================================
+// DERIVE CANONICAL STATUS (for DB sync)
+// Rules: draft=unpublished; completed=project_deadline passed; in_progress=shooting start passed; upcoming=shooting start not passed; canceled=manual.
+// =============================================================================
+
+/** Normalize time string from DB (e.g. "morning" → "09:00:00") for date comparison */
+function normalizeTimeForComparison(timeStr: string | undefined): string {
+  const t = (timeStr ?? "").trim().toLowerCase()
+  if (!t) return "00:00:00"
+  if (t === "morning") return "09:00:00"
+  if (t === "afternoon") return "14:00:00"
+  if (t === "evening") return "18:00:00"
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) return t.length === 5 ? `${t}:00` : t
+  return "00:00:00"
+}
+
+/** Parse date + time (local) and return ms; invalid → NaN */
+function parseDateTimeMs(
+  dateStr: string | undefined,
+  timeStr: string | undefined
+): number {
+  const raw = (dateStr ?? "").trim()
+  if (!raw) return NaN
+  const dateOnly = raw.includes("T") ? raw.slice(0, 10) : raw
+  if (dateOnly.length < 10) return NaN
+  const time = normalizeTimeForComparison(timeStr)
+  const [hh, mm] = time.split(":").map(Number)
+  const built = `${dateOnly}T${String(hh ?? 0).padStart(2, "0")}:${String(mm ?? 0).padStart(2, "0")}:00`
+  const d = new Date(built)
+  return d.getTime()
+}
+
+/**
+ * Derives the canonical collection status from config and publish state.
+ * Used to sync the DB status column when dates have passed.
+ * - draft: not published (no publishedAt)
+ * - canceled: keep as-is (manual)
+ * - completed: published AND project_deadline + project_deadline_time have passed
+ * - in_progress: published AND shooting start has passed AND not completed
+ * - upcoming: published AND shooting start not yet passed
+ */
+export function deriveCanonicalCollectionStatus(
+  config: CollectionConfig,
+  publishedAt: string | undefined,
+  currentStatus: CollectionStatus,
+  now: Date = new Date()
+): CollectionStatus {
+  if (!publishedAt?.trim()) return "draft"
+  if (currentStatus === "canceled") return "canceled"
+
+  const nowMs = now.getTime()
+
+  const deadlineMs = parseDateTimeMs(
+    config.clientFinalsDeadline,
+    config.clientFinalsDeadlineTime
+  )
+  if (!Number.isNaN(deadlineMs) && nowMs >= deadlineMs) return "completed"
+
+  const shootingStartMs = parseDateTimeMs(
+    config.shootingStartDate ?? config.shootingDate,
+    config.shootingStartTime
+  )
+  if (!Number.isNaN(shootingStartMs) && nowMs >= shootingStartMs) return "in_progress"
+
+  return "upcoming"
 }
 
 // =============================================================================

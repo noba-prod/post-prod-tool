@@ -148,7 +148,7 @@ export function ParticipantsModal({
           </div>
         </section>
 
-        {/* Main players */}
+        {/* Main players — variant "all": show all players (Participants modal) */}
         <section className="flex flex-col gap-3">
           <h3 className="text-lg font-semibold text-card-foreground">
             Main players

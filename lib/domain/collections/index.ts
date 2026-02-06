@@ -31,6 +31,7 @@ export {
   canUserEditStep,
   computeCreationTemplate,
   derivePublishedStatus,
+  deriveCanonicalCollectionStatus,
   getChronologyConstraints,
   getStepOwner,
   isCreationStepComplete,
@@ -49,9 +50,16 @@ export type {
   ListCollectionsFilters,
 } from "./repository.interface"
 
+// Stage status from shooting start (so changing dates after publish updates UI)
+export {
+  deriveStageStatusFromShootingStart,
+} from "./stage-status"
+export type { StageStatusDisplay, ShootingStartConfig } from "./stage-status"
+
 // View mode steps (canonical list + derivation from config; reusable for demo and collection view page)
 export {
   configToViewStepsInput,
+  EVENT_TYPE_TO_STEP_ID,
   formatDeadlineDate,
   getViewStepDefinitions,
   viewStepsWithStatus,

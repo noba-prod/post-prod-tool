@@ -76,6 +76,8 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
       participants: patch.participants,
       status: patch.status,
       publishedAt: patch.publishedAt,
+      lowResSelectionUrl: patch.lowResSelectionUrl,
+      lowResLabNotes: patch.lowResLabNotes,
     })
     const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
     const { data: row, error } = await tbl.update(updatePayload).eq("id", id).select().single()

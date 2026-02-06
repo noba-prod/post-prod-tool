@@ -197,6 +197,10 @@ export interface Collection {
   updatedAt: string
   /** Set when status changes from draft to upcoming/in_progress (publish). */
   publishedAt?: string
+  /** URL where low-res scans/photos are shared (step 3 upload). */
+  lowResSelectionUrl?: string
+  /** Optional notes from upload low-res step (step 3). Pass null to clear. */
+  lowResLabNotes?: string | null
 }
 
 /** Alias for backward compatibility; workflow and UI use same shape. */

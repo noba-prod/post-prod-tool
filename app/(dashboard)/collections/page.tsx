@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
@@ -16,6 +16,7 @@ import { CollectionCard, type CollectionCardProps } from "@/components/custom/co
 import type { Collection as TableCollection } from "@/components/custom/tables"
 import { createCollectionsService } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
+import { deriveStageStatusFromShootingStart } from "@/lib/domain/collections"
 import type { Collection } from "@/lib/domain/collections"
 import type { Organization } from "@/lib/supabase/database.types"
 
@@ -143,6 +144,7 @@ function collectionDates(c: Collection): { start: string; end: string } {
 
 export default function CollectionsPage() {
   const router = useRouter()
+  const pathname = usePathname()
   const authAdapter = useAuthAdapter()
   const { isNobaProducerUser } = useUserContext()
   const [session, setSession] = useState<Session | null>(null)
@@ -179,11 +181,35 @@ export default function CollectionsPage() {
   }, [router, authAdapter])
 
   // Fetch collections from service (single source of truth for list)
-  useEffect(() => {
+  const refetchCollections = React.useCallback(() => {
     if (!session) return
     const service = createCollectionsService()
     service.listCollections().then(setCollections)
   }, [session])
+
+  useEffect(() => {
+    if (!session) return
+    refetchCollections()
+  }, [session, refetchCollections])
+
+  // Refetch when navigating to this page so list and card status stay in sync with shooting dates
+  useEffect(() => {
+    if (pathname === "/collections" && session) refetchCollections()
+  }, [pathname, session, refetchCollections])
+
+  // Refetch list when window/tab gains focus or becomes visible so that after editing shooting dates we show updated status
+  useEffect(() => {
+    const refetch = () => refetchCollections()
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refetch()
+    }
+    window.addEventListener("focus", refetch)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      window.removeEventListener("focus", refetch)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [refetchCollections])
 
   // Load client and photographer options for filters (registered entities)
   useEffect(() => {
@@ -288,9 +314,20 @@ export default function CollectionsPage() {
       const clientName = clientNamesByEntityId[c.config.clientEntityId]
         ? `@${clientNamesByEntityId[c.config.clientEntityId].toLowerCase()}`
         : "—"
+      const baseUI = mapStatusToUI(c.status)
+      const displayStatus =
+        c.status === "upcoming" || c.status === "in_progress"
+          ? deriveStageStatusFromShootingStart(
+              {
+                shootingStartDate: c.config.shootingStartDate ?? c.config.shootingDate,
+                shootingStartTime: c.config.shootingStartTime,
+              },
+              baseUI as "upcoming" | "in-progress"
+            )
+          : baseUI
       return {
         id: c.id,
-        status: mapStatusToUI(c.status),
+        status: displayStatus,
         collectionName: c.config.name || "—",
         clientName,
         location: collectionLocation(c),
@@ -309,10 +346,21 @@ export default function CollectionsPage() {
       const client = clientName
         ? clientName.charAt(0).toUpperCase() + clientName.slice(1)
         : "—"
+      const baseUI = mapStatusToUI(c.status)
+      const displayStatus =
+        c.status === "upcoming" || c.status === "in_progress"
+          ? deriveStageStatusFromShootingStart(
+              {
+                shootingStartDate: c.config.shootingStartDate ?? c.config.shootingDate,
+                shootingStartTime: c.config.shootingStartTime,
+              },
+              baseUI as "upcoming" | "in-progress"
+            )
+          : baseUI
       return {
         id: c.id,
         name: c.config.name || "—",
-        status: mapStatusToUI(c.status),
+        status: displayStatus,
         client,
         starting: start,
         location:

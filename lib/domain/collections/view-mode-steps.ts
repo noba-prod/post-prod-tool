@@ -279,15 +279,27 @@ export function viewStepsWithStatus(
 // COLLECTION VIEW: one active step, rest locked; deadlines from config
 // =============================================================================
 
+/** Maps collection event types to view step ids (event → step completed). */
+export const EVENT_TYPE_TO_STEP_ID: Record<string, ViewStepId> = {
+  negatives_pickup_marked: "shooting",
+  dropoff_confirmed: "negatives_dropoff",
+  scanning_completed: "low_res_scanning",
+  client_selection_confirmed: "client_selection",
+  photographer_edits_approved: "photographer_last_check",
+  collection_completed: "client_confirmation",
+}
+
 export interface ViewStepsFromCollectionOptions {
-  /** First visible step index that is "active" (default 0). Later: derive from execution state. */
+  /** First visible step index that is "active" (default 0). Ignored when completedStepIds is set. */
   activeStepIndex?: number
+  /** Step ids that are completed (e.g. from collection_events). When set, completed steps get "completed", first non-completed visible step gets "active", rest "locked". */
+  completedStepIds?: string[]
 }
 
 /**
  * Builds view steps for a published collection: steps derived from config (same scenarios
- * as demo), deadlines from collection config, and only one step "active" (rest "locked").
- * Execution confirmation will be handled later via modals.
+ * as demo), deadlines from collection config. Status: completed from completedStepIds,
+ * first non-completed visible step is active, rest locked.
  */
 export function viewStepsWithStatusFromCollection(
   definitions: ViewStepDefinition[],
@@ -300,14 +312,14 @@ export function viewStepsWithStatusFromCollection(
     deadlineTime?: string
   }
 > {
+  const completedSet = new Set(options?.completedStepIds ?? [])
   const visibleIndices = definitions
     .map((d, i) => (d.inactive ? -1 : i))
     .filter((i) => i >= 0)
-  const activeIndex = Math.max(
-    0,
-    Math.min(options?.activeStepIndex ?? 0, visibleIndices.length - 1)
-  )
-  const activeVisibleIndex = visibleIndices[activeIndex] ?? 0
+  const firstActiveVisibleIndex =
+    completedSet.size > 0
+      ? visibleIndices.find((idx) => !completedSet.has(definitions[idx]!.id)) ?? visibleIndices[visibleIndices.length - 1] ?? 0
+      : visibleIndices[0] ?? 0
 
   return definitions.map((def, index) => {
     const { date: dateIso, time: timeRaw } = getDeadlineIsoFromConfig(config, def.id as ViewStepId)
@@ -323,8 +335,9 @@ export function viewStepsWithStatusFromCollection(
       }
     }
 
-    const isActive = index === activeVisibleIndex
-    const status: ViewStepStatus = isActive ? "active" : "locked"
+    const isCompleted = completedSet.has(def.id)
+    const isActive = !isCompleted && index === firstActiveVisibleIndex
+    const status: ViewStepStatus = isCompleted ? "completed" : isActive ? "active" : "locked"
 
     return {
       ...def,

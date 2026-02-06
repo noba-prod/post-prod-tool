@@ -22,8 +22,8 @@ const VARIANT_STYLES: Record<ToastVariant, string> = {
 }
 
 interface InformativeToastProps {
-  /** Message content */
-  message: string
+  /** Message content (string or ReactNode for styled parts) */
+  message: React.ReactNode
   /** Visual variant */
   variant?: ToastVariant
   /** Custom icon (overrides variant icon) */
@@ -51,7 +51,7 @@ export function InformativeToast({
       role="status"
       aria-live="polite"
       className={cn(
-        "flex items-center gap-2 p-4 rounded-xl w-full",
+        "flex items-start gap-2 p-4 rounded-xl w-full",
         VARIANT_STYLES[variant],
         className
       )}
