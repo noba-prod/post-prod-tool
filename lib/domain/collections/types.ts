@@ -73,7 +73,7 @@ export interface CollectionConfig {
   reference?: string
   /** Client entity id */
   clientEntityId: string
-  /** Manager (admin) user id — producer / noba */
+  /** Client responsible user id — producer / noba */
   managerUserId: string
   /** User who created the collection (producer with is_owner in collection_members). Single source for owner in noba* section. */
   ownerUserId?: string
@@ -199,8 +199,26 @@ export interface Collection {
   publishedAt?: string
   /** URL where low-res scans/photos are shared (step 3 upload). */
   lowResSelectionUrl?: string
+  /** When the low-res URL was last set (ISO timestamp, for "X minutes ago" display). */
+  lowResSelectionUploadedAt?: string
   /** Optional notes from upload low-res step (step 3). Pass null to clear. */
   lowResLabNotes?: string | null
+  /** URL where photographer selection is shared (step 4 upload). */
+  photographerSelectionUrl?: string
+  /** When the photographer selection URL was last set (ISO timestamp). */
+  photographerSelectionUploadedAt?: string
+  /** Optional notes from step 4 upload. Pass null to clear. */
+  photographerNotes01?: string | null
+  /** Notes from photographer when requesting additional photos (missing photos flow). Saved in photographer_missingphotos. */
+  photographerRequestAdditionalNotes?: string | null
+  /** Comments from photographer when requesting missing photos (step 4). Displayed in step 3 notes block. */
+  photographerMissingphotos?: string | null
+  /** Re-upload URL after missing photos request (step 3 second upload). */
+  lowResSelectionUrl02?: string
+  /** When lowres_selection_url02 was set (ISO). */
+  lowResSelectionUploadedAt02?: string
+  /** Notes for re-upload (step 3 second upload). */
+  lowResLabNotes02?: string | null
 }
 
 /** Alias for backward compatibility; workflow and UI use same shape. */

@@ -20,6 +20,7 @@ import type {
   ParticipantsModalIndividual,
   ParticipantsModalEntity,
 } from "@/components/custom/participants-modal"
+import { toast } from "sonner"
 
 /**
  * Maps view-mode steps (with status and deadlines from collection) to CollectionTemplateStep.
@@ -76,23 +77,32 @@ export default function CollectionViewPage({
 
   const service = React.useMemo(() => createCollectionsService(), [])
 
-  /** Derive completed step ids from collection_events (e.g. negatives_pickup_marked → shooting). */
-  const fetchCompletedStepIds = React.useCallback(async (collectionId: string) => {
-    try {
-      const res = await fetch(`/api/collections/${collectionId}/events`)
-      if (!res.ok) return
-      const data = (await res.json()) as { events?: Array<{ event_type?: string }> }
-      const events = data.events ?? []
-      const stepIds = new Set<string>()
-      for (const e of events) {
-        const stepId = e.event_type && EVENT_TYPE_TO_STEP_ID[e.event_type]
-        if (stepId) stepIds.add(stepId)
+  /** Derive completed step ids from collection_events. When photographer_requested_additional_photos exists and re-upload not done (no lowResSelectionUrl02), step 4 is reverted to locked. */
+  const fetchCompletedStepIds = React.useCallback(
+    async (collectionId: string, lowResSelectionUrl02?: string | null) => {
+      try {
+        const res = await fetch(`/api/collections/${collectionId}/events`, { cache: "no-store" })
+        if (!res.ok) return
+        const data = (await res.json()) as { events?: Array<{ event_type?: string }> }
+        const events = data.events ?? []
+        const stepIds = new Set<string>()
+        let hasRequestAdditionalPhotos = false
+        for (const e of events) {
+          if (e.event_type === "photographer_requested_additional_photos") hasRequestAdditionalPhotos = true
+          const stepId = e.event_type && EVENT_TYPE_TO_STEP_ID[e.event_type]
+          if (stepId) stepIds.add(stepId)
+        }
+        if (hasRequestAdditionalPhotos && !lowResSelectionUrl02?.trim()) {
+          stepIds.delete("photographer_selection")
+          stepIds.delete("low_res_scanning")
+        }
+        setCompletedStepIds(Array.from(stepIds))
+      } catch (err) {
+        console.error("[CollectionViewPage] Failed to fetch events:", err)
       }
-      setCompletedStepIds(Array.from(stepIds))
-    } catch (err) {
-      console.error("[CollectionViewPage] Failed to fetch events:", err)
-    }
-  }, [])
+    },
+    []
+  )
 
   const userForPermission = React.useMemo(() => {
     if (!collection || !user?.id) return null
@@ -100,8 +110,8 @@ export default function CollectionViewPage({
   }, [collection, user?.id, isNobaUser])
 
   const refetchCollection = React.useCallback(() => {
-    if (!id) return
-    service.getCollectionById(id).then((c) => {
+    if (!id) return Promise.resolve()
+    return service.getCollectionById(id).then((c) => {
       if (!c) {
         setCollection(null)
         return
@@ -164,8 +174,8 @@ export default function CollectionViewPage({
 
   React.useEffect(() => {
     if (!id || !collection || collection.status === "draft") return
-    fetchCompletedStepIds(id)
-  }, [id, collection?.id, collection?.status, fetchCompletedStepIds])
+    fetchCompletedStepIds(id, collection.lowResSelectionUrl02)
+  }, [id, collection?.id, collection?.status, collection?.lowResSelectionUrl02, fetchCompletedStepIds])
 
   // Steps, progress, and handler — must run on every render (Rules of Hooks)
   const steps = React.useMemo(() => {
@@ -199,12 +209,12 @@ export default function CollectionViewPage({
           body: JSON.stringify({ eventType: "negatives_pickup_marked" }),
         })
         if (!res.ok) throw new Error("Failed to trigger event")
-        await fetchCompletedStepIds(id)
+        await fetchCompletedStepIds(id, collection?.lowResSelectionUrl02)
       } catch (err) {
         console.error("[CollectionViewPage] Confirm pickup error:", err)
       }
     },
-    [id, fetchCompletedStepIds]
+    [id, collection?.lowResSelectionUrl02, fetchCompletedStepIds]
   )
 
   const handleConfirmDropoffDelivery = React.useCallback(
@@ -220,15 +230,64 @@ export default function CollectionViewPage({
           }),
         })
         if (!res.ok) throw new Error("Failed to trigger event")
-        await fetchCompletedStepIds(id)
+        await fetchCompletedStepIds(id, collection?.lowResSelectionUrl02)
       } catch (err) {
         console.error("[CollectionViewPage] Confirm dropoff delivery error:", err)
       }
     },
-    [id, fetchCompletedStepIds]
+    [id, collection?.lowResSelectionUrl02, fetchCompletedStepIds]
   )
 
   const handleUploadLowRes = React.useCallback(
+    async (payload: { url: string; notes?: string }) => {
+      if (!id) return
+      const isReupload = !!collection?.photographerMissingphotos?.trim()
+      try {
+        const patchRes = await fetch(`/api/collections/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            isReupload
+              ? {
+                  lowres_selection_url02: payload.url,
+                  lowres_lab_notes02: payload.notes?.trim() || null,
+                }
+              : {
+                  lowres_selection_url: payload.url,
+                  lowres_lab_notes: payload.notes?.trim() || null,
+                }
+          ),
+        })
+        const patchData = (await patchRes.json().catch(() => ({}))) as { error?: string; collection?: Awaited<ReturnType<ReturnType<typeof createCollectionsService>["getCollectionById"]>> }
+        if (!patchRes.ok) {
+          const msg = patchData?.error ?? "Failed to save low-res URL"
+          throw new Error(msg)
+        }
+        if (patchData.collection) setCollection(patchData.collection)
+        if (!isReupload) {
+          const res = await fetch(`/api/collections/${id}/events`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventType: "scanning_completed",
+              metadata: { lowResUrl: payload.url, notes: payload.notes },
+            }),
+          })
+          if (!res.ok) throw new Error("Failed to trigger event")
+        }
+        await fetchCompletedStepIds(id, isReupload ? payload.url : patchData.collection?.lowResSelectionUrl02 ?? collection?.lowResSelectionUrl02)
+        if (!patchData.collection) await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Upload low-res error:", err)
+        toast.error(err instanceof Error ? err.message : "Failed to save low-res")
+        throw err
+      }
+    },
+    [id, collection?.photographerMissingphotos, collection?.lowResSelectionUrl02, fetchCompletedStepIds, refetchCollection]
+  )
+
+  /** Step 3 (after first upload): additional footage — URL → lowres_selection_url02, notes overwrite lowres_lab_notes. */
+  const handleUploadMoreLowRes = React.useCallback(
     async (payload: { url: string; notes?: string }) => {
       if (!id) return
       try {
@@ -236,26 +295,83 @@ export default function CollectionViewPage({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            lowres_selection_url: payload.url,
+            lowres_selection_url02: payload.url,
             lowres_lab_notes: payload.notes?.trim() || null,
           }),
         })
-        if (!patchRes.ok) throw new Error("Failed to save low-res URL")
+        const patchData = (await patchRes.json().catch(() => ({}))) as { error?: string; collection?: Awaited<ReturnType<ReturnType<typeof createCollectionsService>["getCollectionById"]>> }
+        if (!patchRes.ok) throw new Error(patchData?.error ?? "Failed to save additional photos")
+        if (patchData.collection) setCollection(patchData.collection)
+        else await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Upload more low-res error:", err)
+      }
+    },
+    [id, refetchCollection]
+  )
+
+  const handleUploadPhotographerSelection = React.useCallback(
+    async (payload: { url: string; notes?: string }) => {
+      if (!id) return
+      try {
+        const patchRes = await fetch(`/api/collections/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            photographer_selection_url: payload.url,
+            photographer_notes01: payload.notes?.trim() || null,
+          }),
+        })
+        const patchData = (await patchRes.json().catch(() => ({}))) as { error?: string; collection?: Awaited<ReturnType<ReturnType<typeof createCollectionsService>["getCollectionById"]>> }
+        if (!patchRes.ok) throw new Error(patchData?.error ?? "Failed to save photographer selection")
+        if (patchData.collection) setCollection(patchData.collection)
         const res = await fetch(`/api/collections/${id}/events`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            eventType: "scanning_completed",
-            metadata: { lowResUrl: payload.url, notes: payload.notes },
+            eventType: "photographer_selection_uploaded",
+            metadata: { url: payload.url, notes: payload.notes },
           }),
         })
         if (!res.ok) throw new Error("Failed to trigger event")
-        await fetchCompletedStepIds(id)
+        await fetchCompletedStepIds(id, patchData.collection?.lowResSelectionUrl02 ?? collection?.lowResSelectionUrl02)
       } catch (err) {
-        console.error("[CollectionViewPage] Upload low-res error:", err)
+        console.error("[CollectionViewPage] Upload photographer selection error:", err)
+        toast.error("Failed to upload selection")
       }
     },
-    [id, fetchCompletedStepIds]
+    [id, collection?.lowResSelectionUrl02, fetchCompletedStepIds]
+  )
+
+  const handleRequestAdditionalPhotos = React.useCallback(
+    async (notes: string) => {
+      if (!id) return
+      try {
+        const patchRes = await fetch(`/api/collections/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            photographer_missingphotos: notes.trim() || null,
+          }),
+        })
+        if (!patchRes.ok) throw new Error("Failed to save request")
+        const res = await fetch(`/api/collections/${id}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventType: "photographer_requested_additional_photos",
+            metadata: { notes: notes.trim() },
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to trigger event")
+        await refetchCollection()
+        await fetchCompletedStepIds(id, undefined)
+      } catch (err) {
+        console.error("[CollectionViewPage] Request additional photos error:", err)
+        toast.error("Failed to save request")
+      }
+    },
+    [id, fetchCompletedStepIds, refetchCollection]
   )
 
   // Resolve client and photographer names from collection data via API
@@ -542,9 +658,19 @@ export default function CollectionViewPage({
       onConfirmPickup={handleConfirmPickup}
       onConfirmDropoffDelivery={handleConfirmDropoffDelivery}
       onUploadLowRes={handleUploadLowRes}
+      onUploadMoreLowRes={handleUploadMoreLowRes}
       uploadLowResShowShippingReminder={collection.config.handprintIsDifferentLab}
       uploadLowResInitialNotes={collection.lowResLabNotes ?? undefined}
       lowResSelectionUrl={collection.lowResSelectionUrl ?? undefined}
+      lowResUploadedAt={collection.lowResSelectionUploadedAt ?? undefined}
+      lowResSelectionUrl02={collection.lowResSelectionUrl02 ?? undefined}
+      lowResUploadedAt02={collection.lowResSelectionUploadedAt02 ?? undefined}
+      photographerSelectionUrl={collection.photographerSelectionUrl ?? undefined}
+      photographerSelectionUploadedAt={collection.photographerSelectionUploadedAt ?? undefined}
+      photographerNotes01={collection.photographerNotes01 ?? undefined}
+      onUploadPhotographerSelection={handleUploadPhotographerSelection}
+      photographerMissingphotos={collection.photographerMissingphotos ?? undefined}
+      onRequestAdditionalPhotos={handleRequestAdditionalPhotos}
       uploadLowResShippingReminderDate={collection.config.lowResShippingDeliveryDate}
       uploadLowResShippingReminderTime={collection.config.lowResShippingDeliveryTime}
       uploadLowResShippingReminderDestination={collection.config.lowResShippingDestinationAddress}

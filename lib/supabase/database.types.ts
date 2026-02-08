@@ -51,6 +51,7 @@ export type CollectionEventType =
   | 'photographer_selection_uploaded'
   | 'photographer_selection_shared'
   | 'photographer_selection_deadline_missed'
+  | 'photographer_requested_additional_photos'
   | 'client_selection_started'
   | 'client_selection_confirmed'
   | 'client_selection_deadline_missed'
@@ -219,6 +220,15 @@ export interface Collection {
   lowres_shipping_tracking: string | null
   lowres_selection_url: string | null
   lowres_lab_notes: string | null
+  lowres_selection_uploaded_at: string | null
+  lowres_selection_url02: string | null
+  lowres_lab_notes02: string | null
+  lowres_selection_uploaded_at02: string | null
+  photographer_selection_url: string | null
+  photographer_missingphotos: string | null
+  photographer_notes01: string | null
+  photographer_selection_uploaded_at: string | null
+  photographer_request_additional_notes: string | null
   // Photo Selection
   photo_selection_photographer_preselection_date: string | null
   photo_selection_photographer_preselection_time: string | null
@@ -299,6 +309,15 @@ export interface CollectionInsert {
   lowres_shipping_tracking?: string | null
   lowres_selection_url?: string | null
   lowres_lab_notes?: string | null
+  lowres_selection_uploaded_at?: string | null
+  lowres_selection_url02?: string | null
+  lowres_lab_notes02?: string | null
+  lowres_selection_uploaded_at02?: string | null
+  photographer_selection_url?: string | null
+  photographer_missingphotos?: string | null
+  photographer_notes01?: string | null
+  photographer_selection_uploaded_at?: string | null
+  photographer_request_additional_notes?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
@@ -369,6 +388,15 @@ export interface CollectionUpdate {
   lowres_shipping_tracking?: string | null
   lowres_selection_url?: string | null
   lowres_lab_notes?: string | null
+  lowres_selection_uploaded_at?: string | null
+  lowres_selection_url02?: string | null
+  lowres_lab_notes02?: string | null
+  lowres_selection_uploaded_at02?: string | null
+  photographer_selection_url?: string | null
+  photographer_missingphotos?: string | null
+  photographer_notes01?: string | null
+  photographer_selection_uploaded_at?: string | null
+  photographer_request_additional_notes?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
@@ -397,6 +425,7 @@ export interface CollectionMember {
   user_id: string
   role: CollectionMemberRole
   is_owner: boolean
+  can_edit: boolean
   created_at: string
 }
 
@@ -406,6 +435,7 @@ export interface CollectionMemberInsert {
   user_id: string
   role: CollectionMemberRole
   is_owner?: boolean
+  can_edit?: boolean
   created_at?: string
 }
 
@@ -414,6 +444,7 @@ export interface CollectionMemberUpdate {
   user_id?: string
   role?: CollectionMemberRole
   is_owner?: boolean
+  can_edit?: boolean
 }
 
 export interface Invitation {

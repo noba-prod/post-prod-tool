@@ -343,14 +343,14 @@ export function NewCollectionModal({
             </RowVariants>
             <RowVariants variant="2">
               <OptionPicker
-                label="Manager (admin)"
+                label="Client responsible"
                 value={selectedManagerUserId}
                 onValueChange={setSelectedManagerUserId}
                 placeholder="Erika Goldner"
                 options={managerOptions}
               />
               <Field>
-                <FieldLabel>Reference</FieldLabel>
+                <FieldLabel>Job reference</FieldLabel>
                 <FieldContent>
                   <Input
                     value={reference}

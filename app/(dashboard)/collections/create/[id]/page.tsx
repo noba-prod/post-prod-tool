@@ -407,6 +407,10 @@ export default function CollectionCreatePage({
 
   const handleDropoffPlanChange = React.useCallback(
     (patch: Partial<Pick<CollectionConfig,
+      | "shootingStreetAddress"
+      | "shootingZipCode"
+      | "shootingCity"
+      | "shootingCountry"
       | "dropoff_shipping_origin_address"
       | "dropoff_shipping_date"
       | "dropoff_shipping_time"

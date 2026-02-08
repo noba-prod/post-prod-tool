@@ -152,6 +152,56 @@ export class NotificationsService implements INotificationsService {
       }
     }
 
+    // 1b2. negatives_pickup_marked: in-app to Photo Lab + Producer — "Negatives are on their way. Get ready to low-res scan."
+    if (eventType === "negatives_pickup_marked") {
+      const context = await getCollectionContext(this.supabase, collectionId)
+      if (context) {
+        const recipients = await resolveRecipients(this.supabase, collectionId, ["lab", "producer"])
+        const title = formatNotificationTitle("Negatives on the way", context.name, context.reference)
+        const body = "Negatives are on their way. Get ready to low-res scan."
+        const ctaUrl = buildCtaUrl("/collections/{collectionId}", collectionId)
+        for (const recipient of recipients) {
+          await this.createNotification({
+            collection_id: collectionId,
+            template_id: null,
+            user_id: recipient.userId,
+            channel: "in_app",
+            status: "sent",
+            title,
+            body,
+            cta_text: "View collection",
+            cta_url: ctaUrl,
+            sent_at: new Date().toISOString(),
+          })
+        }
+      }
+    }
+
+    // 1c. photographer_requested_additional_photos: in-app to producer + photo lab
+    if (eventType === "photographer_requested_additional_photos") {
+      const context = await getCollectionContext(this.supabase, collectionId)
+      if (context) {
+        const recipients = await resolveRecipients(this.supabase, collectionId, ["producer", "lab"])
+        const title = formatNotificationTitle("Missing photos requested", context.name, context.reference)
+        const body = "The photographer has requested additional footage. Please upload a new selection in step 3."
+        const ctaUrl = buildCtaUrl("/collections/{collectionId}", collectionId)
+        for (const recipient of recipients) {
+          await this.createNotification({
+            collection_id: collectionId,
+            template_id: null,
+            user_id: recipient.userId,
+            channel: "in_app",
+            status: "sent",
+            title,
+            body,
+            cta_text: "View collection",
+            cta_url: ctaUrl,
+            sent_at: new Date().toISOString(),
+          })
+        }
+      }
+    }
+
     // 2. Find templates triggered by this event
     const { data: templates, error: templatesError } = await this.supabase
       .from("notification_templates")

@@ -11,6 +11,15 @@ import { OptionPicker } from "./option-picker"
 import { InformativeToast } from "./informative-toast"
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
@@ -84,8 +93,12 @@ const SHIPPING_PROVIDER_OPTIONS = [
 
 export interface DropoffPlanStepContentProps {
   draft: CollectionDraft
-  /** Called when drop-off config fields change */
+  /** Called when drop-off config fields change (includes shooting address when edited from this block) */
   onDropoffPlanChange: (patch: Partial<Pick<CollectionConfig,
+    | "shootingStreetAddress"
+    | "shootingZipCode"
+    | "shootingCity"
+    | "shootingCountry"
     | "dropoff_shipping_origin_address"
     | "dropoff_shipping_date"
     | "dropoff_shipping_time"
@@ -121,6 +134,56 @@ export function DropoffPlanStepContent({
   const [labAddress, setLabAddress] = React.useState<string>("—")
   const shippingConstraint = chronologyConstraints?.["dropoff_plan_shipping"]
   const deliveryConstraint = chronologyConstraints?.["dropoff_plan_delivery"]
+
+  // Edit address dialog: "pickup" = shooting address, "delivery" = lab address
+  const [editAddressType, setEditAddressType] = React.useState<"pickup" | "delivery" | null>(null)
+  const [editStreet, setEditStreet] = React.useState("")
+  const [editZipCode, setEditZipCode] = React.useState("")
+  const [editCity, setEditCity] = React.useState("")
+  const [editCountry, setEditCountry] = React.useState("")
+
+  const openEditPickup = React.useCallback(() => {
+    setEditStreet(c.shootingStreetAddress ?? "")
+    setEditZipCode(c.shootingZipCode ?? "")
+    setEditCity(c.shootingCity ?? "")
+    setEditCountry(c.shootingCountry ?? "")
+    setEditAddressType("pickup")
+  }, [c.shootingStreetAddress, c.shootingZipCode, c.shootingCity, c.shootingCountry])
+
+  const openEditDelivery = React.useCallback(() => {
+    // Lab address is one string; put in street, leave rest for user to fill or we could parse
+    const current = labAddress !== "—" ? labAddress : (c.dropoff_shipping_destination_address ?? "")
+    setEditStreet(current)
+    setEditZipCode("")
+    setEditCity("")
+    setEditCountry("")
+    setEditAddressType("delivery")
+  }, [labAddress, c.dropoff_shipping_destination_address])
+
+  const closeEditAddress = React.useCallback(() => {
+    setEditAddressType(null)
+  }, [])
+
+  const saveEditAddress = React.useCallback(() => {
+    const street = editStreet.trim()
+    const zip = editZipCode.trim()
+    const city = editCity.trim()
+    const country = editCountry.trim()
+    const formatted = [street, zip, city, country].filter(Boolean).join(" ") || undefined
+    if (editAddressType === "pickup") {
+      onDropoffPlanChange({
+        shootingStreetAddress: street || undefined,
+        shootingZipCode: zip || undefined,
+        shootingCity: city || undefined,
+        shootingCountry: country || undefined,
+        dropoff_shipping_origin_address: formatted,
+      })
+    } else if (editAddressType === "delivery" && formatted) {
+      onDropoffPlanChange({ dropoff_shipping_destination_address: formatted })
+      setLabAddress(formatted)
+    }
+    closeEditAddress()
+  }, [editAddressType, editStreet, editZipCode, editCity, editCountry, onDropoffPlanChange, closeEditAddress])
 
   // Local state for tracking number so typing is not overwritten by parent/server updates
   const [localTrackingNumber, setLocalTrackingNumber] = React.useState(c.dropoff_shipping_tracking ?? "")
@@ -218,6 +281,8 @@ export function DropoffPlanStepContent({
               entityType="Address"
               value={originAddress}
               locked
+              editable
+              onEdit={openEditPickup}
             />
             <RowVariants variant="2">
               <DatePicker
@@ -252,6 +317,8 @@ export function DropoffPlanStepContent({
               entityType="Address"
               value={labAddress}
               locked
+              editable
+              onEdit={openEditDelivery}
             />
             <RowVariants variant="2">
               <DatePicker
@@ -326,6 +393,67 @@ export function DropoffPlanStepContent({
           />
         }
       />
+      <Dialog open={editAddressType !== null} onOpenChange={(open) => !open && closeEditAddress()}>
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>
+              Change {editAddressType === "pickup" ? "Pickup" : "Delivery"} address
+            </DialogTitle>
+            <DialogDescription>
+              Update the address to show accurate shipping details to rest of participants.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <Field>
+              <FieldLabel>Street address</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={editStreet}
+                  onChange={(e) => setEditStreet(e.target.value)}
+                  placeholder="e.g. Gabriel Lobo 18"
+                  className="w-full"
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>ZIP code</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={editZipCode}
+                  onChange={(e) => setEditZipCode(e.target.value)}
+                  placeholder="e.g. 28002"
+                  className="w-full"
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>Country</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={editCountry}
+                  onChange={(e) => setEditCountry(e.target.value)}
+                  placeholder="e.g. Spain"
+                  className="w-full"
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>City</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={editCity}
+                  onChange={(e) => setEditCity(e.target.value)}
+                  placeholder="e.g. Madrid"
+                  className="w-full"
+                />
+              </FieldContent>
+            </Field>
+          </div>
+          <DialogFooter>
+            <Button onClick={saveEditAddress}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

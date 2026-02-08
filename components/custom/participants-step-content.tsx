@@ -594,8 +594,10 @@ function ParticipantSection({
 
   // Client section shows only client members (role='manager' in DB).
   // Producer/noba* members are shown separately in NobaSection.
+  // Deduplicate so the same user is never shown twice in one section
   const memberUserIds = React.useMemo(() => {
-    return participant?.userIds ?? []
+    const ids = participant?.userIds ?? []
+    return Array.from(new Set(ids))
   }, [participant?.userIds])
 
   const editByUserId = React.useMemo(() => {
@@ -618,15 +620,18 @@ function ParticipantSection({
         .filter((u): u is User => u != null),
     [memberUserIds, usersById, usersByIdsResolved]
   )
-  // Photographer (with agency): show only self-photographer users. Agency section: show only users from selected agency.
+  // Photographer (with agency): show only self-photographer users. Agency section: show only users from selected agency. Dedupe by id.
   const memberUsers = React.useMemo(() => {
+    let list: User[]
     if (isPhotographerWithAgency) {
-      return memberUsersRaw.filter((u) => selfPhotographerUsers.some((s) => s.id === u.id))
+      list = memberUsersRaw.filter((u) => selfPhotographerUsers.some((s) => s.id === u.id))
+    } else if (isAgencySection) {
+      if (!entityId) list = []
+      else list = memberUsersRaw.filter((u) => u.entityId === entityId)
+    } else {
+      list = memberUsersRaw
     }
-    if (isAgencySection && entityId) {
-      return memberUsersRaw.filter((u) => u.entityId === entityId)
-    }
-    return memberUsersRaw
+    return Array.from(new Map(list.map((u) => [u.id, u])).values())
   }, [isPhotographerWithAgency, isAgencySection, entityId, memberUsersRaw, selfPhotographerUsers])
 
   const entityOptions = React.useMemo(
@@ -650,15 +655,9 @@ function ParticipantSection({
     [isPhotographerNoAgency, onAddMember]
   )
 
-  // Edit permission: allow toggling for Client (and other non-photographer) members so they have edit power over milestones for their entity once published.
-  const isEditLockedForUser = React.useCallback(
-    (u: User) => {
-      if (isPhotographerNoAgency) return true
-      if (isPhotographerWithAgency && selfPhotographerUsers.some((s) => s.id === u.id)) return true
-      return false
-    },
-    [isPhotographerNoAgency, isPhotographerWithAgency, selfPhotographerUsers]
-  )
+  // Edit permission: all participants can have their edit permission toggled.
+  // When can_edit = true the user can interact with milestone actions
+  // (upload links, add comments, trigger missing-photos, etc.).
 
   return (
     <div className="flex flex-col gap-4 p-4 bg-background border border-border rounded-xl w-full">
@@ -728,7 +727,6 @@ function ParticipantSection({
                       onCheckedChange={(v) =>
                         onEditPermissionChange(u.id, !!v, memberSourceRole[u.id])
                       }
-                      disabled={isEditLockedForUser(u)}
                     />
                   </TableCell>
                   <TableCell className="text-center">

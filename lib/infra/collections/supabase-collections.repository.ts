@@ -77,8 +77,20 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
       status: patch.status,
       publishedAt: patch.publishedAt,
       lowResSelectionUrl: patch.lowResSelectionUrl,
+      lowResSelectionUploadedAt: patch.lowResSelectionUploadedAt,
       lowResLabNotes: patch.lowResLabNotes,
+      photographerSelectionUrl: patch.photographerSelectionUrl,
+      photographerSelectionUploadedAt: patch.photographerSelectionUploadedAt,
+      photographerNotes01: patch.photographerNotes01,
+      photographerRequestAdditionalNotes: patch.photographerRequestAdditionalNotes,
+      photographerMissingphotos: patch.photographerMissingphotos,
+      lowResSelectionUrl02: patch.lowResSelectionUrl02,
+      lowResSelectionUploadedAt02: patch.lowResSelectionUploadedAt02,
+      lowResLabNotes02: patch.lowResLabNotes02,
     })
+    if (Object.keys(updatePayload).length > 0) {
+      ;(updatePayload as Record<string, unknown>).updated_at = new Date().toISOString()
+    }
     const tbl = supabase.from("collections") as ReturnType<typeof supabase.from>
     const { data: row, error } = await tbl.update(updatePayload).eq("id", id).select().single()
     if (error || !row) {

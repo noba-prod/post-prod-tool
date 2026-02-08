@@ -284,6 +284,7 @@ export const EVENT_TYPE_TO_STEP_ID: Record<string, ViewStepId> = {
   negatives_pickup_marked: "shooting",
   dropoff_confirmed: "negatives_dropoff",
   scanning_completed: "low_res_scanning",
+  photographer_selection_uploaded: "photographer_selection",
   client_selection_confirmed: "client_selection",
   photographer_edits_approved: "photographer_last_check",
   collection_completed: "client_confirmation",

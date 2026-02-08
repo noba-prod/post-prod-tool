@@ -71,12 +71,17 @@ export function StepDetails({
     (typeof resolvedSubtitle !== "string" || resolvedSubtitle !== "")
 
   const textBlock = (
-    <div className="flex flex-col gap-3 min-w-0">
+    <div
+      className={cn(
+        "flex flex-col min-w-0",
+        isMissingPhotos ? "gap-1.5" : "gap-3"
+      )}
+    >
       <span
         className={cn(
           "block font-semibold",
-          isNotes && "text-base",
-          !isNotes && "text-xl leading-8",
+          (isNotes || isMissingPhotos) && "text-base",
+          !isNotes && !isMissingPhotos && "text-xl leading-8",
           isPrimary && "text-white",
           !isPrimary && "text-foreground"
         )}
@@ -147,7 +152,10 @@ export function StepDetails({
         variant="default"
         size="icon-lg"
         className="h-full w-10 rounded-xl"
-        onClick={onAction}
+        onClick={(e) => {
+          e.stopPropagation()
+          onAction?.()
+        }}
         aria-label="Request additional footage"
       >
         <Repeat2 className="size-4" strokeWidth={1.33} />
@@ -220,12 +228,26 @@ export function StepDetails({
 
   return (
     <div
+      role={isMissingPhotos && onAction ? "button" : undefined}
+      tabIndex={isMissingPhotos && onAction ? 0 : undefined}
       className={cn(
         "flex rounded-xl bg-zinc-100 p-5",
         isNotes && "flex-col gap-1",
         isMissingPhotos && "flex-row items-stretch justify-between gap-4",
+        isMissingPhotos && onAction && "cursor-pointer",
         className
       )}
+      onClick={isMissingPhotos ? onAction : undefined}
+      onKeyDown={
+        isMissingPhotos && onAction
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                onAction()
+              }
+            }
+          : undefined
+      }
     >
       {textBlock}
       {repeatButton}

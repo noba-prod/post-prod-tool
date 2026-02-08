@@ -63,6 +63,26 @@ function formatTimeLabel(date?: string, time?: string): string {
   return `Time: ${d} · ${t}`
 }
 
+/** Relative time for low-res upload: minutes (precise), then hours, days, weeks, months (rounded). */
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  const now = Date.now()
+  const diffMs = now - then
+  if (diffMs < 0) return "Just now"
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffH = Math.floor(diffSec / 3600)
+  const diffDays = Math.floor(diffSec / 86400)
+  const diffWeeks = Math.floor(diffSec / (86400 * 7))
+  const diffMonths = Math.floor(diffSec / (86400 * 30))
+  if (diffMin < 1) return "Less than a minute ago"
+  if (diffMin < 60) return `${diffMin} ${diffMin === 1 ? "minute" : "minutes"} ago`
+  if (diffH < 24) return `${diffH} ${diffH === 1 ? "hour" : "hours"} ago`
+  if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`
+  if (diffMonths < 1) return `${diffWeeks} ${diffWeeks === 1 ? "week" : "weeks"} ago`
+  return `${diffMonths} ${diffMonths === 1 ? "month" : "months"} ago`
+}
+
 import { Titles } from "../titles"
 import { StageStatusTag, TimeStampTag, DateIndicatorTag } from "../tag"
 import { StepDetails } from "../step-details"
@@ -189,12 +209,32 @@ export interface CollectionTemplateProps {
   onConfirmDropoffDelivery?: (stepId: string, canMeetDeadline: boolean) => void | Promise<void>
   /** Called when owner uploads low-res (step 3). Payload: url (required), notes (optional). Marks step completed, notifies producer + photographer. */
   onUploadLowRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
+  /** Called when owner uploads additional footage (step 3, after first upload). Saves to lowres_selection_url02, overwrites lowres_lab_notes. */
+  onUploadMoreLowRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
   /** Upload low-res dialog: show shipping reminder only when handprint lab is different from original (configured in collection creation). */
   uploadLowResShowShippingReminder?: boolean
   /** Upload low-res dialog: initial notes (e.g. from collection.lowResLabNotes) to pre-fill when opening. */
   uploadLowResInitialNotes?: string
-  /** Step 4 (Photographer selection): URL of uploaded low-res photos (link in primary card). */
+  /** Step 4 (Photographer selection): first low-res URL (step 3 upload). */
   lowResSelectionUrl?: string
+  /** Step 4: when the first low-res URL was uploaded (ISO). */
+  lowResUploadedAt?: string
+  /** Step 4: second low-res URL (step 3 re-upload after missing photos). */
+  lowResSelectionUrl02?: string
+  /** Step 4: when the second low-res URL was uploaded (ISO). */
+  lowResUploadedAt02?: string
+  /** Step 4: URL of uploaded photographer selection (lab upload). */
+  photographerSelectionUrl?: string
+  /** Step 4: when photographer selection was uploaded (ISO). */
+  photographerSelectionUploadedAt?: string
+  /** Step 4: notes from lab (photographer_notes01). */
+  photographerNotes01?: string
+  /** Called when owner uploads photographer selection (step 4). Marks step completed, notifies producer + client. */
+  onUploadPhotographerSelection?: (payload: { url: string; notes?: string }) => void | Promise<void>
+  /** Missing photos: photographer comments (saved in photographer_missingphotos). Shown in step 3 notes block. */
+  photographerMissingphotos?: string
+  /** Called when photographer requests additional photos (missing photos flow). Saves to photographer_missingphotos, posts event, notifies producer + lab. */
+  onRequestAdditionalPhotos?: (notes: string) => void | Promise<void>
   /** Upload low-res dialog: shipping reminder — delivery date (ISO), time, and handprint lab destination. */
   uploadLowResShippingReminderDate?: string
   uploadLowResShippingReminderTime?: string
@@ -254,9 +294,19 @@ export function CollectionTemplate({
   onConfirmPickup,
   onConfirmDropoffDelivery,
   onUploadLowRes,
+  onUploadMoreLowRes,
   uploadLowResShowShippingReminder,
   uploadLowResInitialNotes,
   lowResSelectionUrl,
+  lowResUploadedAt,
+  lowResSelectionUrl02,
+  lowResUploadedAt02,
+  photographerSelectionUrl,
+  photographerSelectionUploadedAt,
+  photographerNotes01,
+  onUploadPhotographerSelection,
+  photographerMissingphotos,
+  onRequestAdditionalPhotos,
   uploadLowResShippingReminderDate,
   uploadLowResShippingReminderTime,
   uploadLowResShippingReminderDestination,
@@ -275,6 +325,15 @@ export function CollectionTemplate({
   const [uploadLowResDialogOpen, setUploadLowResDialogOpen] = React.useState(false)
   const [uploadLowResUrl, setUploadLowResUrl] = React.useState("")
   const [uploadLowResNotes, setUploadLowResNotes] = React.useState("")
+  const [uploadMorePhotosDialogOpen, setUploadMorePhotosDialogOpen] = React.useState(false)
+  const [uploadMorePhotosUrl, setUploadMorePhotosUrl] = React.useState("")
+  const [uploadMorePhotosNotes, setUploadMorePhotosNotes] = React.useState("")
+  const [uploadPhotographerSelectionDialogOpen, setUploadPhotographerSelectionDialogOpen] = React.useState(false)
+  const [uploadPhotographerSelectionUrl, setUploadPhotographerSelectionUrl] = React.useState("")
+  const [uploadPhotographerSelectionNotes, setUploadPhotographerSelectionNotes] = React.useState("")
+  const [missingPhotosDialogOpen, setMissingPhotosDialogOpen] = React.useState(false)
+  const [missingPhotosNotes, setMissingPhotosNotes] = React.useState("")
+  const [lowResUrlPickerDialogOpen, setLowResUrlPickerDialogOpen] = React.useState(false)
   const [participantsModalOpen, setParticipantsModalOpen] = React.useState(false)
   const [editCollectionDialogOpen, setEditCollectionDialogOpen] = React.useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false)
@@ -589,7 +648,7 @@ export function CollectionTemplate({
                       className="min-w-0 flex-1"
                     />
                   </div>
-                  {openStep.canEdit && (
+                  {openStep.canEdit && openStep.status !== "completed" && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
                       aria-label="Step owner action"
@@ -648,23 +707,51 @@ export function CollectionTemplate({
                         : undefined
                     }
                   />
-                  {openStep.canEdit && (
+                  {photographerMissingphotos?.trim() && (
+                    <StepDetails
+                      variant="notes"
+                      mainTitle="Notes from photographer"
+                      entityName="photographer"
+                      additionalInfo={photographerMissingphotos.trim()}
+                    />
+                  )}
+                  {openStep.canEdit &&
+                    !(lowResSelectionUrl?.trim() && lowResSelectionUrl02?.trim()) && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
                       aria-label="Step owner action"
                     >
-                      <p className="text-center text-base font-semibold text-foreground">
-                        Already have the low-res scanned?
-                      </p>
-                      <Button
-                        type="button"
-                        variant="default"
-                        size="lg"
-                        className="w-fit rounded-xl"
-                        onClick={() => setUploadLowResDialogOpen(true)}
-                      >
-                        Upload low-res
-                      </Button>
+                      {lowResSelectionUrl?.trim() ? (
+                        <>
+                          <p className="text-center text-base font-semibold text-foreground">
+                            Need to send additional footage?
+                          </p>
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="lg"
+                            className="w-fit rounded-xl"
+                            onClick={() => setUploadMorePhotosDialogOpen(true)}
+                          >
+                            upload more photos
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-center text-base font-semibold text-foreground">
+                            Already have the low-res scanned?
+                          </p>
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="lg"
+                            className="w-fit rounded-xl"
+                            onClick={() => setUploadLowResDialogOpen(true)}
+                          >
+                            Upload low-res
+                          </Button>
+                        </>
+                      )}
                     </section>
                   )}
                 </>
@@ -695,13 +782,32 @@ export function CollectionTemplate({
                           )
                         })()
                       }
-                      additionalInfo={lowResSelectionUrl ? "View link" : "Not uploaded yet"}
+                      additionalInfo={
+                        (() => {
+                          const hasFirst = !!lowResSelectionUrl?.trim()
+                          const hasSecond = !!lowResSelectionUrl02?.trim()
+                          if (!hasFirst && !hasSecond) return "Not uploaded yet"
+                          if (hasFirst && !hasSecond)
+                            return lowResUploadedAt
+                              ? `View link · ${formatRelativeTime(lowResUploadedAt)}`
+                              : "View link"
+                          if (hasFirst && hasSecond) return "2 links · View"
+                          return lowResUploadedAt02
+                            ? `View link · ${formatRelativeTime(lowResUploadedAt02)}`
+                            : "View link"
+                        })()
+                      }
                       backgroundImage="/assets/bg-lowres.png"
-                      makeCardClickable={!!lowResSelectionUrl}
+                      makeCardClickable={!!(lowResSelectionUrl?.trim() || lowResSelectionUrl02?.trim())}
                       onAction={
-                        lowResSelectionUrl
-                          ? () => window.open(lowResSelectionUrl, "_blank", "noopener,noreferrer")
-                          : undefined
+                        (() => {
+                          const url1 = lowResSelectionUrl?.trim()
+                          const url2 = lowResSelectionUrl02?.trim()
+                          if (url1 && !url2) return () => window.open(url1, "_blank", "noopener,noreferrer")
+                          if (url1 && url2) return () => setLowResUrlPickerDialogOpen(true)
+                          if (url2) return () => window.open(url2, "_blank", "noopener,noreferrer")
+                          return undefined
+                        })()
                       }
                       className="min-w-0 flex-1"
                     />
@@ -710,7 +816,7 @@ export function CollectionTemplate({
                     variant="notes"
                     mainTitle="Notes from lab"
                     entityName="lab"
-                    additionalInfo={uploadLowResInitialNotes?.trim() || "—"}
+                    additionalInfo={photographerNotes01?.trim() || uploadLowResInitialNotes?.trim() || "—"}
                   />
                   {openStep.canEdit && (
                     <section
@@ -725,12 +831,9 @@ export function CollectionTemplate({
                         variant="default"
                         size="lg"
                         className="w-fit rounded-xl"
-                        onClick={() => {
-                          if (collectionId) router.push(`/collections/create/${collectionId}`)
-                          setOpenStepId(null)
-                        }}
+                        onClick={() => setUploadPhotographerSelectionDialogOpen(true)}
                       >
-                        Already have the selection?
+                        Upload selection
                       </Button>
                     </section>
                   )}
@@ -743,10 +846,10 @@ export function CollectionTemplate({
                       )?.entityName ?? "photo lab"
                     }
                     onAction={
-                      openStep.canEdit && collectionId
-                        ? () => router.push(`/collections/create/${collectionId}`)
+                      openStep.canEdit
+                        ? () => setMissingPhotosDialogOpen(true)
                         : undefined
-                  }
+                    }
                   />
                 </div>
               ) : (
@@ -765,8 +868,8 @@ export function CollectionTemplate({
                   }
                 />
               )}
-              {/* Owner-only action block (Confirm pickup) — Shooting step only; closes modal, toast, updates stepper/progress, notifies Photo lab */}
-              {openStep.canEdit && openStep.id === "shooting" && (
+              {/* Owner-only action block (Confirm pickup) — Shooting step only when not yet completed; closes modal, toast, updates stepper/progress, notifies Photo lab */}
+              {openStep.canEdit && openStep.id === "shooting" && openStep.status !== "completed" && (
                 <section
                   className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
                   aria-label="Step owner action"
@@ -975,6 +1078,71 @@ export function CollectionTemplate({
         </DialogContent>
       </Dialog>
 
+      {/* Upload more photos (step 3, after first upload): URL 02 + notes overwrite lowres_lab_notes */}
+      <Dialog
+        open={uploadMorePhotosDialogOpen}
+        onOpenChange={(open) => {
+          setUploadMorePhotosDialogOpen(open)
+          if (open) {
+            setUploadMorePhotosNotes(uploadLowResInitialNotes ?? "")
+          } else {
+            setUploadMorePhotosUrl("")
+            setUploadMorePhotosNotes("")
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload more photos</DialogTitle>
+            <DialogDescription>
+              Share an additional low-res selection. Notes will overwrite the existing lab notes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-more-photos-url">Link or URL with photos</Label>
+              <Input
+                id="upload-more-photos-url"
+                type="url"
+                placeholder="Paste here the url"
+                value={uploadMorePhotosUrl}
+                onChange={(e) => setUploadMorePhotosUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-more-photos-notes">Notes and comments (optional)</Label>
+              <Textarea
+                id="upload-more-photos-notes"
+                placeholder="Add any notes for the photographer..."
+                value={uploadMorePhotosNotes}
+                onChange={(e) => setUploadMorePhotosNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!uploadMorePhotosUrl.trim()}
+              onClick={async () => {
+                const url = uploadMorePhotosUrl.trim()
+                if (!url) return
+                await onUploadMoreLowRes?.({ url, notes: uploadMorePhotosNotes.trim() || undefined })
+                setUploadMorePhotosDialogOpen(false)
+                setUploadMorePhotosUrl("")
+                setUploadMorePhotosNotes("")
+                toast.success("Additional photos uploaded.")
+              }}
+            >
+              upload more photos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Upload low-res (step 3): URL + optional notes, CTA disabled until URL filled, shipping reminder, then mark step completed + toast + notify producer & photographer */}
       <Dialog
         open={uploadLowResDialogOpen}
@@ -1062,17 +1230,171 @@ export function CollectionTemplate({
               onClick={async () => {
                 const url = uploadLowResUrl.trim()
                 if (!url) return
-                await onUploadLowRes?.({ url, notes: uploadLowResNotes.trim() || undefined })
-                setUploadLowResDialogOpen(false)
-                setUploadLowResUrl("")
-                setUploadLowResNotes("")
-                setOpenStepId(null)
-                toast.success("Low-res scans uploaded.")
+                try {
+                  await onUploadLowRes?.({ url, notes: uploadLowResNotes.trim() || undefined })
+                  setUploadLowResDialogOpen(false)
+                  setUploadLowResUrl("")
+                  setUploadLowResNotes("")
+                  setOpenStepId(null)
+                  toast.success("Low-res scans uploaded.")
+                } catch {
+                  // Error already surfaced by page (toast.error)
+                }
               }}
             >
               Upload low-res
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload photographer selection (step 4): URL + optional notes, CTA disabled until URL filled */}
+      <Dialog
+        open={uploadPhotographerSelectionDialogOpen}
+        onOpenChange={(open) => {
+          setUploadPhotographerSelectionDialogOpen(open)
+          if (!open) {
+            setUploadPhotographerSelectionUrl("")
+            setUploadPhotographerSelectionNotes("")
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share photographer selection</DialogTitle>
+            <DialogDescription>
+              Upload here the selection of photos to share with client
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-photographer-selection-url">Link or URL with photos</Label>
+              <Input
+                id="upload-photographer-selection-url"
+                type="url"
+                placeholder="Paste here the link"
+                value={uploadPhotographerSelectionUrl}
+                onChange={(e) => setUploadPhotographerSelectionUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-photographer-selection-notes">Notes and comments (optional)</Label>
+              <Textarea
+                id="upload-photographer-selection-notes"
+                placeholder="Write here comments and notes"
+                value={uploadPhotographerSelectionNotes}
+                onChange={(e) => setUploadPhotographerSelectionNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!uploadPhotographerSelectionUrl.trim()}
+              onClick={async () => {
+                const url = uploadPhotographerSelectionUrl.trim()
+                if (!url) return
+                await onUploadPhotographerSelection?.({ url, notes: uploadPhotographerSelectionNotes.trim() || undefined })
+                setUploadPhotographerSelectionDialogOpen(false)
+                setUploadPhotographerSelectionUrl("")
+                setUploadPhotographerSelectionNotes("")
+                setOpenStepId(null)
+                toast.success("Selection uploaded.")
+              }}
+            >
+              Upload selection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Missing photos: request additional footage from photographer */}
+      <Dialog
+        open={missingPhotosDialogOpen}
+        onOpenChange={(open) => {
+          setMissingPhotosDialogOpen(open)
+          if (!open) setMissingPhotosNotes("")
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Missing photos</DialogTitle>
+            <DialogDescription>
+              Provide all the necessary details so photo lab can prepare a new selection of images with the missing footage.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="missing-photos-notes">Notes and comments</Label>
+              <Textarea
+                id="missing-photos-notes"
+                placeholder="Write here comments and notes"
+                value={missingPhotosNotes}
+                onChange={(e) => setMissingPhotosNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!missingPhotosNotes.trim()}
+              onClick={async () => {
+                const notes = missingPhotosNotes.trim()
+                if (!notes) return
+                await onRequestAdditionalPhotos?.(notes)
+                setMissingPhotosDialogOpen(false)
+                setMissingPhotosNotes("")
+                setOpenStepId(null)
+                toast.success("Comments sent to the photographer")
+              }}
+            >
+              Request additional photos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Low-res URL picker: when there are 2 URLs, user chooses URL 01 or URL 02 */}
+      <Dialog open={lowResUrlPickerDialogOpen} onOpenChange={setLowResUrlPickerDialogOpen}>
+        <DialogContent showCloseButton className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Low-res photos</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={() => {
+                if (lowResSelectionUrl?.trim()) {
+                  window.open(lowResSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                  setLowResUrlPickerDialogOpen(false)
+                }
+              }}
+            >
+              URL 01
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={() => {
+                if (lowResSelectionUrl02?.trim()) {
+                  window.open(lowResSelectionUrl02.trim(), "_blank", "noopener,noreferrer")
+                  setLowResUrlPickerDialogOpen(false)
+                }
+              }}
+            >
+              URL 02
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

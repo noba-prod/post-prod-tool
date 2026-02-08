@@ -295,7 +295,7 @@ export function isDraftComplete(draft: CollectionDraft): boolean {
   }
 
   // Each required participant must satisfy same rules as isParticipantsStepComplete
-  // (entity where applicable, users where applicable, at least one user with edit permission)
+  // (entity where applicable, users where applicable)
   if (!isParticipantsStepComplete(draft)) return false
 
   return true
@@ -313,22 +313,13 @@ function getRequiredParticipantRoles(config: CollectionConfig): ParticipantRole[
 }
 
 // =============================================================================
-// PARTICIPANT HAS EDIT PERMISSION — At least one user with edit permission
-// =============================================================================
-
-function hasAtLeastOneUserWithEditPermission(
-  p: { userIds?: string[]; editPermissionByUserId?: Record<string, boolean> } | undefined
-): boolean {
-  if (!p?.userIds?.length) return false
-  const editBy = p.editPermissionByUserId ?? {}
-  return p.userIds.some((id) => editBy[id] === true)
-}
-
-// =============================================================================
 // IS PARTICIPANTS STEP COMPLETE (collections-logic §4 — Participants block)
-// True when all required participant entities are set, each has at least one user,
-// and each has at least one user with edit permission. Used to toggle "participants"
-// in completedBlockIds and to enable/disable Next.
+// True when all required participant roles have the required structural data:
+//   - entity (where applicable)
+//   - at least one user (where applicable)
+// Edit permission (can_edit) is a per-user configuration for milestone actions
+// and does NOT gate step completion — there is always a responsible entity per
+// step, and noba* producers can always edit regardless.
 // =============================================================================
 
 export function isParticipantsStepComplete(draft: CollectionDraft): boolean {
@@ -339,42 +330,39 @@ export function isParticipantsStepComplete(draft: CollectionDraft): boolean {
   const getParticipant = (role: ParticipantRole) =>
     participants.find((p) => p.role === role)
 
-  // Check if a role has the required data (entity where applicable + users + at least one with edit permission)
   const isRoleFilled = (role: ParticipantRole): boolean => {
     const p = getParticipant(role)
 
-    // Producer: at least one user and at least one with edit permission
+    // Producer: at least one user (owner)
     if (role === "producer") {
-      return (p?.userIds?.length ?? 0) > 0 && hasAtLeastOneUserWithEditPermission(p)
+      return (p?.userIds?.length ?? 0) > 0
     }
 
-    // Client: entity only (no user/edit-permission requirement)
+    // Client: entity only (no user requirement — manager is optional)
     if (role === "client") {
       return ((p?.entityId ?? config.clientEntityId) ?? "").trim().length > 0
     }
 
-    // Lab, handprint_lab, edition_studio: entityId + at least one user with edit permission
+    // Lab, handprint_lab, edition_studio: entityId required + at least one user
     if (role === "lab" || role === "handprint_lab" || role === "edition_studio") {
       if (!(p?.entityId ?? "").trim()) return false
-      return (p?.userIds?.length ?? 0) > 0 && hasAtLeastOneUserWithEditPermission(p)
+      return (p?.userIds?.length ?? 0) > 0
     }
 
-    // Photographer: handled below with extra rules
+    // Photographer: at least one user; when hasAgency also requires entityId (the agency)
     if (role === "photographer") {
       if (!config.hasAgency) {
-        return (p?.userIds?.length ?? 0) > 0 && hasAtLeastOneUserWithEditPermission(p)
+        return (p?.userIds?.length ?? 0) > 0
       }
       return (
         !!(p?.entityId ?? "").trim() &&
-        (p?.userIds?.length ?? 0) > 0 &&
-        hasAtLeastOneUserWithEditPermission(p)
+        (p?.userIds?.length ?? 0) > 0
       )
     }
 
     return (p?.entityId ?? "").trim().length > 0
   }
 
-  // Check all required roles are filled (including users + edit permission where applicable)
   for (const role of requiredRoles) {
     if (!isRoleFilled(role)) return false
   }
@@ -582,6 +570,7 @@ function getOrderedDateSlots(
   steps: CreationTemplateStep[]
 ): { key: string; dateKey: ConfigKey; timeKey?: ConfigKey }[] {
   const slots: { key: string; dateKey: ConfigKey; timeKey?: ConfigKey }[] = []
+  const hasHandprint = steps.some((s) => s.stepId === "handprint_high_res_config")
   for (const step of steps) {
     switch (step.stepId) {
       case "shooting_setup":
@@ -616,6 +605,14 @@ function getOrderedDateSlots(
         })
         break
       case "photo_selection":
+        // Handprint flow: Photographer check block is shown first in UI; its date must drive Photo selection (no auto-fill until photographer check is set). So emit photographer_check slot before photo_selection slots.
+        if (hasHandprint) {
+          slots.push({
+            key: "photographer_check_client_selection",
+            dateKey: "photographerCheckDueDate",
+            timeKey: "photographerCheckDueTime",
+          })
+        }
         slots.push({
           key: "photo_selection_photographer",
           dateKey: "photoSelectionPhotographerDueDate",
@@ -635,12 +632,7 @@ function getOrderedDateSlots(
         })
         break
       case "handprint_high_res_config":
-        // Photographer check form is inside this block; add its slot first for chronology
-        slots.push({
-          key: "photographer_check_client_selection",
-          dateKey: "photographerCheckDueDate",
-          timeKey: "photographerCheckDueTime",
-        })
+        // photographer_check_client_selection already added before photo_selection when hasHandprint; only add lr_to_hr slot here
         slots.push({
           key: step.stepId,
           dateKey: "lrToHrDueDate",

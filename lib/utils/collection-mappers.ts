@@ -42,8 +42,14 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
   const rowNobaUserIds = Array.isArray((row as { noba_user_ids?: unknown }).noba_user_ids)
     ? (row as { noba_user_ids: string[] }).noba_user_ids
     : null
+  // Derive nobaEditPermissionByUserId from producer members' can_edit column (source of truth).
+  // Fall back to legacy JSON columns for pre-028 data.
   const rowNobaEdit = (row as { noba_edit_permission_by_user_id?: unknown }).noba_edit_permission_by_user_id
   const storedEdit = (row as { participant_edit_permissions?: Record<string, Record<string, boolean>> }).participant_edit_permissions
+  const nobaEditFromMembers: Record<string, boolean> | undefined =
+    producerMembers.length > 0
+      ? Object.fromEntries(producerMembers.map((m) => [m.user_id, (m as { can_edit?: boolean }).can_edit ?? true]))
+      : undefined
   return {
     name: row.name,
     reference: row.reference ?? undefined,
@@ -52,11 +58,12 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     ownerUserId,
     nobaUserIds: rowNobaUserIds ?? (producerUserIds.length > 0 ? producerUserIds : undefined),
     nobaEditPermissionByUserId:
-      rowNobaEdit != null && typeof rowNobaEdit === "object"
+      nobaEditFromMembers ??
+      (rowNobaEdit != null && typeof rowNobaEdit === "object"
         ? (rowNobaEdit as Record<string, boolean>)
         : (storedEdit?.producer != null && typeof storedEdit.producer === "object"
           ? storedEdit.producer
-          : undefined),
+          : undefined)),
     hasAgency: row.photographer_collaborates_with_agency,
     hasLowResLab: row.low_res_to_high_res_digital,
     hasHandprint: row.low_res_to_high_res_hand_print,
@@ -120,18 +127,25 @@ const DB_ROLE_TO_DOMAIN: Record<CollectionMemberRole, ParticipantRole | null> = 
   print_technician: "handprint_lab",
 }
 
-/** Stored edit permissions: role -> userId -> boolean. New users default to true. */
-function getEditPermissionByUserId(
+/** Build editPermissionByUserId from member rows using the can_edit column.
+ *  Falls back to the legacy participant_edit_permissions JSON (migration 012) when
+ *  can_edit is not present (pre-028 data). New members default to true. */
+function editPermissionFromMembers(
+  members: CollectionMember[],
   role: ParticipantRole,
-  userIds: string[],
-  stored: Record<string, Record<string, boolean>>
+  storedLegacy: Record<string, Record<string, boolean>>
 ): Record<string, boolean> {
-  const forRole = stored[role] ?? {}
-  return Object.fromEntries(userIds.map((uid) => [uid, forRole[uid] ?? true]))
+  const out: Record<string, boolean> = {}
+  const legacyForRole = storedLegacy[role] ?? {}
+  for (const m of members) {
+    // Prefer the DB column; fall back to legacy JSON, then default true
+    out[m.user_id] = (m as { can_edit?: boolean }).can_edit ?? legacyForRole[m.user_id] ?? true
+  }
+  return out
 }
 
 function buildParticipants(row: DbCollection, members: CollectionMember[]): CollectionParticipant[] {
-  const storedEdit =
+  const storedLegacy =
     (row as { participant_edit_permissions?: Record<string, Record<string, boolean>> })
       .participant_edit_permissions ?? {}
   const byRole = new Map<CollectionMemberRole, CollectionMember[]>()
@@ -148,29 +162,33 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       role: "client",
       entityId: row.client_id,
       userIds: clientUserIds,
-      editPermissionByUserId: getEditPermissionByUserId("client", clientUserIds, storedEdit),
+      editPermissionByUserId: editPermissionFromMembers(clientMembers, "client", storedLegacy),
     })
   }
   const producerMembers = byRole.get("producer") ?? []
   if (producerMembers.length > 0) {
     const producerUserIds = producerMembers.map((m) => m.user_id)
-    const editPermissionByUserId = getEditPermissionByUserId("producer", producerUserIds, storedEdit)
     participants.push({
       role: "producer",
       entityId: row.client_id ?? undefined,
       userIds: producerUserIds,
-      editPermissionByUserId,
+      editPermissionByUserId: editPermissionFromMembers(producerMembers, "producer", storedLegacy),
     })
   }
-  if (row.photographer_id) {
+  // Photographer participant: create if photographer_id is set OR if photographer members exist
+  // (self-photographer without agency may have entityId undefined → photographer_id is null,
+  //  but the user is stored in collection_members with role "photographer")
+  {
     const photoMembers = byRole.get("photographer") ?? []
-    const userIds = photoMembers.map((m) => m.user_id)
-    participants.push({
-      role: "photographer",
-      entityId: row.photographer_id,
-      userIds,
-      editPermissionByUserId: getEditPermissionByUserId("photographer", userIds, storedEdit),
-    })
+    if (row.photographer_id || photoMembers.length > 0) {
+      const userIds = photoMembers.map((m) => m.user_id)
+      participants.push({
+        role: "photographer",
+        entityId: row.photographer_id ?? undefined,
+        userIds,
+        editPermissionByUserId: editPermissionFromMembers(photoMembers, "photographer", storedLegacy),
+      })
+    }
   }
   if (row.lab_low_res_id) {
     const labMembers = byRole.get("lab_technician") ?? []
@@ -179,7 +197,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       role: "lab",
       entityId: row.lab_low_res_id,
       userIds,
-      editPermissionByUserId: getEditPermissionByUserId("lab", userIds, storedEdit),
+      editPermissionByUserId: editPermissionFromMembers(labMembers, "lab", storedLegacy),
     })
   }
   if (row.edition_studio_id) {
@@ -189,7 +207,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       role: "edition_studio",
       entityId: row.edition_studio_id,
       userIds,
-      editPermissionByUserId: getEditPermissionByUserId("edition_studio", userIds, storedEdit),
+      editPermissionByUserId: editPermissionFromMembers(editorMembers, "edition_studio", storedLegacy),
     })
   }
   if (row.hand_print_lab_id) {
@@ -199,7 +217,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       role: "handprint_lab",
       entityId: row.hand_print_lab_id,
       userIds,
-      editPermissionByUserId: getEditPermissionByUserId("handprint_lab", userIds, storedEdit),
+      editPermissionByUserId: editPermissionFromMembers(printMembers, "handprint_lab", storedLegacy),
     })
   }
   return participants
@@ -327,6 +345,15 @@ export function mapDbCollectionToDomain(
 
   const lowresSelectionUrl = (row as { lowres_selection_url?: string | null }).lowres_selection_url
   const lowresLabNotes = (row as { lowres_lab_notes?: string | null }).lowres_lab_notes
+  const lowresSelectionUploadedAt = (row as { lowres_selection_uploaded_at?: string | null }).lowres_selection_uploaded_at
+  const photographerSelectionUrl = (row as { photographer_selection_url?: string | null }).photographer_selection_url
+  const photographerNotes01 = (row as { photographer_notes01?: string | null }).photographer_notes01
+  const photographerSelectionUploadedAt = (row as { photographer_selection_uploaded_at?: string | null }).photographer_selection_uploaded_at
+  const photographerRequestAdditionalNotes = (row as { photographer_request_additional_notes?: string | null }).photographer_request_additional_notes
+  const photographerMissingphotos = (row as { photographer_missingphotos?: string | null }).photographer_missingphotos
+  const lowresSelectionUrl02 = (row as { lowres_selection_url02?: string | null }).lowres_selection_url02
+  const lowresLabNotes02 = (row as { lowres_lab_notes02?: string | null }).lowres_lab_notes02
+  const lowresSelectionUploadedAt02 = (row as { lowres_selection_uploaded_at02?: string | null }).lowres_selection_uploaded_at02
   return {
     id: row.id,
     status,
@@ -336,7 +363,16 @@ export function mapDbCollectionToDomain(
     updatedAt: row.updated_at,
     publishedAt,
     lowResSelectionUrl: lowresSelectionUrl ?? undefined,
+    lowResSelectionUploadedAt: lowresSelectionUploadedAt ?? undefined,
     lowResLabNotes: lowresLabNotes ?? undefined,
+    photographerSelectionUrl: photographerSelectionUrl ?? undefined,
+    photographerSelectionUploadedAt: photographerSelectionUploadedAt ?? undefined,
+    photographerNotes01: photographerNotes01 ?? undefined,
+    photographerRequestAdditionalNotes: photographerRequestAdditionalNotes ?? undefined,
+    photographerMissingphotos: photographerMissingphotos ?? undefined,
+    lowResSelectionUrl02: lowresSelectionUrl02 ?? undefined,
+    lowResSelectionUploadedAt02: lowresSelectionUploadedAt02 ?? undefined,
+    lowResLabNotes02: lowresLabNotes02 ?? undefined,
   }
 }
 
@@ -435,14 +471,32 @@ export function mapDomainPatchToDbUpdate(
     status?: import("@/lib/domain/collections").CollectionStatus
     publishedAt?: string
     lowResSelectionUrl?: string
-    lowResLabNotes?: string
+    lowResSelectionUploadedAt?: string
+    lowResLabNotes?: string | null
+    photographerSelectionUrl?: string
+    photographerSelectionUploadedAt?: string
+    photographerNotes01?: string | null
+    photographerRequestAdditionalNotes?: string | null
+    photographerMissingphotos?: string | null
+    lowResSelectionUrl02?: string
+    lowResSelectionUploadedAt02?: string
+    lowResLabNotes02?: string | null
   }
 ): CollectionUpdate {
   const u: CollectionUpdate = {}
   if (patch.status !== undefined) u.status = patch.status
   if (patch.publishedAt !== undefined) u.published_at = patch.publishedAt ?? null
   if (patch.lowResSelectionUrl !== undefined) u.lowres_selection_url = patch.lowResSelectionUrl ?? null
+  if (patch.lowResSelectionUploadedAt !== undefined) u.lowres_selection_uploaded_at = patch.lowResSelectionUploadedAt ?? null
   if (patch.lowResLabNotes !== undefined) u.lowres_lab_notes = patch.lowResLabNotes ?? null
+  if (patch.lowResSelectionUrl02 !== undefined) u.lowres_selection_url02 = patch.lowResSelectionUrl02 ?? null
+  if (patch.lowResSelectionUploadedAt02 !== undefined) u.lowres_selection_uploaded_at02 = patch.lowResSelectionUploadedAt02 ?? null
+  if (patch.lowResLabNotes02 !== undefined) u.lowres_lab_notes02 = patch.lowResLabNotes02 ?? null
+  if (patch.photographerSelectionUrl !== undefined) u.photographer_selection_url = patch.photographerSelectionUrl ?? null
+  if (patch.photographerSelectionUploadedAt !== undefined) u.photographer_selection_uploaded_at = patch.photographerSelectionUploadedAt ?? null
+  if (patch.photographerNotes01 !== undefined) u.photographer_notes01 = patch.photographerNotes01 ?? null
+  if (patch.photographerRequestAdditionalNotes !== undefined) u.photographer_request_additional_notes = patch.photographerRequestAdditionalNotes ?? null
+  if (patch.photographerMissingphotos !== undefined) u.photographer_missingphotos = patch.photographerMissingphotos ?? null
   const conf = patch.config
   if (conf) {
     if (conf.clientEntityId !== undefined) u.client_id = conf.clientEntityId
@@ -514,15 +568,9 @@ export function mapDomainPatchToDbUpdate(
     u.lab_low_res_id = labId ?? null
     u.edition_studio_id = editionStudioId ?? null
     u.hand_print_lab_id = handprintLabId ?? null
-    // Omit participant_edit_permissions so UPDATE succeeds when migration 012 is not applied.
-    // When 012 is applied, uncomment below to persist Edit permission switch.
-    // const participant_edit_permissions: Record<string, Record<string, boolean>> = {}
-    // for (const p of patch.participants) {
-    //   if (p.editPermissionByUserId && Object.keys(p.editPermissionByUserId).length > 0) {
-    //     participant_edit_permissions[p.role] = { ...p.editPermissionByUserId }
-    //   }
-    // }
-    // u.participant_edit_permissions = participant_edit_permissions
+    // Edit permissions are persisted via can_edit on collection_members (migration 028).
+    // The legacy participant_edit_permissions JSON column (migration 012) is NOT used
+    // because migration 012 may not be applied on the remote DB.
   }
   u.updated_at = new Date().toISOString()
   return u
@@ -545,7 +593,9 @@ export function mapParticipantsToDbMembers(
       if (!seen.has(key)) {
         seen.add(key)
         const isOwner = dbRole === "producer" && userId === ownerUserId
-        out.push({ collection_id: collectionId, user_id: userId, role: dbRole, is_owner: isOwner })
+        // can_edit: read from editPermissionByUserId; default true for new members
+        const canEdit = p.editPermissionByUserId?.[userId] ?? true
+        out.push({ collection_id: collectionId, user_id: userId, role: dbRole, is_owner: isOwner, can_edit: canEdit })
       }
     }
   }

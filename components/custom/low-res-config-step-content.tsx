@@ -12,6 +12,15 @@ import { TimePicker } from "@/components/ui/date-picker"
 import { OptionPicker } from "./option-picker"
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
@@ -134,6 +143,51 @@ export function LowResConfigStepContent({
     c.handprintIsDifferentLab &&
     handprintParticipant?.entityId
   )
+
+  // Edit address dialog: "origin" = lab address, "destination" = hand print lab address
+  const [editAddressType, setEditAddressType] = React.useState<"origin" | "destination" | null>(null)
+  const [editStreet, setEditStreet] = React.useState("")
+  const [editZipCode, setEditZipCode] = React.useState("")
+  const [editCity, setEditCity] = React.useState("")
+  const [editCountry, setEditCountry] = React.useState("")
+
+  const openEditOrigin = React.useCallback(() => {
+    const current = labAddress !== "—" ? labAddress : (c.lowResShippingOriginAddress ?? "")
+    setEditStreet(current)
+    setEditZipCode("")
+    setEditCity("")
+    setEditCountry("")
+    setEditAddressType("origin")
+  }, [labAddress, c.lowResShippingOriginAddress])
+
+  const openEditDestination = React.useCallback(() => {
+    const current = handprintLabAddress !== "—" ? handprintLabAddress : (c.lowResShippingDestinationAddress ?? "")
+    setEditStreet(current)
+    setEditZipCode("")
+    setEditCity("")
+    setEditCountry("")
+    setEditAddressType("destination")
+  }, [handprintLabAddress, c.lowResShippingDestinationAddress])
+
+  const closeEditAddress = React.useCallback(() => {
+    setEditAddressType(null)
+  }, [])
+
+  const saveEditAddress = React.useCallback(() => {
+    const street = editStreet.trim()
+    const zip = editZipCode.trim()
+    const city = editCity.trim()
+    const country = editCountry.trim()
+    const formatted = [street, zip, city, country].filter(Boolean).join(" ") || undefined
+    if (editAddressType === "origin" && formatted) {
+      onLowResConfigChange({ lowResShippingOriginAddress: formatted })
+      setLabAddress(formatted)
+    } else if (editAddressType === "destination" && formatted) {
+      onLowResConfigChange({ lowResShippingDestinationAddress: formatted })
+      setHandprintLabAddress(formatted)
+    }
+    closeEditAddress()
+  }, [editAddressType, editStreet, editZipCode, editCity, editCountry, onLowResConfigChange, closeEditAddress])
 
   // Local state for tracking number so typing is not overwritten by parent/server updates
   const [localTrackingNumber, setLocalTrackingNumber] = React.useState(c.lowResShippingTracking ?? "")
@@ -304,6 +358,8 @@ export function LowResConfigStepContent({
                 entityType="Lab address"
                 value={labAddress}
                 locked
+                editable
+                onEdit={openEditOrigin}
               />
               <RowVariants variant="2">
                 <DatePicker
@@ -338,6 +394,8 @@ export function LowResConfigStepContent({
                 entityType="Hand print lab address"
                 value={handprintLabAddress}
                 locked
+                editable
+                onEdit={openEditDestination}
               />
               <RowVariants variant="2">
                 <DatePicker
@@ -412,6 +470,67 @@ export function LowResConfigStepContent({
           }
         />
       )}
+      <Dialog open={editAddressType !== null} onOpenChange={(open) => !open && closeEditAddress()}>
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>
+              Change {editAddressType === "origin" ? "Pickup" : "Delivery"} address
+            </DialogTitle>
+            <DialogDescription>
+              Update the address to show accurate shipping details to rest of participants.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <Field>
+              <FieldLabel>Street address</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={editStreet}
+                  onChange={(e) => setEditStreet(e.target.value)}
+                  placeholder="e.g. C/ Olivar 38, Bajo Ext. Izq."
+                  className="w-full"
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>ZIP code</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={editZipCode}
+                  onChange={(e) => setEditZipCode(e.target.value)}
+                  placeholder="e.g. 28012"
+                  className="w-full"
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>Country</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={editCountry}
+                  onChange={(e) => setEditCountry(e.target.value)}
+                  placeholder="e.g. Spain"
+                  className="w-full"
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>City</FieldLabel>
+              <FieldContent>
+                <Input
+                  value={editCity}
+                  onChange={(e) => setEditCity(e.target.value)}
+                  placeholder="e.g. Madrid"
+                  className="w-full"
+                />
+              </FieldContent>
+            </Field>
+          </div>
+          <DialogFooter>
+            <Button onClick={saveEditAddress}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

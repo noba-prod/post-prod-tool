@@ -51,7 +51,7 @@ This modal defines the structure of the collection.
 From this modal, the producer configures:
 - Collection name
 - Client
-- Manager (admin)
+- Client responsible
 - Starting date / deadlines
 - Whether a photographer collaborates with an agency
 - Whether labs, handprint labs, or edition studios are involved

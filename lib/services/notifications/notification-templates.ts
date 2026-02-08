@@ -67,7 +67,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerOffsetMinutes: 0,
     triggerCondition: null,
     emailRecipients: ["lab"],
-    inappRecipients: ["lab"],
+    inappRecipients: [], // in-app for this event sent in triggerEvent (lab + producer)
   },
   {
     code: "dropoff_confirmation_reminder",
@@ -166,6 +166,21 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerCondition: null,
     emailRecipients: ["photographer", "producer"],
     inappRecipients: ["photographer", "producer"],
+  },
+  {
+    code: "photographer_selection_uploaded",
+    step: 4,
+    stepName: "Photographer selection",
+    title: "Selection uploaded and ready",
+    description: "The lab has uploaded the photographer selection. It is now ready for the client to review.",
+    ctaText: "Review selection",
+    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_selection",
+    triggerType: "on",
+    triggerEvent: "photographer_selection_uploaded",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["producer", "client"],
+    inappRecipients: ["producer", "client"],
   },
   {
     code: "photographer_selection_shared",
