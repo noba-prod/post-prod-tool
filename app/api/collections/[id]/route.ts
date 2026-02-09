@@ -33,6 +33,8 @@ export async function PATCH(
       photographer_notes01?: string | null
       photographer_request_additional_notes?: string | null
       photographer_missingphotos?: string | null
+      client_selection_url?: string
+      client_notes01?: string | null
     }
     const {
       lowres_selection_url,
@@ -43,6 +45,8 @@ export async function PATCH(
       photographer_notes01,
       photographer_request_additional_notes,
       photographer_missingphotos,
+      client_selection_url,
+      client_notes01,
     } = body
 
     const service = createCollectionsServiceForServer()
@@ -58,6 +62,9 @@ export async function PATCH(
       photographerNotes01?: string | null
       photographerRequestAdditionalNotes?: string | null
       photographerMissingphotos?: string | null
+      clientSelectionUrl?: string
+      clientSelectionUploadedAt?: string
+      clientNotes01?: string | null
     } = {}
     if (lowres_selection_url !== undefined) {
       patch.lowResSelectionUrl = lowres_selection_url
@@ -76,6 +83,11 @@ export async function PATCH(
     if ("photographer_notes01" in body) patch.photographerNotes01 = photographer_notes01 ?? null
     if ("photographer_request_additional_notes" in body) patch.photographerRequestAdditionalNotes = photographer_request_additional_notes ?? null
     if ("photographer_missingphotos" in body) patch.photographerMissingphotos = photographer_missingphotos ?? null
+    if (client_selection_url !== undefined) {
+      patch.clientSelectionUrl = client_selection_url
+      patch.clientSelectionUploadedAt = new Date().toISOString()
+    }
+    if ("client_notes01" in body) patch.clientNotes01 = client_notes01 ?? null
     const updated = await service.updateCollection(id, patch)
 
     if (!updated) {

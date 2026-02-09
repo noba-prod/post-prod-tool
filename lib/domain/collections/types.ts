@@ -219,6 +219,12 @@ export interface Collection {
   lowResSelectionUploadedAt02?: string
   /** Notes for re-upload (step 3 second upload). */
   lowResLabNotes02?: string | null
+  /** URL where client final selection is shared (step 5 upload). */
+  clientSelectionUrl?: string
+  /** When the client selection URL was last set (ISO timestamp). */
+  clientSelectionUploadedAt?: string
+  /** Optional notes from client selection upload (step 5). Pass null to clear. */
+  clientNotes01?: string | null
 }
 
 /** Alias for backward compatibility; workflow and UI use same shape. */

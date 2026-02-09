@@ -229,6 +229,9 @@ export interface Collection {
   photographer_notes01: string | null
   photographer_selection_uploaded_at: string | null
   photographer_request_additional_notes: string | null
+  client_selection_url: string | null
+  client_notes01: string | null
+  client_selection_uploaded_at: string | null
   // Photo Selection
   photo_selection_photographer_preselection_date: string | null
   photo_selection_photographer_preselection_time: string | null
@@ -318,6 +321,9 @@ export interface CollectionInsert {
   photographer_notes01?: string | null
   photographer_selection_uploaded_at?: string | null
   photographer_request_additional_notes?: string | null
+  client_selection_url?: string | null
+  client_notes01?: string | null
+  client_selection_uploaded_at?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
@@ -397,6 +403,9 @@ export interface CollectionUpdate {
   photographer_notes01?: string | null
   photographer_selection_uploaded_at?: string | null
   photographer_request_additional_notes?: string | null
+  client_selection_url?: string | null
+  client_notes01?: string | null
+  client_selection_uploaded_at?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null

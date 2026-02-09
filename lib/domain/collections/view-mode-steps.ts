@@ -32,7 +32,7 @@ const VIEW_STEP_TITLES: Record<ViewStepId, string> = {
   low_res_scanning: "Low-res scanning",
   photographer_selection: "Photographer selection",
   client_selection: "Client selection",
-  photographer_check_client_selection: "Photographer check client selection",
+  photographer_check_client_selection: "Photographer review",
   handprint_high_res: "Low-res to high-res",
   edition_request: "Edition request",
   final_edits: "Final edits",

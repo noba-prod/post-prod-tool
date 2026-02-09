@@ -41,6 +41,54 @@ function getMainContextualPlayers(
       entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"),
     }
   }
+  if (stepId === "client_selection") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"),
+    }
+  }
+  if (stepId === "photographer_check_client_selection") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"),
+    }
+  }
+  if (stepId === "handprint_high_res") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter(
+        (e) =>
+          (e.entityTypeLabel ?? "").toLowerCase().includes("hand print") ||
+          (e.entityTypeLabel ?? "").toLowerCase().includes("handprint")
+      ),
+    }
+  }
+  if (stepId === "edition_request") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter(
+        (e) =>
+          (e.entityTypeLabel ?? "").toLowerCase().includes("retouch") ||
+          (e.entityTypeLabel ?? "").toLowerCase().includes("edition")
+      ),
+    }
+  }
+  if (stepId === "final_edits") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter(
+        (e) =>
+          (e.entityTypeLabel ?? "").toLowerCase().includes("retouch") ||
+          (e.entityTypeLabel ?? "").toLowerCase().includes("edition")
+      ),
+    }
+  }
+  if (stepId === "photographer_last_check") {
+    return {
+      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
+      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"),
+    }
+  }
   return { individuals, entities }
 }
 
@@ -235,6 +283,58 @@ export interface CollectionTemplateProps {
   photographerMissingphotos?: string
   /** Called when photographer requests additional photos (missing photos flow). Saves to photographer_missingphotos, posts event, notifies producer + lab. */
   onRequestAdditionalPhotos?: (notes: string) => void | Promise<void>
+  /** Step 5 (Client selection): called when client uploads final selection. */
+  onUploadClientSelection?: (payload: { url: string; notes?: string }) => void | Promise<void>
+  /** Step 5 (Client selection): called when client requests more photos from photographer. */
+  onRequestMorePhotosFromPhotographer?: (notes: string) => void | Promise<void>
+  /** Step 6 (Photographer review): URL of client final selection (step 5 upload). */
+  clientSelectionUrl?: string
+  /** Step 6: when the client selection URL was uploaded (ISO). */
+  clientSelectionUploadedAt?: string
+  /** Step 6: notes from client (client_notes01). Shown in notes block when present. */
+  clientNotes01?: string
+  /** Step 6: called when photographer validates client selection. */
+  onValidateClientSelection?: (comments?: string) => void | Promise<void>
+  /** Step 6: called when photographer requests more photos from client. */
+  onRequestMorePhotosFromClient?: (notes: string) => void | Promise<void>
+  /** Step 7 (Low-res to high-res): notes from photographer's validation (step 6). Standby: not in DB yet. Shown in notes block when present. */
+  photographerValidationNotes?: string
+  /** Step 7: called when lab uploads high-res selection. */
+  onUploadHighRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
+  /** Step 8 (Edition request): URL of high-res selection (step 7 upload). */
+  highResSelectionUrl?: string
+  /** Step 8: when the high-res URL was uploaded (ISO). */
+  highResUploadedAt?: string
+  /** Step 8: name of entity that uploaded high-res (e.g. Hand Print Lab name) for "Uploaded by @X". */
+  highResUploadedByName?: string
+  /** Step 8: notes from lab/handprint lab when uploading high-res (step 7). Standby: not in DB yet. Shown in notes block when present. */
+  highResUploadNotes?: string
+  /** Step 8: entity name for notes block (e.g. "Hand Print Lab" or "Photo Lab"). */
+  highResUploadedByEntityName?: string
+  /** Step 8: called when photographer gives improvement instructions to retouch studio. */
+  onGiveInstructions?: (payload: { details: string; url?: string }) => void | Promise<void>
+  /** Step 9 (Final edits): URL of improvement instructions from step 8 (Give instructions link). */
+  editionRequestInstructionsUrl?: string
+  /** Step 9: when the photographer gave instructions (step 8) — ISO. */
+  editionRequestInstructionsUploadedAt?: string
+  /** Step 9: notes from photographer in step 8 (Give instructions). Standby: not in DB yet. Shown in notes block when present. */
+  editionRequestInstructionsNotes?: string
+  /** Step 9: called when edition studio uploads final retouched photos. */
+  onUploadFinals?: (payload: { url: string; notes?: string }) => void | Promise<void>
+  /** Step 10 (Photographer last check): URL of finals from step 9 (or step 7 high-res when no edition). */
+  finalsSelectionUrl?: string
+  /** Step 10: when finals were uploaded (step 9) or high-res (step 7). ISO. */
+  finalsUploadedAt?: string
+  /** Step 10: name of entity that uploaded finals (e.g. Edition studio name) for "Uploaded by @X". */
+  finalsUploadedByName?: string
+  /** Step 10: notes from edition studio when uploading finals (step 9). Standby: not in DB yet. Shown in notes block when present. */
+  finalsUploadNotes?: string
+  /** Step 10: entity name for notes block (e.g. "Retouch studio"). */
+  finalsUploadedByEntityName?: string
+  /** Step 10: called when photographer requests changes (secondary action). */
+  onRequestChanges?: (notes?: string) => void | Promise<void>
+  /** Step 10: called when photographer validates finals (primary action). */
+  onValidateFinals?: () => void | Promise<void>
   /** Upload low-res dialog: shipping reminder — delivery date (ISO), time, and handprint lab destination. */
   uploadLowResShippingReminderDate?: string
   uploadLowResShippingReminderTime?: string
@@ -307,6 +407,32 @@ export function CollectionTemplate({
   onUploadPhotographerSelection,
   photographerMissingphotos,
   onRequestAdditionalPhotos,
+  onUploadClientSelection,
+  onRequestMorePhotosFromPhotographer,
+  clientSelectionUrl,
+  clientSelectionUploadedAt,
+  clientNotes01,
+  onValidateClientSelection,
+  onRequestMorePhotosFromClient,
+  photographerValidationNotes,
+  onUploadHighRes,
+  highResSelectionUrl,
+  highResUploadedAt,
+  highResUploadedByName,
+  highResUploadNotes,
+  highResUploadedByEntityName,
+  onGiveInstructions,
+  editionRequestInstructionsUrl,
+  editionRequestInstructionsUploadedAt,
+  editionRequestInstructionsNotes,
+  onUploadFinals,
+  finalsSelectionUrl,
+  finalsUploadedAt,
+  finalsUploadedByName,
+  finalsUploadNotes,
+  finalsUploadedByEntityName,
+  onRequestChanges,
+  onValidateFinals,
   uploadLowResShippingReminderDate,
   uploadLowResShippingReminderTime,
   uploadLowResShippingReminderDestination,
@@ -333,6 +459,26 @@ export function CollectionTemplate({
   const [uploadPhotographerSelectionNotes, setUploadPhotographerSelectionNotes] = React.useState("")
   const [missingPhotosDialogOpen, setMissingPhotosDialogOpen] = React.useState(false)
   const [missingPhotosNotes, setMissingPhotosNotes] = React.useState("")
+  const [clientUploadSelectionDialogOpen, setClientUploadSelectionDialogOpen] = React.useState(false)
+  const [clientUploadSelectionUrl, setClientUploadSelectionUrl] = React.useState("")
+  const [clientUploadSelectionNotes, setClientUploadSelectionNotes] = React.useState("")
+  const [clientMissingPhotosDialogOpen, setClientMissingPhotosDialogOpen] = React.useState(false)
+  const [clientMissingPhotosNotes, setClientMissingPhotosNotes] = React.useState("")
+  const [validateSelectionDialogOpen, setValidateSelectionDialogOpen] = React.useState(false)
+  const [validateSelectionComments, setValidateSelectionComments] = React.useState("")
+  const [photographerRequestClientPhotosDialogOpen, setPhotographerRequestClientPhotosDialogOpen] = React.useState(false)
+  const [photographerRequestClientPhotosNotes, setPhotographerRequestClientPhotosNotes] = React.useState("")
+  const [uploadHighResDialogOpen, setUploadHighResDialogOpen] = React.useState(false)
+  const [uploadHighResUrl, setUploadHighResUrl] = React.useState("")
+  const [uploadHighResNotes, setUploadHighResNotes] = React.useState("")
+  const [giveInstructionsDialogOpen, setGiveInstructionsDialogOpen] = React.useState(false)
+  const [giveInstructionsDetails, setGiveInstructionsDetails] = React.useState("")
+  const [giveInstructionsUrl, setGiveInstructionsUrl] = React.useState("")
+  const [uploadFinalsDialogOpen, setUploadFinalsDialogOpen] = React.useState(false)
+  const [uploadFinalsUrl, setUploadFinalsUrl] = React.useState("")
+  const [uploadFinalsNotes, setUploadFinalsNotes] = React.useState("")
+  const [requestChangesDialogOpen, setRequestChangesDialogOpen] = React.useState(false)
+  const [requestChangesNotes, setRequestChangesNotes] = React.useState("")
   const [lowResUrlPickerDialogOpen, setLowResUrlPickerDialogOpen] = React.useState(false)
   const [participantsModalOpen, setParticipantsModalOpen] = React.useState(false)
   const [editCollectionDialogOpen, setEditCollectionDialogOpen] = React.useState(false)
@@ -538,7 +684,7 @@ export function CollectionTemplate({
                 deadlineTime={step.deadlineTime ?? "End of day (5:00pm)"}
                 onStepClick={() => setOpenStepId(step.id)}
                 showExpandButton
-                isFirst={index === 0}
+                  isFirst={index === 0}
                 isLast={index === visibleSteps.length - 1}
               />
             ))}
@@ -609,8 +755,8 @@ export function CollectionTemplate({
                         <>
                           Provider:{" "}
                           <span className="text-lime-400">@{dropoffShippingCarrier.trim()}</span>
-                        </>
-                      ) : (
+            </>
+          ) : (
                         "Provider: —"
                       )
                     }
@@ -852,6 +998,568 @@ export function CollectionTemplate({
                     }
                   />
                 </div>
+              ) : openStep.id === "client_selection" ? (
+                <div className="flex flex-col gap-5 w-full">
+                  <div className="flex flex-row gap-5 w-full min-w-0">
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Client selection"
+                        subtitle="Client has to select the top photos from the shooting to prepare finals"
+                        backgroundImage="/assets/bg-selection.png"
+                        hideActionButton
+                        className="min-w-0 flex-1"
+                      />
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Photographer selection"
+                        subtitle={
+                          photographerName?.trim() ? (
+                            <>
+                              Uploaded by <span className="text-lime-400">@{photographerName.trim()}</span>
+                            </>
+                          ) : (
+                            "Uploaded by photographer"
+                          )
+                        }
+                        additionalInfo={
+                          photographerSelectionUrl?.trim()
+                            ? photographerSelectionUploadedAt
+                              ? `View link · ${formatRelativeTime(photographerSelectionUploadedAt)}`
+                              : "View link"
+                            : "Not uploaded yet"
+                        }
+                        backgroundImage="/assets/bg-selection.png"
+                        makeCardClickable={!!photographerSelectionUrl?.trim()}
+                        onAction={
+                          photographerSelectionUrl?.trim()
+                            ? () => window.open(photographerSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                            : undefined
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                  </div>
+                  {photographerNotes01?.trim() && (
+                    <StepDetails
+                      variant="notes"
+                      mainTitle="Notes from lab"
+                      entityName="lab"
+                      additionalInfo={photographerNotes01.trim()}
+                    />
+                  )}
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Do you have the final photos you'd like to get in high-res?
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => setClientUploadSelectionDialogOpen(true)}
+                      >
+                        Upload selection
+                      </Button>
+                    </section>
+                  )}
+                  <StepDetails
+                    variant="missingPhotos"
+                    mainTitle="Missing photos?"
+                    entityName={
+                      (participantsMainPlayersIndividuals ?? []).find(
+                        (u) => (u.roleLabel ?? "").toLowerCase() === "photographer"
+                      )?.name ?? "Photographer"
+                    }
+                    onAction={
+                      openStep.canEdit
+                        ? () => setClientMissingPhotosDialogOpen(true)
+                        : undefined
+                    }
+                  />
+                </div>
+              ) : openStep.id === "photographer_check_client_selection" ? (
+                <div className="flex flex-col gap-5 w-full">
+                  <div className="flex flex-col gap-5 w-full">
+                    <div className="flex flex-row gap-5 w-full min-w-0">
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Validation for HR"
+                        subtitle="Photographer must download and validate client selections for hand print lab instructions."
+                        backgroundImage="/assets/bg-improvements.png"
+                        hideActionButton
+                        className="min-w-0 flex-1"
+                      />
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Client selection"
+                        subtitle={
+                          clientName?.trim() ? (
+                            <>
+                              Uploaded by <span className="text-lime-400">@{clientName.trim()}</span>
+                            </>
+                          ) : (
+                            "Uploaded by client"
+                          )
+                        }
+                        additionalInfo={
+                          clientSelectionUrl?.trim()
+                            ? clientSelectionUploadedAt
+                              ? `View link · ${formatRelativeTime(clientSelectionUploadedAt)}`
+                              : "View link"
+                            : "Not uploaded yet"
+                        }
+                        backgroundImage="/assets/bg-clientselect.png"
+                        makeCardClickable={!!clientSelectionUrl?.trim()}
+                        onAction={
+                          clientSelectionUrl?.trim()
+                            ? () => window.open(clientSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                            : undefined
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                    {clientNotes01?.trim() && (
+                      <StepDetails
+                        variant="notes"
+                        entityName="client"
+                        additionalInfo={clientNotes01.trim()}
+                      />
+                    )}
+                  </div>
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Review client selection and confirm or add comments for lab
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => setValidateSelectionDialogOpen(true)}
+                      >
+                        Validate selection
+                      </Button>
+                    </section>
+                  )}
+                  <StepDetails
+                    variant="missingPhotos"
+                    mainTitle="Missing photos?"
+                    entityName={
+                      (participantsMainPlayersEntities ?? []).find(
+                        (e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"
+                      )?.entityName ?? "Client"
+                    }
+                    onAction={
+                      openStep.canEdit
+                        ? () => setPhotographerRequestClientPhotosDialogOpen(true)
+                        : undefined
+                    }
+                  />
+                </div>
+              ) : openStep.id === "edition_request" ? (
+                <div className="flex flex-col gap-5 w-full">
+                  <div className="flex flex-col gap-5 w-full">
+                    <div className="flex flex-row gap-5 w-full min-w-0">
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Improvements"
+                        subtitle="Photographer have to capture all changes needed to get finals ready."
+                        backgroundImage="/assets/bg-improvements.png"
+                        hideActionButton
+                        className="min-w-0 flex-1"
+                      />
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Download high-res"
+                        subtitle={
+                          highResUploadedByName?.trim() ? (
+                            <>
+                              Uploaded by <span className="text-lime-400">@{highResUploadedByName.trim()}</span>
+                            </>
+                          ) : (
+                            "Uploaded by lab"
+                          )
+                        }
+                        additionalInfo={
+                          highResSelectionUrl?.trim()
+                            ? highResUploadedAt
+                              ? `View link · ${formatRelativeTime(highResUploadedAt)}`
+                              : "View link"
+                            : "Not uploaded yet"
+                        }
+                        backgroundImage="/assets/bg-highres.png"
+                        makeCardClickable={!!highResSelectionUrl?.trim()}
+                        onAction={
+                          highResSelectionUrl?.trim()
+                            ? () => window.open(highResSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                            : undefined
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                    {highResUploadNotes?.trim() && (
+                      <StepDetails
+                        variant="notes"
+                        entityName={highResUploadedByEntityName ?? "Lab"}
+                        additionalInfo={highResUploadNotes.trim()}
+                      />
+                    )}
+                  </div>
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Upload improvement details for retouch studio
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => setGiveInstructionsDialogOpen(true)}
+                      >
+                        Give instructions
+                      </Button>
+                    </section>
+                  )}
+                </div>
+              ) : openStep.id === "final_edits" ? (
+                <div className="flex flex-col gap-5 w-full">
+                  <StepDetails
+                    variant="primary"
+                    mainTitle="Photo retouches"
+                    subtitle="Edition studio is currently doing final retouches to the client selection."
+                    backgroundImage="/assets/bg-edition.png"
+                    hideActionButton
+                    className="w-full"
+                  />
+                  <div className="flex flex-col gap-5 w-full">
+                    <div className="flex flex-row gap-5 w-full min-w-0">
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Improvement details"
+                        subtitle={
+                          photographerName?.trim() ? (
+                            <>
+                              Uploaded by <span className="text-lime-400">@{photographerName.trim()}</span>
+                            </>
+                          ) : (
+                            "Uploaded by photographer"
+                          )
+                        }
+                        additionalInfo={
+                          editionRequestInstructionsUrl?.trim()
+                            ? editionRequestInstructionsUploadedAt
+                              ? `View link · ${formatRelativeTime(editionRequestInstructionsUploadedAt)}`
+                              : "View link"
+                            : "Not uploaded yet"
+                        }
+                        backgroundImage="/assets/bg-improvements.png"
+                        makeCardClickable={!!editionRequestInstructionsUrl?.trim()}
+                        onAction={
+                          editionRequestInstructionsUrl?.trim()
+                            ? () => window.open(editionRequestInstructionsUrl.trim(), "_blank", "noopener,noreferrer")
+                            : undefined
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Download high-res"
+                        subtitle={
+                          highResUploadedByName?.trim() ? (
+                            <>
+                              Uploaded by <span className="text-lime-400">@{highResUploadedByName.trim()}</span>
+                            </>
+                          ) : (
+                            "Uploaded by lab"
+                          )
+                        }
+                        additionalInfo={
+                          highResSelectionUrl?.trim()
+                            ? highResUploadedAt
+                              ? `View link · ${formatRelativeTime(highResUploadedAt)}`
+                              : "View link"
+                            : "Not uploaded yet"
+                        }
+                        backgroundImage="/assets/bg-highres.png"
+                        makeCardClickable={!!highResSelectionUrl?.trim()}
+                        onAction={
+                          highResSelectionUrl?.trim()
+                            ? () => window.open(highResSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                            : undefined
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                    {editionRequestInstructionsNotes?.trim() && (
+                      <StepDetails
+                        variant="notes"
+                        entityName="Photographer"
+                        additionalInfo={editionRequestInstructionsNotes.trim()}
+                      />
+                    )}
+                  </div>
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Upload final retouched photos
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => setUploadFinalsDialogOpen(true)}
+                      >
+                        Upload finals
+                      </Button>
+                    </section>
+                  )}
+                </div>
+              ) : openStep.id === "photographer_last_check" ? (
+                <div className="flex flex-col gap-5 w-full">
+                  <div className="flex flex-col gap-5 w-full">
+                    <div className="flex flex-row gap-5 w-full min-w-0">
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Final confirmation"
+                        subtitle="Photographer needs to carefully review final retouches and approve the job done by the edition studio in order to share finals with client."
+                        backgroundImage="/assets/bg-improvements.png"
+                        hideActionButton
+                        className="min-w-0 flex-1"
+                      />
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Download finals"
+                        subtitle={
+                          (() => {
+                            const url = finalsSelectionUrl?.trim() || highResSelectionUrl?.trim()
+                            const name = url === finalsSelectionUrl?.trim() ? finalsUploadedByName : highResUploadedByName
+                            return name?.trim() ? (
+                              <>
+                                Uploaded by <span className="text-lime-400">@{name.trim()}</span>
+                              </>
+                            ) : (
+                              "Uploaded by studio"
+                            )
+                          })()
+                        }
+                        additionalInfo={
+                          (() => {
+                            const url = finalsSelectionUrl?.trim() || highResSelectionUrl?.trim()
+                            const at = url === finalsSelectionUrl?.trim() ? finalsUploadedAt : highResUploadedAt
+                            if (!url) return "Not uploaded yet"
+                            return at ? `View link · ${formatRelativeTime(at)}` : "View link"
+                          })()
+                        }
+                        backgroundImage="/assets/bg-edition.png"
+                        makeCardClickable={!!(finalsSelectionUrl?.trim() || highResSelectionUrl?.trim())}
+                        onAction={
+                          (() => {
+                            const url = finalsSelectionUrl?.trim() || highResSelectionUrl?.trim()
+                            return url ? () => window.open(url, "_blank", "noopener,noreferrer") : undefined
+                          })()
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                    {finalsUploadNotes?.trim() && (
+                      <StepDetails
+                        variant="notes"
+                        entityName={finalsUploadedByEntityName ?? "Retouch studio"}
+                        additionalInfo={finalsUploadNotes.trim()}
+                      />
+                    )}
+                  </div>
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Are final retouches ok?
+                      </p>
+                      <div className="flex flex-wrap items-center justify-center gap-3">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="lg"
+                          className="w-fit rounded-xl"
+                          onClick={() => setRequestChangesDialogOpen(true)}
+                        >
+                          Request changes
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="lg"
+                          className="w-fit rounded-xl"
+                          onClick={async () => {
+                            try {
+                              await onValidateFinals?.()
+                              setOpenStepId(null)
+                              toast.success("Finals validated.")
+                            } catch {
+                              // Error surfaced by page if any
+                            }
+                          }}
+                        >
+                          Validate finals
+                        </Button>
+                      </div>
+                    </section>
+                  )}
+                </div>
+              ) : openStep.id === "handprint_high_res" ? (
+                <div className="flex flex-col gap-5 w-full">
+                  <div className="flex flex-col gap-5 w-full">
+                    <div className="flex flex-row gap-5 w-full min-w-0">
+                      <StepDetails
+                        variant="primary"
+                        mainTitle='Convert client selection to "high-resolution"'
+                        subtitle="Lab has to convert client selection to high-resolution using a traditional hand-printing technique."
+                        backgroundImage="/assets/bg-highres.png"
+                        hideActionButton
+                        className="min-w-0 flex-1"
+                      />
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Client selection"
+                        subtitle={
+                          clientName?.trim() ? (
+                            <>
+                              Uploaded by <span className="text-lime-400">@{clientName.trim()}</span>
+                            </>
+                          ) : (
+                            "Uploaded by client"
+                          )
+                        }
+                        additionalInfo={
+                          clientSelectionUrl?.trim()
+                            ? clientSelectionUploadedAt
+                              ? `View link · ${formatRelativeTime(clientSelectionUploadedAt)}`
+                              : "View link"
+                            : "Not uploaded yet"
+                        }
+                        backgroundImage="/assets/bg-clientselect.png"
+                        makeCardClickable={!!clientSelectionUrl?.trim()}
+                        onAction={
+                          clientSelectionUrl?.trim()
+                            ? () => window.open(clientSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                            : undefined
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                    {photographerValidationNotes?.trim() && (
+                      <StepDetails
+                        variant="notes"
+                        entityName="Photographer"
+                        additionalInfo={photographerValidationNotes.trim()}
+                      />
+                    )}
+                  </div>
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Upload high-resolution selection
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => setUploadHighResDialogOpen(true)}
+                      >
+                        Upload high-res
+                      </Button>
+                    </section>
+                  )}
+                  <StepDetails
+                    variant="missingPhotos"
+                    mainTitle="Missing photos?"
+                    entityName={
+                      (participantsMainPlayersEntities ?? []).find(
+                        (e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"
+                      )?.entityName ?? "Client"
+                    }
+                    onAction={
+                      openStep.canEdit
+                        ? () => setPhotographerRequestClientPhotosDialogOpen(true)
+                        : undefined
+                    }
+                  />
+                </div>
+              ) : openStep.id === "client_confirmation" ? (
+                <div className="flex flex-col gap-5 w-full">
+                  {/* Client confirmation — custom block (Figma node 788-58722): bg-finals, title, subtitle, primary white button */}
+                  <div className="relative flex flex-col items-center justify-center rounded-xl overflow-hidden min-h-[244px] w-full">
+                    <img
+                      src="/assets/bg-finals.png"
+                      alt=""
+                      className="absolute inset-0 size-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-foreground/40" />
+                    <div className="relative z-10 px-5 py-5 flex flex-col gap-6 items-center justify-center text-center">
+                      <div className="flex flex-col gap-2 items-center text-center">
+                        <span className="block font-semibold text-xl leading-8 text-white">
+                          Final selection is ready!
+                        </span>
+                        <span className="text-sm font-medium block text-white/90">
+                          {openStep.canEdit
+                            ? "Check and review the finals before confirming the closing of the project"
+                            : "View the final selection."}
+                        </span>
+                      </div>
+                      {openStep.canEdit && (
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="lg"
+                          className="w-fit rounded-xl bg-white text-black hover:bg-white/90"
+                        >
+                          Approve selection
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Action block: Request additional photos */}
+                  {openStep.canEdit && (
+                    <section
+                      className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
+                      aria-label="Step owner action"
+                    >
+                      <p className="text-center text-base font-semibold text-foreground">
+                        Do you need additional footage?
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="lg"
+                        className="w-fit rounded-xl"
+                        onClick={() => setClientMissingPhotosDialogOpen(true)}
+                      >
+                        Request additional photos
+                      </Button>
+                    </section>
+                  )}
+                </div>
               ) : (
                 <StepDetails
                   variant="primary"
@@ -929,6 +1637,9 @@ export function CollectionTemplate({
                   participantsMainPlayersEntities ?? []
                 )
                 const isLowResStep = openStep?.id === "low_res_scanning"
+                const isClientSelectionStep = openStep?.id === "client_selection"
+                const isHandprintHighResStep = openStep?.id === "handprint_high_res"
+                const isFinalEditsStep = openStep?.id === "final_edits"
                 const renderEntity = (entity: (typeof mainEntities)[number], i: number) => (
                   <div key={`step-main-ent-${i}-${entity.entityName}`} className="flex flex-col gap-3">
                     <span className="text-xs font-medium text-muted-foreground">
@@ -964,12 +1675,16 @@ export function CollectionTemplate({
                       Main players
                     </h3>
                     <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
-                      {isLowResStep
+                      {isClientSelectionStep || isHandprintHighResStep || isFinalEditsStep
                         ? mainEntities.map((entity, i) => renderEntity(entity, i))
-                        : mainIndividuals.map((user, i) => renderIndividual(user, i))}
-                      {isLowResStep
+                        : isLowResStep
+                          ? mainEntities.map((entity, i) => renderEntity(entity, i))
+                          : mainIndividuals.map((user, i) => renderIndividual(user, i))}
+                      {isClientSelectionStep || isHandprintHighResStep || isFinalEditsStep
                         ? mainIndividuals.map((user, i) => renderIndividual(user, i))
-                        : mainEntities.map((entity, i) => renderEntity(entity, i))}
+                        : isLowResStep
+                          ? mainIndividuals.map((user, i) => renderIndividual(user, i))
+                          : mainEntities.map((entity, i) => renderEntity(entity, i))}
                       {mainIndividuals.length === 0 && mainEntities.length === 0 && (
                         <p className="text-sm text-muted-foreground">
                           No main players in this collection.
@@ -1356,6 +2071,477 @@ export function CollectionTemplate({
               }}
             >
               Request additional photos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Client selection (step 5): Upload selection — URL + comments (same pattern as step 4) */}
+      <Dialog
+        open={clientUploadSelectionDialogOpen}
+        onOpenChange={(open) => {
+          setClientUploadSelectionDialogOpen(open)
+          if (!open) {
+            setClientUploadSelectionUrl("")
+            setClientUploadSelectionNotes("")
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share client selection</DialogTitle>
+            <DialogDescription>
+              Upload here the selection of photos to convert to high-res
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="client-upload-selection-url">Link or URL with photos</Label>
+              <Input
+                id="client-upload-selection-url"
+                type="url"
+                placeholder="Paste here the link"
+                value={clientUploadSelectionUrl}
+                onChange={(e) => setClientUploadSelectionUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="client-upload-selection-notes">Comments (optional)</Label>
+              <Textarea
+                id="client-upload-selection-notes"
+                placeholder="Write here comments and notes"
+                value={clientUploadSelectionNotes}
+                onChange={(e) => setClientUploadSelectionNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!clientUploadSelectionUrl.trim()}
+              onClick={async () => {
+                const url = clientUploadSelectionUrl.trim()
+                if (!url) return
+                try {
+                  await onUploadClientSelection?.({ url, notes: clientUploadSelectionNotes.trim() || undefined })
+                  setClientUploadSelectionDialogOpen(false)
+                  setClientUploadSelectionUrl("")
+                  setClientUploadSelectionNotes("")
+                  setOpenStepId(null)
+                  toast.success("Selection uploaded.")
+                } catch {
+                  // Error surfaced by page if any
+                }
+              }}
+            >
+              Upload selection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Client selection (step 5): Request more photos from photographer */}
+      <Dialog
+        open={clientMissingPhotosDialogOpen}
+        onOpenChange={(open) => {
+          setClientMissingPhotosDialogOpen(open)
+          if (!open) setClientMissingPhotosNotes("")
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request more photos</DialogTitle>
+            <DialogDescription>
+              Provide details so the photographer can prepare additional options for your selection.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="client-missing-photos-notes">Notes and comments</Label>
+              <Textarea
+                id="client-missing-photos-notes"
+                placeholder="Write here comments and notes"
+                value={clientMissingPhotosNotes}
+                onChange={(e) => setClientMissingPhotosNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!clientMissingPhotosNotes.trim()}
+              onClick={async () => {
+                const notes = clientMissingPhotosNotes.trim()
+                if (!notes) return
+                await onRequestMorePhotosFromPhotographer?.(notes)
+                setClientMissingPhotosDialogOpen(false)
+                setClientMissingPhotosNotes("")
+                setOpenStepId(null)
+                toast.success("Request sent to the photographer.")
+              }}
+            >
+              Request additional photos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 6 (Photographer review): Validate selection — optional comments */}
+      <Dialog
+        open={validateSelectionDialogOpen}
+        onOpenChange={(open) => {
+          setValidateSelectionDialogOpen(open)
+          if (!open) setValidateSelectionComments("")
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Validate client selection</DialogTitle>
+            <DialogDescription>
+              Give all necessary details so photographer can prepare a new selection of images with the missing footage
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="validate-selection-comments">Notes and comments (optional)</Label>
+              <Textarea
+                id="validate-selection-comments"
+                placeholder="Write here comments and notes for lab"
+                value={validateSelectionComments}
+                onChange={(e) => setValidateSelectionComments(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              onClick={async () => {
+                try {
+                  await onValidateClientSelection?.(validateSelectionComments.trim() || undefined)
+                  setValidateSelectionDialogOpen(false)
+                  setValidateSelectionComments("")
+                  setOpenStepId(null)
+                  toast.success("Selection validated.")
+                } catch {
+                  // Error surfaced by page if any
+                }
+              }}
+            >
+              Validate selection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 6 (Photographer review): Request more photos from client */}
+      <Dialog
+        open={photographerRequestClientPhotosDialogOpen}
+        onOpenChange={(open) => {
+          setPhotographerRequestClientPhotosDialogOpen(open)
+          if (!open) setPhotographerRequestClientPhotosNotes("")
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request more photos</DialogTitle>
+            <DialogDescription>
+              Provide details so the client can prepare additional options for selection.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="photographer-request-client-photos-notes">Notes and comments</Label>
+              <Textarea
+                id="photographer-request-client-photos-notes"
+                placeholder="Write here comments and notes"
+                value={photographerRequestClientPhotosNotes}
+                onChange={(e) => setPhotographerRequestClientPhotosNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!photographerRequestClientPhotosNotes.trim()}
+              onClick={async () => {
+                const notes = photographerRequestClientPhotosNotes.trim()
+                if (!notes) return
+                await onRequestMorePhotosFromClient?.(notes)
+                setPhotographerRequestClientPhotosDialogOpen(false)
+                setPhotographerRequestClientPhotosNotes("")
+                setOpenStepId(null)
+                toast.success("Request sent to the client.")
+              }}
+            >
+              Request additional photos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 7 (Low-res to high-res): Upload high-res selection — URL + optional notes */}
+      <Dialog
+        open={uploadHighResDialogOpen}
+        onOpenChange={(open) => {
+          setUploadHighResDialogOpen(open)
+          if (!open) {
+            setUploadHighResUrl("")
+            setUploadHighResNotes("")
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload high-res selection</DialogTitle>
+            <DialogDescription>
+              Share the link to the high-resolution selection for this collection.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-high-res-url">Link or URL with high-res photos</Label>
+              <Input
+                id="upload-high-res-url"
+                type="url"
+                placeholder="Paste here the link"
+                value={uploadHighResUrl}
+                onChange={(e) => setUploadHighResUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-high-res-notes">Comments (optional)</Label>
+              <Textarea
+                id="upload-high-res-notes"
+                placeholder="Write here comments and notes"
+                value={uploadHighResNotes}
+                onChange={(e) => setUploadHighResNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!uploadHighResUrl.trim()}
+              onClick={async () => {
+                const url = uploadHighResUrl.trim()
+                if (!url) return
+                try {
+                  await onUploadHighRes?.({ url, notes: uploadHighResNotes.trim() || undefined })
+                  setUploadHighResDialogOpen(false)
+                  setUploadHighResUrl("")
+                  setUploadHighResNotes("")
+                  setOpenStepId(null)
+                  toast.success("High-res selection uploaded.")
+                } catch {
+                  // Error surfaced by page if any
+                }
+              }}
+            >
+              Upload high-res
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 8 (Edition request): Give instructions to retouch studio — link (optional) + improvement details */}
+      <Dialog
+        open={giveInstructionsDialogOpen}
+        onOpenChange={(open) => {
+          setGiveInstructionsDialogOpen(open)
+          if (!open) {
+            setGiveInstructionsDetails("")
+            setGiveInstructionsUrl("")
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload improvement details</DialogTitle>
+            <DialogDescription>
+              Upload all the necessary information for the retouch studio to make edits and prepare finals
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="give-instructions-url">Link or URL (optional)</Label>
+              <Input
+                id="give-instructions-url"
+                type="url"
+                placeholder="Paste here the link"
+                value={giveInstructionsUrl}
+                onChange={(e) => setGiveInstructionsUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="give-instructions-details">Notes and comments (optional)</Label>
+              <Textarea
+                id="give-instructions-details"
+                placeholder="Write here comments and notes"
+                value={giveInstructionsDetails}
+                onChange={(e) => setGiveInstructionsDetails(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!giveInstructionsDetails.trim() && !giveInstructionsUrl.trim()}
+              onClick={async () => {
+                const details = giveInstructionsDetails.trim()
+                const url = giveInstructionsUrl.trim() || undefined
+                if (!details && !url) return
+                try {
+                  await onGiveInstructions?.({ details: details || "", url })
+                  setGiveInstructionsDialogOpen(false)
+                  setGiveInstructionsDetails("")
+                  setGiveInstructionsUrl("")
+                  setOpenStepId(null)
+                  toast.success("Instructions sent to the retouch studio.")
+                } catch {
+                  // Error surfaced by page if any
+                }
+              }}
+            >
+              Upload details
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 9 (Final edits): Upload finals — URL + optional notes */}
+      <Dialog
+        open={uploadFinalsDialogOpen}
+        onOpenChange={(open) => {
+          setUploadFinalsDialogOpen(open)
+          if (!open) {
+            setUploadFinalsUrl("")
+            setUploadFinalsNotes("")
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload finals</DialogTitle>
+            <DialogDescription>
+              Share the link to the final retouched photos for this collection.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-finals-url">Link or URL with final photos</Label>
+              <Input
+                id="upload-finals-url"
+                type="url"
+                placeholder="Paste here the link"
+                value={uploadFinalsUrl}
+                onChange={(e) => setUploadFinalsUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-finals-notes">Comments (optional)</Label>
+              <Textarea
+                id="upload-finals-notes"
+                placeholder="Write here comments and notes"
+                value={uploadFinalsNotes}
+                onChange={(e) => setUploadFinalsNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!uploadFinalsUrl.trim()}
+              onClick={async () => {
+                const url = uploadFinalsUrl.trim()
+                if (!url) return
+                try {
+                  await onUploadFinals?.({ url, notes: uploadFinalsNotes.trim() || undefined })
+                  setUploadFinalsDialogOpen(false)
+                  setUploadFinalsUrl("")
+                  setUploadFinalsNotes("")
+                  setOpenStepId(null)
+                  toast.success("Finals uploaded.")
+                } catch {
+                  // Error surfaced by page if any
+                }
+              }}
+            >
+              Upload finals
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 10 (Photographer last check): Request changes — optional notes */}
+      <Dialog
+        open={requestChangesDialogOpen}
+        onOpenChange={(open) => {
+          setRequestChangesDialogOpen(open)
+          if (!open) setRequestChangesNotes("")
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request changes</DialogTitle>
+            <DialogDescription>
+              Describe the changes you need so the edition studio can update the finals.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="request-changes-notes">Notes and comments (optional)</Label>
+              <Textarea
+                id="request-changes-notes"
+                placeholder="Write here comments and notes"
+                value={requestChangesNotes}
+                onChange={(e) => setRequestChangesNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              onClick={async () => {
+                try {
+                  await onRequestChanges?.(requestChangesNotes.trim() || undefined)
+                  setRequestChangesDialogOpen(false)
+                  setRequestChangesNotes("")
+                  setOpenStepId(null)
+                  toast.success("Change request sent.")
+                } catch {
+                  // Error surfaced by page if any
+                }
+              }}
+            >
+              Request changes
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -87,6 +87,9 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
       lowResSelectionUrl02: patch.lowResSelectionUrl02,
       lowResSelectionUploadedAt02: patch.lowResSelectionUploadedAt02,
       lowResLabNotes02: patch.lowResLabNotes02,
+      clientSelectionUrl: patch.clientSelectionUrl,
+      clientSelectionUploadedAt: patch.clientSelectionUploadedAt,
+      clientNotes01: patch.clientNotes01,
     })
     if (Object.keys(updatePayload).length > 0) {
       ;(updatePayload as Record<string, unknown>).updated_at = new Date().toISOString()

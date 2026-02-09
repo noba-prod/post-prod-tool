@@ -374,6 +374,38 @@ export default function CollectionViewPage({
     [id, fetchCompletedStepIds, refetchCollection]
   )
 
+  const handleUploadClientSelection = React.useCallback(
+    async (payload: { url: string; notes?: string }) => {
+      if (!id) return
+      try {
+        const patchRes = await fetch(`/api/collections/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_selection_url: payload.url,
+            client_notes01: payload.notes?.trim() || null,
+          }),
+        })
+        if (!patchRes.ok) throw new Error("Failed to save client selection")
+        const res = await fetch(`/api/collections/${id}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventType: "client_selection_confirmed",
+            metadata: { url: payload.url, notes: payload.notes },
+          }),
+        })
+        if (!res.ok) throw new Error("Failed to trigger event")
+        await fetchCompletedStepIds(id, collection?.lowResSelectionUrl02)
+        await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Upload client selection error:", err)
+        toast.error("Failed to save selection")
+      }
+    },
+    [id, collection?.lowResSelectionUrl02, fetchCompletedStepIds, refetchCollection]
+  )
+
   // Resolve client and photographer names from collection data via API
   React.useEffect(() => {
     if (!collection) return
@@ -671,6 +703,32 @@ export default function CollectionViewPage({
       onUploadPhotographerSelection={handleUploadPhotographerSelection}
       photographerMissingphotos={collection.photographerMissingphotos ?? undefined}
       onRequestAdditionalPhotos={handleRequestAdditionalPhotos}
+      onUploadClientSelection={handleUploadClientSelection}
+      onRequestMorePhotosFromPhotographer={undefined}
+      clientSelectionUrl={collection.clientSelectionUrl ?? undefined}
+      clientSelectionUploadedAt={collection.clientSelectionUploadedAt ?? undefined}
+      clientNotes01={collection.clientNotes01 ?? undefined}
+      onValidateClientSelection={undefined}
+      onRequestMorePhotosFromClient={undefined}
+      photographerValidationNotes={undefined}
+      onUploadHighRes={undefined}
+      highResSelectionUrl={undefined}
+      highResUploadedAt={undefined}
+      highResUploadedByName={undefined}
+      highResUploadNotes={undefined}
+      highResUploadedByEntityName={undefined}
+      onGiveInstructions={undefined}
+      editionRequestInstructionsUrl={undefined}
+      editionRequestInstructionsUploadedAt={undefined}
+      editionRequestInstructionsNotes={undefined}
+      onUploadFinals={undefined}
+      finalsSelectionUrl={undefined}
+      finalsUploadedAt={undefined}
+      finalsUploadedByName={undefined}
+      finalsUploadNotes={undefined}
+      finalsUploadedByEntityName={undefined}
+      onRequestChanges={undefined}
+      onValidateFinals={undefined}
       uploadLowResShippingReminderDate={collection.config.lowResShippingDeliveryDate}
       uploadLowResShippingReminderTime={collection.config.lowResShippingDeliveryTime}
       uploadLowResShippingReminderDestination={collection.config.lowResShippingDestinationAddress}

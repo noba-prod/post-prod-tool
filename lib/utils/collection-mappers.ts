@@ -354,6 +354,9 @@ export function mapDbCollectionToDomain(
   const lowresSelectionUrl02 = (row as { lowres_selection_url02?: string | null }).lowres_selection_url02
   const lowresLabNotes02 = (row as { lowres_lab_notes02?: string | null }).lowres_lab_notes02
   const lowresSelectionUploadedAt02 = (row as { lowres_selection_uploaded_at02?: string | null }).lowres_selection_uploaded_at02
+  const clientSelectionUrl = (row as { client_selection_url?: string | null }).client_selection_url
+  const clientNotes01 = (row as { client_notes01?: string | null }).client_notes01
+  const clientSelectionUploadedAt = (row as { client_selection_uploaded_at?: string | null }).client_selection_uploaded_at
   return {
     id: row.id,
     status,
@@ -373,6 +376,9 @@ export function mapDbCollectionToDomain(
     lowResSelectionUrl02: lowresSelectionUrl02 ?? undefined,
     lowResSelectionUploadedAt02: lowresSelectionUploadedAt02 ?? undefined,
     lowResLabNotes02: lowresLabNotes02 ?? undefined,
+    clientSelectionUrl: clientSelectionUrl ?? undefined,
+    clientSelectionUploadedAt: clientSelectionUploadedAt ?? undefined,
+    clientNotes01: clientNotes01 ?? undefined,
   }
 }
 
@@ -481,6 +487,9 @@ export function mapDomainPatchToDbUpdate(
     lowResSelectionUrl02?: string
     lowResSelectionUploadedAt02?: string
     lowResLabNotes02?: string | null
+    clientSelectionUrl?: string
+    clientSelectionUploadedAt?: string
+    clientNotes01?: string | null
   }
 ): CollectionUpdate {
   const u: CollectionUpdate = {}
@@ -497,6 +506,9 @@ export function mapDomainPatchToDbUpdate(
   if (patch.photographerNotes01 !== undefined) u.photographer_notes01 = patch.photographerNotes01 ?? null
   if (patch.photographerRequestAdditionalNotes !== undefined) u.photographer_request_additional_notes = patch.photographerRequestAdditionalNotes ?? null
   if (patch.photographerMissingphotos !== undefined) u.photographer_missingphotos = patch.photographerMissingphotos ?? null
+  if (patch.clientSelectionUrl !== undefined) u.client_selection_url = patch.clientSelectionUrl ?? null
+  if (patch.clientSelectionUploadedAt !== undefined) u.client_selection_uploaded_at = patch.clientSelectionUploadedAt ?? null
+  if (patch.clientNotes01 !== undefined) u.client_notes01 = patch.clientNotes01 ?? null
   const conf = patch.config
   if (conf) {
     if (conf.clientEntityId !== undefined) u.client_id = conf.clientEntityId
