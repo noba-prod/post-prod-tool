@@ -1,11 +1,14 @@
 /**
  * POST /api/collections/[id]/events
- * Triggers a collection event and processes associated notifications
+ * Triggers a collection event, updates collection substatus when applicable, and processes notifications.
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { NotificationsService, type CollectionEventType } from "@/lib/services/notifications"
+import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
+import { CollectionsServiceError } from "@/lib/services/collections"
+import { getSubstatusAdvanceForEvent } from "@/lib/services/collections/event-substatus-mapping"
 
 const VALID_EVENT_TYPES: CollectionEventType[] = [
   "shooting_started",
@@ -23,6 +26,7 @@ const VALID_EVENT_TYPES: CollectionEventType[] = [
   "client_selection_started",
   "client_selection_confirmed",
   "client_selection_deadline_missed",
+  "photographer_check_approved",
   "highres_started",
   "highres_ready",
   "highres_deadline_missed",
@@ -34,6 +38,7 @@ const VALID_EVENT_TYPES: CollectionEventType[] = [
   "photographer_review_started",
   "photographer_edits_approved",
   "photographer_review_deadline_missed",
+  "client_confirmation_confirmed",
   "collection_completed",
   "collection_cancelled",
 ]
@@ -79,7 +84,7 @@ export async function POST(
       return NextResponse.json({ error: "Collection not found" }, { status: 404 })
     }
 
-    // Trigger the event
+    // Trigger the event (records in collection_events and sends notifications)
     const notificationsService = new NotificationsService(supabase)
     await notificationsService.triggerEvent(
       collectionId,
@@ -87,6 +92,85 @@ export async function POST(
       user.id,
       metadata
     )
+
+    // Update collection substatus (or status for complete/cancel/revert) per linear workflow.
+    // For photographer_requested_additional_photos we support multiple revert targets
+    // driven by metadata.source:
+    // - client -> photographer_selection
+    // - photographer_review -> client_selection
+    // - high_res -> photographer_review (substatus client_selection)
+    // - photographer_last_check -> final_edits
+    // - default -> low_res_scanning
+    let advance = getSubstatusAdvanceForEvent(eventType as CollectionEventType)
+    if (eventType === "photographer_requested_additional_photos") {
+      const source = String((metadata as { source?: string } | undefined)?.source ?? "").trim()
+      if (source === "client") {
+        advance = { action: "revert", substatus: "photographer_selection" }
+      } else if (source === "photographer_review") {
+        advance = { action: "revert", substatus: "client_selection" }
+      } else if (source === "high_res") {
+        advance = { action: "revert", substatus: "client_selection" }
+      } else if (source === "photographer_last_check") {
+        advance = { action: "revert", substatus: "final_edits" }
+      } else if (source === "client_confirmation") {
+        advance = { action: "revert", substatus: "photographer_last_check" }
+      }
+    }
+    if (advance.action !== "none") {
+      try {
+        const collectionsService = createCollectionsServiceForServer()
+        if (advance.action === "advance") {
+          await collectionsService.updateSubstatus(collectionId, advance.substatus)
+        } else if (advance.action === "revert") {
+          // Revert: force-set substatus backwards (e.g. missing photos)
+          await collectionsService.revertSubstatus(collectionId, advance.substatus)
+        } else if (advance.action === "complete") {
+          await collectionsService.updateSubstatus(collectionId, "client_confirmation")
+        } else if (advance.action === "cancel") {
+          await collectionsService.cancelCollection(collectionId)
+        }
+      } catch (err) {
+        if (err instanceof CollectionsServiceError) {
+          if (err.code === "INVALID_TRANSITION") {
+            // Substatus out of sync — event was recorded; log and continue gracefully
+            console.warn("[POST /api/collections/[id]/events] Substatus transition skipped (out of sync):", err.message)
+          } else if (err.code === "INVALID_STATUS") {
+            return NextResponse.json(
+              { error: err.message },
+              { status: 400 }
+            )
+          } else if (err.code === "NOT_FOUND") {
+            return NextResponse.json({ error: "Collection not found" }, { status: 404 })
+          } else {
+            console.error("[POST /api/collections/[id]/events] Substatus update failed:", err)
+          }
+        } else {
+          console.error("[POST /api/collections/[id]/events] Substatus update failed:", err)
+        }
+      }
+    }
+
+    // Recompute step_statuses and completion_percentage from all events
+    try {
+      const { data: allEvents } = await supabase
+        .from("collection_events")
+        .select("event_type, created_at, metadata")
+        .eq("collection_id", collectionId)
+        .order("created_at", { ascending: true })
+
+      if (allEvents && allEvents.length > 0) {
+        const collectionsService = createCollectionsServiceForServer()
+        await collectionsService.recomputeAndPersistProgress(
+          collectionId,
+          allEvents as Array<{ event_type: string; created_at: string; metadata?: Record<string, unknown> | null }>,
+          new Date(),
+          eventType
+        )
+      }
+    } catch (err) {
+      // Best-effort: don't fail the event if progress recomputation fails
+      console.error("[POST /api/collections/[id]/events] Progress recomputation failed:", err)
+    }
 
     return NextResponse.json({ success: true, eventType })
   } catch (error) {

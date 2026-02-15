@@ -9,19 +9,34 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-const STEP_FIELDS_TO_NULL = {
-  lowres_selection_url: null,
-  lowres_lab_notes: null,
+const STEP_FIELDS_TO_RESET: Record<string, unknown> = {
+  // URL arrays (JSONB — migration 034)
+  lowres_selection_url: [],
   lowres_selection_uploaded_at: null,
-  lowres_selection_url02: null,
-  lowres_lab_notes02: null,
-  lowres_selection_uploaded_at02: null,
-  photographer_missingphotos: null,
-  photographer_selection_url: null,
-  photographer_notes01: null,
+  photographer_selection_url: [],
   photographer_selection_uploaded_at: null,
-  photographer_request_additional_notes: null,
-} as const
+  client_selection_url: [],
+  client_selection_uploaded_at: null,
+  highres_selection_url: [],
+  highres_selection_uploaded_at: null,
+  edition_instructions_url: [],
+  edition_instructions_uploaded_at: null,
+  finals_selection_url: [],
+  finals_selection_uploaded_at: null,
+  // Step notes conversations
+  step_notes_low_res: [],
+  step_notes_photographer_selection: [],
+  step_notes_client_selection: [],
+  step_notes_photographer_review: [],
+  step_notes_high_res: [],
+  step_notes_edition_request: [],
+  step_notes_final_edits: [],
+  step_notes_photographer_last_check: [],
+  step_notes_client_confirmation: [],
+  // Progress tracking
+  step_statuses: {},
+  completion_percentage: 0,
+}
 
 export async function POST(
   request: NextRequest,
@@ -44,7 +59,7 @@ export async function POST(
 
     const { data: collection, error: fetchError } = await admin
       .from("collections")
-      .select("id")
+      .select("id, status")
       .eq("id", collectionId)
       .single()
 
@@ -65,12 +80,18 @@ export async function POST(
       )
     }
 
+    // Only set substatus when status is in_progress (DB constraint)
+    const substatusField = (collection as { status?: string }).status === "in_progress"
+      ? { substatus: "shooting" }
+      : { substatus: null }
+
     const { error: updateError } = await admin
       .from("collections")
       .update({
-        ...STEP_FIELDS_TO_NULL,
+        ...STEP_FIELDS_TO_RESET,
+        ...substatusField,
         updated_at: new Date().toISOString(),
-      })
+      } as never)
       .eq("id", collectionId)
 
     if (updateError) {

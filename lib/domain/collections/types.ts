@@ -188,43 +188,78 @@ export type CollectionStatus =
   | "completed"
   | "canceled"
 
+/** Substatus when status = in_progress; order: shooting → … → client_confirmation (then status→completed). */
+export type CollectionSubstatus =
+  | "shooting"
+  | "negatives_drop_off"
+  | "low_res_scanning"
+  | "photographer_selection"
+  | "client_selection"
+  | "low_res_to_high_res"
+  | "edition_request"
+  | "final_edits"
+  | "photographer_last_check"
+  | "client_confirmation"
+
 export interface Collection {
   id: string
   status: CollectionStatus
+  /** Workflow stage when status is in_progress; undefined when not in_progress. */
+  substatus?: CollectionSubstatus
+  /** Per-step status map: stepId → { stage, health }. Persisted in DB, updated on each event. */
+  stepStatuses?: Record<string, { stage: string; health: string | null }>
+  /** Completion percentage (0-100) based on count of "done" visible steps. */
+  completionPercentage?: number
   config: CollectionConfig
   participants: CollectionParticipant[]
   creationData: CreationData
   updatedAt: string
   /** Set when status changes from draft to upcoming/in_progress (publish). */
   publishedAt?: string
-  /** URL where low-res scans/photos are shared (step 3 upload). */
-  lowResSelectionUrl?: string
-  /** When the low-res URL was last set (ISO timestamp, for "X minutes ago" display). */
+  /** URLs where low-res scans/photos are shared (step 3). JSONB array — latest is last. */
+  lowResSelectionUrl?: string[]
+  /** When the low-res URL was last set (ISO timestamp). */
   lowResSelectionUploadedAt?: string
-  /** Optional notes from upload low-res step (step 3). Pass null to clear. */
-  lowResLabNotes?: string | null
-  /** URL where photographer selection is shared (step 4 upload). */
-  photographerSelectionUrl?: string
+  /** URLs where photographer selection is shared (step 4). JSONB array. */
+  photographerSelectionUrl?: string[]
   /** When the photographer selection URL was last set (ISO timestamp). */
   photographerSelectionUploadedAt?: string
-  /** Optional notes from step 4 upload. Pass null to clear. */
-  photographerNotes01?: string | null
-  /** Notes from photographer when requesting additional photos (missing photos flow). Saved in photographer_missingphotos. */
-  photographerRequestAdditionalNotes?: string | null
-  /** Comments from photographer when requesting missing photos (step 4). Displayed in step 3 notes block. */
-  photographerMissingphotos?: string | null
-  /** Re-upload URL after missing photos request (step 3 second upload). */
-  lowResSelectionUrl02?: string
-  /** When lowres_selection_url02 was set (ISO). */
-  lowResSelectionUploadedAt02?: string
-  /** Notes for re-upload (step 3 second upload). */
-  lowResLabNotes02?: string | null
-  /** URL where client final selection is shared (step 5 upload). */
-  clientSelectionUrl?: string
+  /** URLs where client final selection is shared (step 5). JSONB array. */
+  clientSelectionUrl?: string[]
   /** When the client selection URL was last set (ISO timestamp). */
   clientSelectionUploadedAt?: string
-  /** Optional notes from client selection upload (step 5). Pass null to clear. */
-  clientNotes01?: string | null
+  /** URLs for high-res selection (step 7). JSONB array. */
+  highResSelectionUrl?: string[]
+  /** When the high-res URL was last set (ISO timestamp). */
+  highResSelectionUploadedAt?: string
+  /** URLs for edition instructions (step 8). JSONB array. */
+  editionInstructionsUrl?: string[]
+  /** When the edition instructions URL was last set (ISO timestamp). */
+  editionInstructionsUploadedAt?: string
+  /** URLs for finals selection (step 9). JSONB array. */
+  finalsSelectionUrl?: string[]
+  /** When the finals URL was last set (ISO timestamp). */
+  finalsSelectionUploadedAt?: string
+  /** Step notes conversations (JSONB arrays per step). */
+  stepNotesLowRes?: StepNoteEntry[]
+  stepNotesPhotographerSelection?: StepNoteEntry[]
+  stepNotesClientSelection?: StepNoteEntry[]
+  stepNotesPhotographerReview?: StepNoteEntry[]
+  stepNotesHighRes?: StepNoteEntry[]
+  stepNotesEditionRequest?: StepNoteEntry[]
+  stepNotesFinalEdits?: StepNoteEntry[]
+  stepNotesPhotographerLastCheck?: StepNoteEntry[]
+  stepNotesClientConfirmation?: StepNoteEntry[]
+}
+
+/** A single entry in a step notes conversation. */
+export interface StepNoteEntry {
+  /** Role of the note author (e.g. "lab", "photographer", "client", "edition_studio"). */
+  from: string
+  /** The note text. */
+  text: string
+  /** ISO timestamp when the note was added. */
+  at: string
 }
 
 /** Alias for backward compatibility; workflow and UI use same shape. */

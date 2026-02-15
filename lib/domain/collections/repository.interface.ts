@@ -5,7 +5,7 @@
  * Source of truth: noba-poc/docs/context/collections-logic.md
  */
 
-import type { Collection, CollectionStatus } from "./types"
+import type { Collection, CollectionStatus, CollectionSubstatus } from "./types"
 
 export interface ListCollectionsFilters {
   status?: CollectionStatus
@@ -14,8 +14,10 @@ export interface ListCollectionsFilters {
 }
 
 /** Patch for update: top-level fields optional; config is merged (partial). */
-export type CollectionUpdatePatch = Partial<Omit<Collection, "id" | "config">> & {
+export type CollectionUpdatePatch = Partial<Omit<Collection, "id" | "config" | "substatus">> & {
   config?: Partial<Collection["config"]>
+  /** Substatus when status=in_progress; pass null to clear when changing status away from in_progress. */
+  substatus?: CollectionSubstatus | null
 }
 
 /**

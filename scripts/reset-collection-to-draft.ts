@@ -1,11 +1,13 @@
 /**
- * Resets a collection to the first step: deletes all collection_events and clears
- * step-related fields (steps 1–4). Run from project root with env vars set.
+ * Resets a collection to draft mode for internal testing.
+ * - Deletes all collection_events for the collection
+ * - Deletes scheduled_notification_tracking rows
+ * - Resets workflow/progress fields and sets status back to draft
  *
  * Usage:
- *   COLLECTION_ID=14cad7ab-b290-4a8a-a01f-b4eba82340a7 npx tsx scripts/reset-collection-to-start.ts
+ *   COLLECTION_ID=14cad7ab-b290-4a8a-a01f-b4eba82340a7 npx tsx scripts/reset-collection-to-draft.ts
  * Or with .env.local (Node 20+):
- *   node --env-file=.env.local --import tsx scripts/reset-collection-to-start.ts
+ *   node --env-file=.env.local --import tsx scripts/reset-collection-to-draft.ts
  */
 
 import { readFileSync, existsSync } from "fs"
@@ -41,6 +43,44 @@ const STEP_FIELDS_TO_RESET: Record<string, unknown> = {
   completion_percentage: 0,
 }
 
+function extractMissingColumnFromErrorMessage(message: string | undefined): string | null {
+  if (!message) return null
+  const match = message.match(/Could not find the '([^']+)' column/)
+  return match?.[1] ?? null
+}
+
+async function updateCollectionsWithColumnFallback(
+  admin: ReturnType<typeof createAdminClient>,
+  collectionId: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  const nextPayload: Record<string, unknown> = { ...payload }
+
+  // Retry by removing unknown columns to support environments with older schema caches.
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const { error } = await admin
+      .from("collections")
+      .update(nextPayload as never)
+      .eq("id", collectionId)
+
+    if (!error) return
+
+    const missingColumn = extractMissingColumnFromErrorMessage(
+      (error as { message?: string }).message
+    )
+    if (!missingColumn || !(missingColumn in nextPayload)) {
+      throw error
+    }
+
+    delete nextPayload[missingColumn]
+    console.warn(
+      `[reset-collection-to-draft] Skipping missing column "${missingColumn}" and retrying.`
+    )
+  }
+
+  throw new Error("Failed to reset collection after column-fallback retries")
+}
+
 function loadEnvLocal() {
   const path = resolve(process.cwd(), ".env.local")
   if (!existsSync(path)) return
@@ -52,8 +92,9 @@ function loadEnvLocal() {
     if (eq === -1) continue
     const key = trimmed.slice(0, eq).trim()
     let value = trimmed.slice(eq + 1).trim()
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1)
+    }
     if (key) process.env[key] = value
   }
 }
@@ -96,27 +137,31 @@ async function main() {
     process.exit(1)
   }
 
-  // Only set substatus when status is in_progress (DB constraint)
-  const substatusField = (collection as { status?: string }).status === "in_progress"
-    ? { substatus: "shooting" }
-    : { substatus: null }
+  const { error: deleteTrackingError } = await admin
+    .from("scheduled_notification_tracking")
+    .delete()
+    .eq("collection_id", collectionId)
 
-  const { error: updateError } = await admin
-    .from("collections")
-    .update({
+  if (deleteTrackingError) {
+    console.error("Failed to delete scheduled_notification_tracking:", deleteTrackingError)
+    process.exit(1)
+  }
+
+  try {
+    await updateCollectionsWithColumnFallback(admin, collectionId, {
+      status: "draft",
+      published_at: null,
+      substatus: null,
       ...STEP_FIELDS_TO_RESET,
-      ...substatusField,
       updated_at: new Date().toISOString(),
-    } as never)
-    .eq("id", collectionId)
-
-  if (updateError) {
-    console.error("Failed to clear step fields:", updateError)
+    })
+  } catch (updateError) {
+    console.error("Failed to reset collection to draft:", updateError)
     process.exit(1)
   }
 
   console.log(
-    `Done. Collection "${(collection as { name?: string }).name ?? collectionId}" reset to first step (events deleted, step 1–4 fields cleared).`
+    `Done. Collection "${(collection as { name?: string }).name ?? collectionId}" reset to draft mode.`
   )
 }
 

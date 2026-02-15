@@ -63,9 +63,11 @@ export type CollectionEventType =
   | 'final_edits_started'
   | 'final_edits_completed'
   | 'final_edits_deadline_missed'
+  | 'photographer_check_approved'
   | 'photographer_review_started'
   | 'photographer_edits_approved'
   | 'photographer_review_deadline_missed'
+  | 'client_confirmation_confirmed'
   | 'collection_completed'
   | 'collection_cancelled'
 
@@ -218,20 +220,30 @@ export interface Collection {
   lowres_managing_shipping: string | null
   lowres_shipping_carrier: string | null
   lowres_shipping_tracking: string | null
-  lowres_selection_url: string | null
-  lowres_lab_notes: string | null
+  // URL columns (JSONB arrays — migration 034)
+  lowres_selection_url: string[] | null
   lowres_selection_uploaded_at: string | null
-  lowres_selection_url02: string | null
-  lowres_lab_notes02: string | null
-  lowres_selection_uploaded_at02: string | null
-  photographer_selection_url: string | null
-  photographer_missingphotos: string | null
-  photographer_notes01: string | null
+  photographer_selection_url: string[] | null
   photographer_selection_uploaded_at: string | null
-  photographer_request_additional_notes: string | null
-  client_selection_url: string | null
-  client_notes01: string | null
+  client_selection_url: string[] | null
   client_selection_uploaded_at: string | null
+  // Step notes conversation columns (JSONB arrays — migration 034)
+  step_notes_low_res: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_selection: Array<{ from: string; text: string; at: string }>
+  step_notes_client_selection: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_review: Array<{ from: string; text: string; at: string }>
+  step_notes_high_res: Array<{ from: string; text: string; at: string }>
+  step_notes_edition_request: Array<{ from: string; text: string; at: string }>
+  step_notes_final_edits: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_last_check: Array<{ from: string; text: string; at: string }>
+  step_notes_client_confirmation: Array<{ from: string; text: string; at: string }>
+  // Late-step URL columns (JSONB arrays — migration 034)
+  highres_selection_url: string[] | null
+  highres_selection_uploaded_at: string | null
+  edition_instructions_url: string[] | null
+  edition_instructions_uploaded_at: string | null
+  finals_selection_url: string[] | null
+  finals_selection_uploaded_at: string | null
   // Photo Selection
   photo_selection_photographer_preselection_date: string | null
   photo_selection_photographer_preselection_time: string | null
@@ -254,6 +266,10 @@ export interface Collection {
   // Lifecycle (collections-logic §5.3, §6)
   status: string
   published_at: string | null
+  substatus: string | null
+  // Per-step status tracking (migration 032)
+  step_statuses: Record<string, { stage: string; health: string | null }>
+  completion_percentage: number
   // noba* internal users (owner + members)
   noba_user_ids: string[]
   noba_edit_permission_by_user_id: Record<string, boolean>
@@ -310,20 +326,27 @@ export interface CollectionInsert {
   lowres_managing_shipping?: string | null
   lowres_shipping_carrier?: string | null
   lowres_shipping_tracking?: string | null
-  lowres_selection_url?: string | null
-  lowres_lab_notes?: string | null
+  lowres_selection_url?: string[] | null
   lowres_selection_uploaded_at?: string | null
-  lowres_selection_url02?: string | null
-  lowres_lab_notes02?: string | null
-  lowres_selection_uploaded_at02?: string | null
-  photographer_selection_url?: string | null
-  photographer_missingphotos?: string | null
-  photographer_notes01?: string | null
+  photographer_selection_url?: string[] | null
   photographer_selection_uploaded_at?: string | null
-  photographer_request_additional_notes?: string | null
-  client_selection_url?: string | null
-  client_notes01?: string | null
+  client_selection_url?: string[] | null
   client_selection_uploaded_at?: string | null
+  step_notes_low_res?: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_selection?: Array<{ from: string; text: string; at: string }>
+  step_notes_client_selection?: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_review?: Array<{ from: string; text: string; at: string }>
+  step_notes_high_res?: Array<{ from: string; text: string; at: string }>
+  step_notes_edition_request?: Array<{ from: string; text: string; at: string }>
+  step_notes_final_edits?: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_last_check?: Array<{ from: string; text: string; at: string }>
+  step_notes_client_confirmation?: Array<{ from: string; text: string; at: string }>
+  highres_selection_url?: string[] | null
+  highres_selection_uploaded_at?: string | null
+  edition_instructions_url?: string[] | null
+  edition_instructions_uploaded_at?: string | null
+  finals_selection_url?: string[] | null
+  finals_selection_uploaded_at?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
@@ -340,7 +363,10 @@ export interface CollectionInsert {
   check_finals_photographer_check_time?: string | null
   status?: string
   published_at?: string | null
-    noba_user_ids?: string[]
+  substatus?: string | null
+  step_statuses?: Record<string, { stage: string; health: string | null }>
+  completion_percentage?: number
+  noba_user_ids?: string[]
   noba_edit_permission_by_user_id?: Record<string, boolean>
   participant_edit_permissions?: Record<string, Record<string, boolean>>
   created_at?: string
@@ -392,20 +418,27 @@ export interface CollectionUpdate {
   lowres_managing_shipping?: string | null
   lowres_shipping_carrier?: string | null
   lowres_shipping_tracking?: string | null
-  lowres_selection_url?: string | null
-  lowres_lab_notes?: string | null
+  lowres_selection_url?: string[] | null
   lowres_selection_uploaded_at?: string | null
-  lowres_selection_url02?: string | null
-  lowres_lab_notes02?: string | null
-  lowres_selection_uploaded_at02?: string | null
-  photographer_selection_url?: string | null
-  photographer_missingphotos?: string | null
-  photographer_notes01?: string | null
+  photographer_selection_url?: string[] | null
   photographer_selection_uploaded_at?: string | null
-  photographer_request_additional_notes?: string | null
-  client_selection_url?: string | null
-  client_notes01?: string | null
+  client_selection_url?: string[] | null
   client_selection_uploaded_at?: string | null
+  step_notes_low_res?: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_selection?: Array<{ from: string; text: string; at: string }>
+  step_notes_client_selection?: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_review?: Array<{ from: string; text: string; at: string }>
+  step_notes_high_res?: Array<{ from: string; text: string; at: string }>
+  step_notes_edition_request?: Array<{ from: string; text: string; at: string }>
+  step_notes_final_edits?: Array<{ from: string; text: string; at: string }>
+  step_notes_photographer_last_check?: Array<{ from: string; text: string; at: string }>
+  step_notes_client_confirmation?: Array<{ from: string; text: string; at: string }>
+  highres_selection_url?: string[] | null
+  highres_selection_uploaded_at?: string | null
+  edition_instructions_url?: string[] | null
+  edition_instructions_uploaded_at?: string | null
+  finals_selection_url?: string[] | null
+  finals_selection_uploaded_at?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
@@ -422,6 +455,9 @@ export interface CollectionUpdate {
   check_finals_photographer_check_time?: string | null
   status?: string
   published_at?: string | null
+  substatus?: string | null
+  step_statuses?: Record<string, { stage: string; health: string | null }>
+  completion_percentage?: number
   noba_user_ids?: string[]
   noba_edit_permission_by_user_id?: Record<string, boolean>
   participant_edit_permissions?: Record<string, Record<string, boolean>>

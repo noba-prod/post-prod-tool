@@ -41,6 +41,8 @@ export class InMemoryCollectionsRepository implements ICollectionsRepository {
   async update(id: string, patch: CollectionUpdatePatch): Promise<Collection | null> {
     const current = store.get(id)
     if (!current) return null
+    const substatus =
+      patch.substatus === null ? undefined : (patch.substatus ?? current.substatus)
     const updated: Collection = {
       ...current,
       ...patch,
@@ -49,6 +51,7 @@ export class InMemoryCollectionsRepository implements ICollectionsRepository {
       participants: patch.participants !== undefined ? patch.participants : current.participants,
       creationData:
         patch.creationData !== undefined ? patch.creationData : current.creationData,
+      substatus,
       updatedAt: new Date().toISOString(),
     }
     store.set(id, updated)

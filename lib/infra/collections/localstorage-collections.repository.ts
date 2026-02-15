@@ -72,6 +72,8 @@ export class LocalStorageCollectionsRepository implements ICollectionsRepository
     const index = items.findIndex((c) => c.id === id)
     if (index === -1) return null
     const current = items[index]
+    const substatus =
+      patch.substatus === null ? undefined : (patch.substatus ?? current.substatus)
     const updated: Collection = {
       ...current,
       ...patch,
@@ -80,6 +82,7 @@ export class LocalStorageCollectionsRepository implements ICollectionsRepository
       participants: patch.participants !== undefined ? patch.participants : current.participants,
       creationData:
         patch.creationData !== undefined ? patch.creationData : current.creationData,
+      substatus,
       updatedAt: new Date().toISOString(),
     }
     const next = [...items]

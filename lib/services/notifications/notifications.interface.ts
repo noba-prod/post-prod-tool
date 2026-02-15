@@ -37,10 +37,14 @@ export type CollectionEventType =
   | "final_edits_started"
   | "final_edits_completed"
   | "final_edits_deadline_missed"
-  // Photographer review events
+  // Photographer review (validates client selection — step 6)
+  | "photographer_check_approved"
+  // Photographer review events (last check — step 10)
   | "photographer_review_started"
   | "photographer_edits_approved"
   | "photographer_review_deadline_missed"
+  // Client confirmation (step 11)
+  | "client_confirmation_confirmed"
   // Final events
   | "collection_completed"
   | "collection_cancelled"

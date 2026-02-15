@@ -92,6 +92,7 @@ export class NotificationsService implements INotificationsService {
 
   /**
    * Trigger an event-based notification
+   * For shooting_started we only create one event per collection (idempotent).
    */
   async triggerEvent(
     collectionId: string,
@@ -99,6 +100,17 @@ export class NotificationsService implements INotificationsService {
     triggeredByUserId?: string,
     metadata?: Record<string, unknown>
   ): Promise<void> {
+    // Idempotent: at most one shooting_started per collection (multiple code paths can call this)
+    if (eventType === "shooting_started") {
+      const { data: existing } = await this.supabase
+        .from("collection_events")
+        .select("id")
+        .eq("collection_id", collectionId)
+        .eq("event_type", "shooting_started")
+        .limit(1)
+      if (existing && existing.length > 0) return
+    }
+
     // 1. Record the event
     const eventData: CollectionEvent = {
       collection_id: collectionId,

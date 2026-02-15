@@ -261,80 +261,82 @@ export interface CollectionTemplateProps {
   onUploadMoreLowRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
   /** Upload low-res dialog: show shipping reminder only when handprint lab is different from original (configured in collection creation). */
   uploadLowResShowShippingReminder?: boolean
-  /** Upload low-res dialog: initial notes (e.g. from collection.lowResLabNotes) to pre-fill when opening. */
+  /** Upload low-res dialog: initial notes (e.g. from last note in step_notes_low_res) to pre-fill when opening. */
   uploadLowResInitialNotes?: string
-  /** Step 4 (Photographer selection): first low-res URL (step 3 upload). */
-  lowResSelectionUrl?: string
-  /** Step 4: when the first low-res URL was uploaded (ISO). */
+  /** Step 4 (Photographer selection): low-res URL(s) (step 3 uploads). Array — latest is last. */
+  lowResSelectionUrl?: string | string[]
+  /** Step 4: when the low-res URL was last uploaded (ISO). */
   lowResUploadedAt?: string
-  /** Step 4: second low-res URL (step 3 re-upload after missing photos). */
-  lowResSelectionUrl02?: string
-  /** Step 4: when the second low-res URL was uploaded (ISO). */
-  lowResUploadedAt02?: string
-  /** Step 4: URL of uploaded photographer selection (lab upload). */
-  photographerSelectionUrl?: string
+  /** Step 4: URL of uploaded photographer selection. Array — latest is last. */
+  photographerSelectionUrl?: string | string[]
   /** Step 4: when photographer selection was uploaded (ISO). */
   photographerSelectionUploadedAt?: string
-  /** Step 4: notes from lab (photographer_notes01). */
+  /** Step 4: notes conversation for photographer selection step. */
   photographerNotes01?: string
   /** Called when owner uploads photographer selection (step 4). Marks step completed, notifies producer + client. */
   onUploadPhotographerSelection?: (payload: { url: string; notes?: string }) => void | Promise<void>
-  /** Missing photos: photographer comments (saved in photographer_missingphotos). Shown in step 3 notes block. */
-  photographerMissingphotos?: string
-  /** Called when photographer requests additional photos (missing photos flow). Saves to photographer_missingphotos, posts event, notifies producer + lab. */
+  /** Step notes conversation for low-res step (step 3). */
+  stepNotesLowRes?: Array<{ from: string; text: string; at: string }>
+  /** Step notes conversation for photographer selection step (step 4). */
+  stepNotesPhotographerSelection?: Array<{ from: string; text: string; at: string }>
+  /** Called when photographer requests additional photos (missing photos flow). Posts event + note, triggers revert. */
   onRequestAdditionalPhotos?: (notes: string) => void | Promise<void>
   /** Step 5 (Client selection): called when client uploads final selection. */
   onUploadClientSelection?: (payload: { url: string; notes?: string }) => void | Promise<void>
   /** Step 5 (Client selection): called when client requests more photos from photographer. */
   onRequestMorePhotosFromPhotographer?: (notes: string) => void | Promise<void>
-  /** Step 6 (Photographer review): URL of client final selection (step 5 upload). */
-  clientSelectionUrl?: string
+  /** Step 6 (Photographer review): URL(s) of client final selection (step 5 upload). Array — latest is last. */
+  clientSelectionUrl?: string | string[]
   /** Step 6: when the client selection URL was uploaded (ISO). */
   clientSelectionUploadedAt?: string
-  /** Step 6: notes from client (client_notes01). Shown in notes block when present. */
-  clientNotes01?: string
+  /** Step notes conversation for client selection step (step 5). */
+  stepNotesClientSelection?: Array<{ from: string; text: string; at: string }>
   /** Step 6: called when photographer validates client selection. */
   onValidateClientSelection?: (comments?: string) => void | Promise<void>
   /** Step 6: called when photographer requests more photos from client. */
   onRequestMorePhotosFromClient?: (notes: string) => void | Promise<void>
-  /** Step 7 (Low-res to high-res): notes from photographer's validation (step 6). Standby: not in DB yet. Shown in notes block when present. */
-  photographerValidationNotes?: string
+  /** Step notes conversation for photographer review step (step 6). */
+  stepNotesPhotographerReview?: Array<{ from: string; text: string; at: string }>
   /** Step 7: called when lab uploads high-res selection. */
   onUploadHighRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
-  /** Step 8 (Edition request): URL of high-res selection (step 7 upload). */
-  highResSelectionUrl?: string
+  /** Step 8 (Edition request): URL(s) of high-res selection (step 7 upload). Array — latest is last. */
+  highResSelectionUrl?: string | string[]
   /** Step 8: when the high-res URL was uploaded (ISO). */
   highResUploadedAt?: string
   /** Step 8: name of entity that uploaded high-res (e.g. Hand Print Lab name) for "Uploaded by @X". */
   highResUploadedByName?: string
-  /** Step 8: notes from lab/handprint lab when uploading high-res (step 7). Standby: not in DB yet. Shown in notes block when present. */
-  highResUploadNotes?: string
+  /** Step notes conversation for high-res step (step 7). */
+  stepNotesHighRes?: Array<{ from: string; text: string; at: string }>
   /** Step 8: entity name for notes block (e.g. "Hand Print Lab" or "Photo Lab"). */
   highResUploadedByEntityName?: string
   /** Step 8: called when photographer gives improvement instructions to retouch studio. */
   onGiveInstructions?: (payload: { details: string; url?: string }) => void | Promise<void>
-  /** Step 9 (Final edits): URL of improvement instructions from step 8 (Give instructions link). */
-  editionRequestInstructionsUrl?: string
+  /** Step 9 (Final edits): URL(s) of improvement instructions from step 8. Array — latest is last. */
+  editionRequestInstructionsUrl?: string | string[]
   /** Step 9: when the photographer gave instructions (step 8) — ISO. */
   editionRequestInstructionsUploadedAt?: string
-  /** Step 9: notes from photographer in step 8 (Give instructions). Standby: not in DB yet. Shown in notes block when present. */
-  editionRequestInstructionsNotes?: string
+  /** Step notes conversation for edition request step (step 8). */
+  stepNotesEditionRequest?: Array<{ from: string; text: string; at: string }>
   /** Step 9: called when edition studio uploads final retouched photos. */
   onUploadFinals?: (payload: { url: string; notes?: string }) => void | Promise<void>
-  /** Step 10 (Photographer last check): URL of finals from step 9 (or step 7 high-res when no edition). */
-  finalsSelectionUrl?: string
+  /** Step 10 (Photographer last check): URL(s) of finals from step 9. Array — latest is last. */
+  finalsSelectionUrl?: string | string[]
   /** Step 10: when finals were uploaded (step 9) or high-res (step 7). ISO. */
   finalsUploadedAt?: string
   /** Step 10: name of entity that uploaded finals (e.g. Edition studio name) for "Uploaded by @X". */
   finalsUploadedByName?: string
-  /** Step 10: notes from edition studio when uploading finals (step 9). Standby: not in DB yet. Shown in notes block when present. */
-  finalsUploadNotes?: string
+  /** Step notes conversation for final edits step (step 9). */
+  stepNotesFinalEdits?: Array<{ from: string; text: string; at: string }>
   /** Step 10: entity name for notes block (e.g. "Retouch studio"). */
   finalsUploadedByEntityName?: string
   /** Step 10: called when photographer requests changes (secondary action). */
   onRequestChanges?: (notes?: string) => void | Promise<void>
   /** Step 10: called when photographer validates finals (primary action). */
   onValidateFinals?: () => void | Promise<void>
+  /** Step notes conversation for photographer last check step (step 10). */
+  stepNotesPhotographerLastCheck?: Array<{ from: string; text: string; at: string }>
+  /** Step notes conversation for client confirmation step (step 11). */
+  stepNotesClientConfirmation?: Array<{ from: string; text: string; at: string }>
   /** Upload low-res dialog: shipping reminder — delivery date (ISO), time, and handprint lab destination. */
   uploadLowResShippingReminderDate?: string
   uploadLowResShippingReminderTime?: string
@@ -399,40 +401,41 @@ export function CollectionTemplate({
   uploadLowResInitialNotes,
   lowResSelectionUrl,
   lowResUploadedAt,
-  lowResSelectionUrl02,
-  lowResUploadedAt02,
   photographerSelectionUrl,
   photographerSelectionUploadedAt,
   photographerNotes01,
   onUploadPhotographerSelection,
-  photographerMissingphotos,
+  stepNotesLowRes,
+  stepNotesPhotographerSelection,
   onRequestAdditionalPhotos,
   onUploadClientSelection,
   onRequestMorePhotosFromPhotographer,
   clientSelectionUrl,
   clientSelectionUploadedAt,
-  clientNotes01,
+  stepNotesClientSelection,
   onValidateClientSelection,
   onRequestMorePhotosFromClient,
-  photographerValidationNotes,
+  stepNotesPhotographerReview,
   onUploadHighRes,
   highResSelectionUrl,
   highResUploadedAt,
   highResUploadedByName,
-  highResUploadNotes,
+  stepNotesHighRes,
   highResUploadedByEntityName,
   onGiveInstructions,
   editionRequestInstructionsUrl,
   editionRequestInstructionsUploadedAt,
-  editionRequestInstructionsNotes,
+  stepNotesEditionRequest,
   onUploadFinals,
   finalsSelectionUrl,
   finalsUploadedAt,
   finalsUploadedByName,
-  finalsUploadNotes,
+  stepNotesFinalEdits,
   finalsUploadedByEntityName,
   onRequestChanges,
   onValidateFinals,
+  stepNotesPhotographerLastCheck,
+  stepNotesClientConfirmation,
   uploadLowResShippingReminderDate,
   uploadLowResShippingReminderTime,
   uploadLowResShippingReminderDestination,
@@ -444,6 +447,46 @@ export function CollectionTemplate({
 
   const userContext = useUserContext()
   const navConfig = useNavigationConfig(userContext.entity?.type ?? null)
+
+  // Helper: get latest URL from string | string[]
+  const latestUrl = (v: string | string[] | undefined): string | undefined => {
+    if (!v) return undefined
+    if (Array.isArray(v)) return v.length > 0 ? v[v.length - 1] : undefined
+    return v
+  }
+  // Helper: get all URLs from string | string[]
+  const allUrls = (v: string | string[] | undefined): string[] => {
+    if (!v) return []
+    if (Array.isArray(v)) return v
+    return [v]
+  }
+  // Helper: get the last note text from a step notes array
+  const lastNoteText = (notes: Array<{ from: string; text: string; at: string }> | undefined): string | undefined => {
+    if (!notes || notes.length === 0) return undefined
+    return notes[notes.length - 1]?.text
+  }
+  // Helper: find last note from a specific role
+  const lastNoteFrom = (notes: Array<{ from: string; text: string; at: string }> | undefined, from: string): string | undefined => {
+    if (!notes || notes.length === 0) return undefined
+    for (let i = notes.length - 1; i >= 0; i--) {
+      if (notes[i]?.from === from) return notes[i]?.text
+    }
+    return undefined
+  }
+
+  // Derived values for backward compatibility with existing template body
+  const photographerMissingphotos = lastNoteFrom(stepNotesLowRes, "photographer")
+  const lowResSelectionUrlLatest = latestUrl(lowResSelectionUrl)
+  const photographerSelectionUrlLatest = latestUrl(photographerSelectionUrl)
+  const clientSelectionUrlLatest = latestUrl(clientSelectionUrl)
+  const highResSelectionUrlLatest = latestUrl(highResSelectionUrl)
+  const editionRequestInstructionsUrlLatest = latestUrl(editionRequestInstructionsUrl)
+  const finalsSelectionUrlLatest = latestUrl(finalsSelectionUrl)
+  const clientNotes01 = lastNoteText(stepNotesClientSelection)
+  const highResUploadNotes = lastNoteText(stepNotesHighRes)
+  const editionRequestInstructionsNotes = lastNoteText(stepNotesEditionRequest)
+  const finalsUploadNotes = lastNoteText(stepNotesFinalEdits)
+  const photographerValidationNotes = lastNoteText(stepNotesPhotographerReview)
 
   const [isSearchOpen, setIsSearchOpen] = React.useState(false)
   const [openStepId, setOpenStepId] = React.useState<string | null>(null)
@@ -861,13 +904,12 @@ export function CollectionTemplate({
                       additionalInfo={photographerMissingphotos.trim()}
                     />
                   )}
-                  {openStep.canEdit &&
-                    !(lowResSelectionUrl?.trim() && lowResSelectionUrl02?.trim()) && (
+                  {openStep.canEdit && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
                       aria-label="Step owner action"
                     >
-                      {lowResSelectionUrl?.trim() ? (
+                      {lowResSelectionUrlLatest ? (
                         <>
                           <p className="text-center text-base font-semibold text-foreground">
                             Need to send additional footage?
@@ -930,28 +972,22 @@ export function CollectionTemplate({
                       }
                       additionalInfo={
                         (() => {
-                          const hasFirst = !!lowResSelectionUrl?.trim()
-                          const hasSecond = !!lowResSelectionUrl02?.trim()
-                          if (!hasFirst && !hasSecond) return "Not uploaded yet"
-                          if (hasFirst && !hasSecond)
+                          const urls = allUrls(lowResSelectionUrl)
+                          if (urls.length === 0) return "Not uploaded yet"
+                          if (urls.length === 1)
                             return lowResUploadedAt
                               ? `View link · ${formatRelativeTime(lowResUploadedAt)}`
                               : "View link"
-                          if (hasFirst && hasSecond) return "2 links · View"
-                          return lowResUploadedAt02
-                            ? `View link · ${formatRelativeTime(lowResUploadedAt02)}`
-                            : "View link"
+                          return `${urls.length} links · View`
                         })()
                       }
                       backgroundImage="/assets/bg-lowres.png"
-                      makeCardClickable={!!(lowResSelectionUrl?.trim() || lowResSelectionUrl02?.trim())}
+                      makeCardClickable={allUrls(lowResSelectionUrl).length > 0}
                       onAction={
                         (() => {
-                          const url1 = lowResSelectionUrl?.trim()
-                          const url2 = lowResSelectionUrl02?.trim()
-                          if (url1 && !url2) return () => window.open(url1, "_blank", "noopener,noreferrer")
-                          if (url1 && url2) return () => setLowResUrlPickerDialogOpen(true)
-                          if (url2) return () => window.open(url2, "_blank", "noopener,noreferrer")
+                          const urls = allUrls(lowResSelectionUrl)
+                          if (urls.length === 1) return () => window.open(urls[0], "_blank", "noopener,noreferrer")
+                          if (urls.length > 1) return () => setLowResUrlPickerDialogOpen(true)
                           return undefined
                         })()
                       }
@@ -1022,17 +1058,17 @@ export function CollectionTemplate({
                           )
                         }
                         additionalInfo={
-                          photographerSelectionUrl?.trim()
+                          photographerSelectionUrlLatest
                             ? photographerSelectionUploadedAt
                               ? `View link · ${formatRelativeTime(photographerSelectionUploadedAt)}`
                               : "View link"
                             : "Not uploaded yet"
                         }
                         backgroundImage="/assets/bg-selection.png"
-                        makeCardClickable={!!photographerSelectionUrl?.trim()}
+                        makeCardClickable={!!photographerSelectionUrlLatest}
                         onAction={
-                          photographerSelectionUrl?.trim()
-                            ? () => window.open(photographerSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                          photographerSelectionUrlLatest
+                            ? () => window.open(photographerSelectionUrlLatest!, "_blank", "noopener,noreferrer")
                             : undefined
                         }
                         className="min-w-0 flex-1"
@@ -1105,17 +1141,17 @@ export function CollectionTemplate({
                           )
                         }
                         additionalInfo={
-                          clientSelectionUrl?.trim()
+                          clientSelectionUrlLatest
                             ? clientSelectionUploadedAt
                               ? `View link · ${formatRelativeTime(clientSelectionUploadedAt)}`
                               : "View link"
                             : "Not uploaded yet"
                         }
                         backgroundImage="/assets/bg-clientselect.png"
-                        makeCardClickable={!!clientSelectionUrl?.trim()}
+                        makeCardClickable={!!clientSelectionUrlLatest}
                         onAction={
-                          clientSelectionUrl?.trim()
-                            ? () => window.open(clientSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                          clientSelectionUrlLatest
+                            ? () => window.open(clientSelectionUrlLatest!, "_blank", "noopener,noreferrer")
                             : undefined
                         }
                         className="min-w-0 flex-1"
@@ -1124,6 +1160,7 @@ export function CollectionTemplate({
                     {clientNotes01?.trim() && (
                       <StepDetails
                         variant="notes"
+                        mainTitle="Notes from client"
                         entityName="client"
                         additionalInfo={clientNotes01.trim()}
                       />
@@ -1152,9 +1189,9 @@ export function CollectionTemplate({
                     variant="missingPhotos"
                     mainTitle="Missing photos?"
                     entityName={
-                      (participantsMainPlayersEntities ?? []).find(
-                        (e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"
-                      )?.entityName ?? "Client"
+                      (participantsMainPlayersIndividuals ?? []).find(
+                        (u) => (u.roleLabel ?? "").toLowerCase() === "photographer"
+                      )?.name ?? "Photographer"
                     }
                     onAction={
                       openStep.canEdit
@@ -1188,17 +1225,17 @@ export function CollectionTemplate({
                           )
                         }
                         additionalInfo={
-                          highResSelectionUrl?.trim()
+                          highResSelectionUrlLatest
                             ? highResUploadedAt
                               ? `View link · ${formatRelativeTime(highResUploadedAt)}`
                               : "View link"
                             : "Not uploaded yet"
                         }
                         backgroundImage="/assets/bg-highres.png"
-                        makeCardClickable={!!highResSelectionUrl?.trim()}
+                        makeCardClickable={!!highResSelectionUrlLatest}
                         onAction={
-                          highResSelectionUrl?.trim()
-                            ? () => window.open(highResSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                          highResSelectionUrlLatest
+                            ? () => window.open(highResSelectionUrlLatest!, "_blank", "noopener,noreferrer")
                             : undefined
                         }
                         className="min-w-0 flex-1"
@@ -1207,6 +1244,7 @@ export function CollectionTemplate({
                     {highResUploadNotes?.trim() && (
                       <StepDetails
                         variant="notes"
+                        mainTitle={`Notes from ${highResUploadedByEntityName ?? "Lab"}`}
                         entityName={highResUploadedByEntityName ?? "Lab"}
                         additionalInfo={highResUploadNotes.trim()}
                       />
@@ -1257,17 +1295,17 @@ export function CollectionTemplate({
                           )
                         }
                         additionalInfo={
-                          editionRequestInstructionsUrl?.trim()
+                          editionRequestInstructionsUrlLatest
                             ? editionRequestInstructionsUploadedAt
                               ? `View link · ${formatRelativeTime(editionRequestInstructionsUploadedAt)}`
                               : "View link"
                             : "Not uploaded yet"
                         }
                         backgroundImage="/assets/bg-improvements.png"
-                        makeCardClickable={!!editionRequestInstructionsUrl?.trim()}
+                        makeCardClickable={!!editionRequestInstructionsUrlLatest}
                         onAction={
-                          editionRequestInstructionsUrl?.trim()
-                            ? () => window.open(editionRequestInstructionsUrl.trim(), "_blank", "noopener,noreferrer")
+                          editionRequestInstructionsUrlLatest
+                            ? () => window.open(editionRequestInstructionsUrlLatest!, "_blank", "noopener,noreferrer")
                             : undefined
                         }
                         className="min-w-0 flex-1"
@@ -1285,17 +1323,17 @@ export function CollectionTemplate({
                           )
                         }
                         additionalInfo={
-                          highResSelectionUrl?.trim()
+                          highResSelectionUrlLatest
                             ? highResUploadedAt
                               ? `View link · ${formatRelativeTime(highResUploadedAt)}`
                               : "View link"
                             : "Not uploaded yet"
                         }
                         backgroundImage="/assets/bg-highres.png"
-                        makeCardClickable={!!highResSelectionUrl?.trim()}
+                        makeCardClickable={!!highResSelectionUrlLatest}
                         onAction={
-                          highResSelectionUrl?.trim()
-                            ? () => window.open(highResSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                          highResSelectionUrlLatest
+                            ? () => window.open(highResSelectionUrlLatest!, "_blank", "noopener,noreferrer")
                             : undefined
                         }
                         className="min-w-0 flex-1"
@@ -1304,6 +1342,7 @@ export function CollectionTemplate({
                     {editionRequestInstructionsNotes?.trim() && (
                       <StepDetails
                         variant="notes"
+                        mainTitle="Notes from photographer"
                         entityName="Photographer"
                         additionalInfo={editionRequestInstructionsNotes.trim()}
                       />
@@ -1346,8 +1385,8 @@ export function CollectionTemplate({
                         mainTitle="Download finals"
                         subtitle={
                           (() => {
-                            const url = finalsSelectionUrl?.trim() || highResSelectionUrl?.trim()
-                            const name = url === finalsSelectionUrl?.trim() ? finalsUploadedByName : highResUploadedByName
+                            const url = finalsSelectionUrlLatest || highResSelectionUrlLatest
+                            const name = url === finalsSelectionUrlLatest ? finalsUploadedByName : highResUploadedByName
                             return name?.trim() ? (
                               <>
                                 Uploaded by <span className="text-lime-400">@{name.trim()}</span>
@@ -1359,17 +1398,17 @@ export function CollectionTemplate({
                         }
                         additionalInfo={
                           (() => {
-                            const url = finalsSelectionUrl?.trim() || highResSelectionUrl?.trim()
-                            const at = url === finalsSelectionUrl?.trim() ? finalsUploadedAt : highResUploadedAt
+                            const url = finalsSelectionUrlLatest || highResSelectionUrlLatest
+                            const at = url === finalsSelectionUrlLatest ? finalsUploadedAt : highResUploadedAt
                             if (!url) return "Not uploaded yet"
                             return at ? `View link · ${formatRelativeTime(at)}` : "View link"
                           })()
                         }
                         backgroundImage="/assets/bg-edition.png"
-                        makeCardClickable={!!(finalsSelectionUrl?.trim() || highResSelectionUrl?.trim())}
+                        makeCardClickable={!!(finalsSelectionUrlLatest || highResSelectionUrlLatest)}
                         onAction={
                           (() => {
-                            const url = finalsSelectionUrl?.trim() || highResSelectionUrl?.trim()
+                            const url = finalsSelectionUrlLatest || highResSelectionUrlLatest
                             return url ? () => window.open(url, "_blank", "noopener,noreferrer") : undefined
                           })()
                         }
@@ -1379,6 +1418,7 @@ export function CollectionTemplate({
                     {finalsUploadNotes?.trim() && (
                       <StepDetails
                         variant="notes"
+                        mainTitle={`Notes from ${finalsUploadedByEntityName ?? "Retouch studio"}`}
                         entityName={finalsUploadedByEntityName ?? "Retouch studio"}
                         additionalInfo={finalsUploadNotes.trim()}
                       />
@@ -1448,17 +1488,17 @@ export function CollectionTemplate({
                           )
                         }
                         additionalInfo={
-                          clientSelectionUrl?.trim()
+                          clientSelectionUrlLatest
                             ? clientSelectionUploadedAt
                               ? `View link · ${formatRelativeTime(clientSelectionUploadedAt)}`
                               : "View link"
                             : "Not uploaded yet"
                         }
                         backgroundImage="/assets/bg-clientselect.png"
-                        makeCardClickable={!!clientSelectionUrl?.trim()}
+                        makeCardClickable={!!clientSelectionUrlLatest}
                         onAction={
-                          clientSelectionUrl?.trim()
-                            ? () => window.open(clientSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+                          clientSelectionUrlLatest
+                            ? () => window.open(clientSelectionUrlLatest!, "_blank", "noopener,noreferrer")
                             : undefined
                         }
                         className="min-w-0 flex-1"
@@ -1467,6 +1507,7 @@ export function CollectionTemplate({
                     {photographerValidationNotes?.trim() && (
                       <StepDetails
                         variant="notes"
+                        mainTitle="Notes from photographer"
                         entityName="Photographer"
                         additionalInfo={photographerValidationNotes.trim()}
                       />
@@ -1770,9 +1811,13 @@ export function CollectionTemplate({
               variant="secondary"
               onClick={async () => {
                 setConfirmDropoffDialogOpen(false)
-                await onConfirmDropoffDelivery?.("negatives_dropoff", false)
-                setOpenStepId(null)
-                toast.success("Delivery confirmed.")
+                try {
+                  await onConfirmDropoffDelivery?.("negatives_dropoff", false)
+                  setOpenStepId(null)
+                  toast.success("Delivery confirmed.")
+                } catch {
+                  /* Error already surfaced by handler */
+                }
               }}
             >
               No
@@ -1782,9 +1827,13 @@ export function CollectionTemplate({
               variant="default"
               onClick={async () => {
                 setConfirmDropoffDialogOpen(false)
-                await onConfirmDropoffDelivery?.("negatives_dropoff", true)
-                setOpenStepId(null)
-                toast.success("Delivery confirmed.")
+                try {
+                  await onConfirmDropoffDelivery?.("negatives_dropoff", true)
+                  setOpenStepId(null)
+                  toast.success("Delivery confirmed.")
+                } catch {
+                  /* Error already surfaced by handler */
+                }
               }}
             >
               Yes
@@ -2547,39 +2596,27 @@ export function CollectionTemplate({
         </DialogContent>
       </Dialog>
 
-      {/* Low-res URL picker: when there are 2 URLs, user chooses URL 01 or URL 02 */}
+      {/* Low-res URL picker: when there are multiple URLs, user chooses which to open */}
       <Dialog open={lowResUrlPickerDialogOpen} onOpenChange={setLowResUrlPickerDialogOpen}>
         <DialogContent showCloseButton className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Low-res photos</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-2">
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full"
-              onClick={() => {
-                if (lowResSelectionUrl?.trim()) {
-                  window.open(lowResSelectionUrl.trim(), "_blank", "noopener,noreferrer")
+            {allUrls(lowResSelectionUrl).map((url, idx) => (
+              <Button
+                key={idx}
+                type="button"
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  window.open(url, "_blank", "noopener,noreferrer")
                   setLowResUrlPickerDialogOpen(false)
-                }
-              }}
-            >
-              URL 01
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full"
-              onClick={() => {
-                if (lowResSelectionUrl02?.trim()) {
-                  window.open(lowResSelectionUrl02.trim(), "_blank", "noopener,noreferrer")
-                  setLowResUrlPickerDialogOpen(false)
-                }
-              }}
-            >
-              URL 02
-            </Button>
+                }}
+              >
+                URL {String(idx + 1).padStart(2, "0")}
+              </Button>
+            ))}
           </div>
         </DialogContent>
       </Dialog>

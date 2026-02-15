@@ -1047,6 +1047,7 @@ export default function CollectionCreatePage({
 
       {/* Collection settings modal (main characteristics) */}
       <NewCollectionModal
+        key={draft.id}
         open={isSettingsModalOpen}
         onOpenChange={setIsSettingsModalOpen}
         managerUserId={user?.id ?? draft.config.managerUserId ?? ""}

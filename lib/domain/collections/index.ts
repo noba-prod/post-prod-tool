@@ -11,12 +11,14 @@ export type {
   CollectionDraft,
   CollectionDraftStatus,
   CollectionStatus,
+  CollectionSubstatus,
   CollectionParticipant,
   CreationBlockId,
   CreationData,
   CreationTemplateStep,
   ParticipantRole,
   StepId,
+  StepNoteEntry,
   UserForPermission,
 } from "./types"
 
@@ -33,11 +35,14 @@ export {
   derivePublishedStatus,
   deriveCanonicalCollectionStatus,
   getChronologyConstraints,
+  getInitialSubstatus,
+  getNextSubstatus,
   getStepOwner,
   isCreationStepComplete,
   isCreationStepContentComplete,
   isDraftComplete,
   isParticipantsStepComplete,
+  isValidSubstatusTransition,
   resolveUserForPermission,
 } from "./workflow"
 
@@ -73,3 +78,18 @@ export type {
   ViewStepStatus,
   ViewStepsFromCollectionOptions,
 } from "./view-mode-steps"
+
+// Step health computation (per-step stage + health labels)
+export {
+  computeStepHealth,
+  computeStepStatuses,
+  deriveCompletedStepIds,
+  buildEventCreatedAtMap,
+  getDeadlineForStep,
+} from "./step-health"
+export type {
+  StepStage,
+  StepHealth,
+  StepStatusEntry,
+  StepStatuses,
+} from "./step-health"

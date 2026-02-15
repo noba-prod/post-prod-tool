@@ -14,7 +14,22 @@ import type {
   UserForPermission,
   CollectionDraftStatus,
   CollectionStatus,
+  CollectionSubstatus,
 } from "./types"
+
+/** Canonical order of substatuses when status = in_progress. */
+const SUBSTATUS_ORDER: CollectionSubstatus[] = [
+  "shooting",
+  "negatives_drop_off",
+  "low_res_scanning",
+  "photographer_selection",
+  "client_selection",
+  "low_res_to_high_res",
+  "edition_request",
+  "final_edits",
+  "photographer_last_check",
+  "client_confirmation",
+]
 
 // =============================================================================
 // SCENARIO MATRIX (PHOTO — Collection config → Sidebar steps)
@@ -72,6 +87,33 @@ export function derivePublishedStatus(
   )
 
   return shootingDateOnly <= nowDateOnly ? "in_progress" : "upcoming"
+}
+
+// =============================================================================
+// SUBSTATUS (when status = in_progress)
+// =============================================================================
+
+/** Initial substatus when collection transitions to in_progress. */
+export function getInitialSubstatus(): CollectionSubstatus {
+  return "shooting"
+}
+
+/** Next substatus in sequence; null if current is last (client_confirmation). */
+export function getNextSubstatus(
+  currentSubstatus: CollectionSubstatus
+): CollectionSubstatus | null {
+  const i = SUBSTATUS_ORDER.indexOf(currentSubstatus)
+  if (i < 0 || i >= SUBSTATUS_ORDER.length - 1) return null
+  return SUBSTATUS_ORDER[i + 1] ?? null
+}
+
+/** Whether transitioning from `from` to `to` is valid (next in sequence or initial). */
+export function isValidSubstatusTransition(
+  from: CollectionSubstatus | null,
+  to: CollectionSubstatus
+): boolean {
+  if (from === null) return to === "shooting"
+  return getNextSubstatus(from) === to
 }
 
 // =============================================================================

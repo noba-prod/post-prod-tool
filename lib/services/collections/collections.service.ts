@@ -7,10 +7,28 @@
 import type {
   Collection,
   CollectionConfig,
+  CollectionSubstatus,
   ICollectionsRepository,
   ListCollectionsFilters,
 } from "@/lib/domain/collections"
-import { isDraftComplete, derivePublishedStatus, deriveCanonicalCollectionStatus } from "@/lib/domain/collections/workflow"
+import {
+  isDraftComplete,
+  derivePublishedStatus,
+  deriveCanonicalCollectionStatus,
+  isValidSubstatusTransition,
+  getInitialSubstatus,
+} from "@/lib/domain/collections/workflow"
+import {
+  computeStepStatuses,
+  buildEventCreatedAtMap,
+  computeStepHealth,
+  getDeadlineForStep,
+} from "@/lib/domain/collections/step-health"
+import {
+  configToViewStepsInput,
+  getViewStepDefinitions,
+  type ViewStepId,
+} from "@/lib/domain/collections/view-mode-steps"
 import type { INotificationsService } from "../notifications/notifications.interface"
 
 export class CollectionsServiceError extends Error {
@@ -100,8 +118,21 @@ export class CollectionsService {
       new Date()
     )
     if (canonical !== collection.status) {
-      const updated = await this.repository.update(id, { status: canonical })
-      return updated ?? { ...collection, status: canonical }
+      const updated = await this.repository.update(id, {
+        status: canonical,
+        ...(canonical === "in_progress"
+          ? { substatus: getInitialSubstatus() }
+          : { substatus: null }),
+      })
+      const result = updated ?? { ...collection, status: canonical }
+      if (canonical === "in_progress") {
+        try {
+          await this.notifications.triggerEvent(id, "shooting_started", undefined, undefined)
+        } catch (err) {
+          console.warn("[CollectionsService] shooting_started event after status sync failed:", err)
+        }
+      }
+      return result
     }
     return collection
   }
@@ -110,7 +141,23 @@ export class CollectionsService {
     id: string,
     patch: import("@/lib/domain/collections").CollectionUpdatePatch
   ): Promise<Collection | null> {
-    return this.repository.update(id, patch)
+    const wasAlreadyInProgress =
+      patch.status === "in_progress"
+        ? (await this.repository.getById(id))?.status === "in_progress"
+        : false
+    const updated = await this.repository.update(id, patch)
+    if (
+      updated &&
+      patch.status === "in_progress" &&
+      !wasAlreadyInProgress
+    ) {
+      try {
+        await this.notifications.triggerEvent(id, "shooting_started", undefined, undefined)
+      } catch (err) {
+        console.warn("[CollectionsService] shooting_started event after update failed:", err)
+      }
+    }
+    return updated
   }
 
   async deleteCollection(id: string): Promise<void> {
@@ -136,8 +183,20 @@ export class CollectionsService {
         now
       )
       if (canonical !== c.status) {
-        const updated = await this.repository.update(c.id, { status: canonical })
+        const updated = await this.repository.update(c.id, {
+          status: canonical,
+          ...(canonical === "in_progress"
+            ? { substatus: getInitialSubstatus() }
+            : { substatus: null }),
+        })
         result.push(updated ?? { ...c, status: canonical })
+        if (canonical === "in_progress") {
+          try {
+            await this.notifications.triggerEvent(c.id, "shooting_started", undefined, undefined)
+          } catch (err) {
+            console.warn("[CollectionsService] shooting_started event after list sync failed:", err)
+          }
+        }
       } else {
         result.push(c)
       }
@@ -148,8 +207,13 @@ export class CollectionsService {
   /**
    * Publishes a collection draft (status → upcoming or in_progress).
    * Validates draft is complete. Sets publishedAt.
+   * When status becomes in_progress, records a shooting_started event.
    */
-  async publishCollection(id: string, now: Date = new Date()): Promise<Collection> {
+  async publishCollection(
+    id: string,
+    now: Date = new Date(),
+    triggeredByUserId?: string
+  ): Promise<Collection> {
     const collection = await this.repository.getById(id)
     if (!collection) {
       throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
@@ -167,10 +231,20 @@ export class CollectionsService {
     const updated = await this.repository.update(id, {
       status: newStatus,
       publishedAt: nowISO,
+      ...(newStatus === "in_progress" ? { substatus: "shooting" as const } : {}),
     })
 
     if (!updated) {
       throw new CollectionsServiceError("Failed to update collection status", "UPDATE_FAILED")
+    }
+
+    // When status is in_progress, record shooting_started so workflow events stay in sync
+    if (newStatus === "in_progress") {
+      try {
+        await this.notifications.triggerEvent(id, "shooting_started", triggeredByUserId ?? undefined, undefined)
+      } catch (err) {
+        console.warn("[CollectionsService] shooting_started event after publish failed (collection was published):", err)
+      }
     }
 
     // Notify participants and schedule time-based notifications (best-effort; don't fail publish)
@@ -192,6 +266,234 @@ export class CollectionsService {
       console.warn("[CollectionsService] Notifications after publish failed (collection was published):", err)
     }
 
+    return updated
+  }
+
+  /**
+   * Updates substatus for a collection with status = in_progress.
+   * When newSubstatus is 'client_confirmation', also sets status to 'completed' and substatus to null.
+   * Validates that the transition is allowed (next in sequence or initial).
+   */
+  async updateSubstatus(
+    collectionId: string,
+    newSubstatus: CollectionSubstatus
+  ): Promise<Collection> {
+    const collection = await this.repository.getById(collectionId)
+    if (!collection) {
+      throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
+    }
+    if (collection.status !== "in_progress") {
+      throw new CollectionsServiceError(
+        "Substatus can only be updated when collection status is in_progress",
+        "INVALID_STATUS"
+      )
+    }
+    const currentSubstatus = collection.substatus ?? null
+    // If already at the target substatus, treat as no-op (idempotent)
+    if (currentSubstatus === newSubstatus) {
+      return collection
+    }
+    if (!isValidSubstatusTransition(currentSubstatus, newSubstatus)) {
+      throw new CollectionsServiceError(
+        "Invalid substatus transition",
+        "INVALID_TRANSITION"
+      )
+    }
+    if (newSubstatus === "client_confirmation") {
+      const updated = await this.repository.update(collectionId, {
+        status: "completed",
+        substatus: null,
+      })
+      if (!updated) {
+        throw new CollectionsServiceError(
+          "Failed to complete collection",
+          "UPDATE_FAILED"
+        )
+      }
+      return updated
+    }
+    const updated = await this.repository.update(collectionId, {
+      substatus: newSubstatus,
+    })
+    if (!updated) {
+      throw new CollectionsServiceError(
+        "Failed to update substatus",
+        "UPDATE_FAILED"
+      )
+    }
+    return updated
+  }
+
+  /**
+   * Reverts substatus backwards (e.g. missing photos flow).
+   * Unlike updateSubstatus, this does not validate the transition is forward-only.
+   * Only allowed when status = in_progress.
+   */
+  async revertSubstatus(
+    collectionId: string,
+    targetSubstatus: CollectionSubstatus
+  ): Promise<Collection> {
+    const collection = await this.repository.getById(collectionId)
+    if (!collection) {
+      throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
+    }
+    if (collection.status !== "in_progress") {
+      throw new CollectionsServiceError(
+        "Substatus can only be reverted when collection status is in_progress",
+        "INVALID_STATUS"
+      )
+    }
+    // If already at the target, no-op
+    if (collection.substatus === targetSubstatus) {
+      return collection
+    }
+    const updated = await this.repository.update(collectionId, {
+      substatus: targetSubstatus,
+    })
+    if (!updated) {
+      throw new CollectionsServiceError(
+        "Failed to revert substatus",
+        "UPDATE_FAILED"
+      )
+    }
+    return updated
+  }
+
+  /**
+   * Cancels a collection (e.g. when collection_cancelled event is triggered).
+   * Sets status to 'canceled' and substatus to null.
+   */
+  async cancelCollection(collectionId: string): Promise<Collection> {
+    const collection = await this.repository.getById(collectionId)
+    if (!collection) {
+      throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
+    }
+    if (collection.status === "canceled") {
+      return collection
+    }
+    const updated = await this.repository.update(collectionId, {
+      status: "canceled",
+      substatus: null,
+    })
+    if (!updated) {
+      throw new CollectionsServiceError(
+        "Failed to cancel collection",
+        "UPDATE_FAILED"
+      )
+    }
+    return updated
+  }
+
+  /**
+   * Recomputes and persists step_statuses and completion_percentage for a collection.
+   * Called after an event is triggered or substatus is updated.
+   *
+   * @param collectionId - The collection to update
+   * @param events - Array of { event_type, created_at } from collection_events
+   * @param now - Current time for health computation
+   * @returns The updated collection
+   */
+  async recomputeAndPersistProgress(
+    collectionId: string,
+    events: Array<{ event_type: string; created_at: string; metadata?: Record<string, unknown> | null }>,
+    now: Date = new Date(),
+    triggeringEventType?: string
+  ): Promise<Collection | null> {
+    const collection = await this.repository.getById(collectionId)
+    if (!collection) return null
+
+    const eventTypes = events.map((e) => e.event_type)
+    const eventCreatedAtMap = buildEventCreatedAtMap(events)
+    const { stepStatuses: computedStepStatuses } = computeStepStatuses(
+      collection.config,
+      eventTypes,
+      eventCreatedAtMap,
+      events,
+      now
+    )
+
+    // For revert events, enforce stage alignment with current substatus so step_statuses
+    // always reflects the real active step after moving backwards.
+    const stepStatuses = { ...computedStepStatuses }
+    const latestEventType = events.length > 0 ? events[events.length - 1]?.event_type : null
+    const shouldNormalizeFromSubstatus =
+      latestEventType === "photographer_requested_additional_photos" ||
+      triggeringEventType === "photographer_requested_additional_photos"
+    if (shouldNormalizeFromSubstatus && collection.status === "in_progress" && collection.substatus) {
+      const stepDefs = getViewStepDefinitions(configToViewStepsInput(collection.config)).filter(
+        (def) => !def.inactive
+      )
+      const visibleStepIds = stepDefs.map((def) => def.id)
+      const SUBSTATUS_TO_STEP_ID: Partial<Record<CollectionSubstatus, ViewStepId>> = {
+        shooting: "shooting",
+        negatives_drop_off: "negatives_dropoff",
+        low_res_scanning: "low_res_scanning",
+        photographer_selection: "photographer_selection",
+        client_selection: "client_selection",
+        low_res_to_high_res: "handprint_high_res",
+        edition_request: "edition_request",
+        final_edits: "final_edits",
+        photographer_last_check: "photographer_last_check",
+        client_confirmation: "client_confirmation",
+      }
+      const activeStepId = SUBSTATUS_TO_STEP_ID[collection.substatus]
+      const activeIndex = activeStepId
+        ? visibleStepIds.findIndex((id) => id === activeStepId)
+        : -1
+
+      if (activeIndex >= 0) {
+        for (let idx = 0; idx < visibleStepIds.length; idx++) {
+          const stepId = visibleStepIds[idx]
+          const deadline = getDeadlineForStep(collection.config, stepId)
+          if (idx < activeIndex) {
+            const completedAt = eventCreatedAtMap[stepId]
+            stepStatuses[stepId] = {
+              stage: "done",
+              health: computeStepHealth("done", deadline.date, deadline.time, now, completedAt),
+            }
+          } else if (idx === activeIndex) {
+            stepStatuses[stepId] = {
+              stage: "in-progress",
+              health: computeStepHealth("in-progress", deadline.date, deadline.time, now),
+            }
+          } else {
+            stepStatuses[stepId] = { stage: "upcoming", health: null }
+          }
+        }
+      }
+    }
+
+    const doneCount = Object.values(stepStatuses).filter((entry) => entry.stage === "done").length
+    const visibleCount = Object.values(stepStatuses).length
+    const completionPercentage = visibleCount > 0 ? Math.round((doneCount / visibleCount) * 100) : 0
+
+    // Keep substatus aligned with the currently active in-progress step.
+    // This is especially important after revert events.
+    const activeStepId = Object.entries(stepStatuses).find(
+      ([, entry]) => entry.stage === "in-progress"
+    )?.[0] as ViewStepId | undefined
+    const STEP_ID_TO_SUBSTATUS: Partial<Record<ViewStepId, CollectionSubstatus>> = {
+      shooting: "shooting",
+      negatives_dropoff: "negatives_drop_off",
+      low_res_scanning: "low_res_scanning",
+      photographer_selection: "photographer_selection",
+      client_selection: "client_selection",
+      photographer_check_client_selection: "client_selection",
+      handprint_high_res: "low_res_to_high_res",
+      edition_request: "edition_request",
+      final_edits: "final_edits",
+      photographer_last_check: "photographer_last_check",
+      client_confirmation: "client_confirmation",
+    }
+    const syncedSubstatus = activeStepId ? STEP_ID_TO_SUBSTATUS[activeStepId] : undefined
+
+    const updated = await this.repository.update(collectionId, {
+      stepStatuses,
+      completionPercentage,
+      ...(collection.status === "in_progress" && syncedSubstatus
+        ? { substatus: syncedSubstatus }
+        : {}),
+    })
     return updated
   }
 }

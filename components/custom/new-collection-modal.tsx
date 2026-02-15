@@ -118,9 +118,10 @@ export function NewCollectionModal({
   const [hasEditionStudio, setHasEditionStudio] = React.useState(false)
   const [selectedManagerUserId, setSelectedManagerUserId] = React.useState("")
 
-  // Sync from initialConfig when modal opens (edit mode)
+  // Keep form state synced with the latest collection config.
+  // This avoids showing stale values from a previously visited collection
+  // on the first render after opening settings.
   React.useEffect(() => {
-    if (!open) return
     if (initialConfig) {
       setName(initialConfig.name ?? "")
       setClientEntityId(initialConfig.clientEntityId ?? "")
@@ -150,7 +151,7 @@ export function NewCollectionModal({
       setHasEditionStudio(false)
       setSelectedManagerUserId("")
     }
-  }, [open, initialConfig])
+  }, [initialConfig])
 
   const [clientOptions, setClientOptions] = React.useState<
     { id: string; name: string }[]
@@ -161,14 +162,17 @@ export function NewCollectionModal({
 
   React.useEffect(() => {
     if (!open) return
+    let cancelled = false
     const load = async () => {
       try {
         if (isSupabaseConfigured()) {
           const clients = await fetchClientsFromSupabase()
+          if (cancelled) return
           setClientOptions(clients)
           if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
         } else {
           const res = await fetch("/api/organizations", { cache: "no-store" })
+          if (cancelled) return
           if (!res.ok) {
             setClientOptions([])
             return
@@ -177,14 +181,19 @@ export function NewCollectionModal({
           const clients = (data?.organizations ?? [])
             .filter((org) => org.type === "client")
             .map((org) => ({ id: org.id, name: org.name }))
+          if (cancelled) return
           setClientOptions(clients)
           if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
         }
       } catch {
+        if (cancelled) return
         setClientOptions([])
       }
     }
     load()
+    return () => {
+      cancelled = true
+    }
   }, [open, clientEntityId])
 
   React.useEffect(() => {
@@ -192,6 +201,7 @@ export function NewCollectionModal({
       setManagerOptions([])
       return
     }
+    let cancelled = false
     const load = async () => {
       try {
         let opts: { value: string; label: string }[] = []
@@ -210,6 +220,7 @@ export function NewCollectionModal({
             label: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || (u.email ?? ""),
           }))
         }
+        if (cancelled) return
         setManagerOptions(opts)
         setSelectedManagerUserId((prev) => {
           if (opts.some((o) => o.value === prev)) return prev
@@ -217,10 +228,14 @@ export function NewCollectionModal({
           return opts[0]?.value ?? ""
         })
       } catch {
+        if (cancelled) return
         setManagerOptions([])
       }
     }
     load()
+    return () => {
+      cancelled = true
+    }
   }, [open, clientEntityId, managerUserId])
 
   React.useEffect(() => {

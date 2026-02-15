@@ -10,6 +10,7 @@ import type {
   CreationBlockId,
   CreationData,
   ParticipantRole,
+  StepNoteEntry,
 } from "@/lib/domain/collections"
 import type {
   Collection as DbCollection,
@@ -28,6 +29,53 @@ function dbDateToIso(v: string | null): string | undefined {
 function isoToDbDate(v: string | undefined): string | null {
   if (!v?.trim()) return null
   return v
+}
+
+// =============================================================================
+// JSONB ARRAY HELPERS (migration 034)
+// =============================================================================
+
+/** Parse a JSONB string array from DB (may be null, string, or already parsed array). */
+function parseJsonbStringArray(raw: unknown): string[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === "string")
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === "string")
+    } catch { /* ignore */ }
+    // Single string → wrap in array
+    return [raw]
+  }
+  return []
+}
+
+/** Parse a JSONB note array from DB. */
+function parseJsonbNoteArray(raw: unknown): StepNoteEntry[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) {
+    return raw.filter(
+      (v): v is StepNoteEntry =>
+        typeof v === "object" && v !== null && typeof v.from === "string" && typeof v.text === "string" && typeof v.at === "string"
+    )
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parseJsonbNoteArray(parsed)
+    } catch { /* ignore */ }
+  }
+  return []
+}
+
+/** Append a URL to an existing URL array (non-destructive). */
+export function appendToUrlArray(existing: string[] | undefined, newUrl: string): string[] {
+  return [...(existing ?? []), newUrl]
+}
+
+/** Append a note entry to an existing notes array (non-destructive). */
+export function appendNote(existing: StepNoteEntry[] | undefined, entry: StepNoteEntry): StepNoteEntry[] {
+  return [...(existing ?? []), entry]
 }
 
 /** DB → Domain: build config from flat DB row */
@@ -338,47 +386,72 @@ export function mapDbCollectionToDomain(
   const participants = buildParticipants(row, members)
   const completedBlockIds = deriveCompletedBlockIds(config, participants)
   const creationData: CreationData = { completedBlockIds }
-  const status = (row.status === "upcoming" || row.status === "in_progress")
-    ? row.status
-    : "draft"
+  const status = row.status as DomainCollection["status"]
   const publishedAt = row.published_at ?? undefined
+  const substatus =
+    (row as { substatus?: string | null }).substatus?.trim() || undefined
 
-  const lowresSelectionUrl = (row as { lowres_selection_url?: string | null }).lowres_selection_url
-  const lowresLabNotes = (row as { lowres_lab_notes?: string | null }).lowres_lab_notes
-  const lowresSelectionUploadedAt = (row as { lowres_selection_uploaded_at?: string | null }).lowres_selection_uploaded_at
-  const photographerSelectionUrl = (row as { photographer_selection_url?: string | null }).photographer_selection_url
-  const photographerNotes01 = (row as { photographer_notes01?: string | null }).photographer_notes01
-  const photographerSelectionUploadedAt = (row as { photographer_selection_uploaded_at?: string | null }).photographer_selection_uploaded_at
-  const photographerRequestAdditionalNotes = (row as { photographer_request_additional_notes?: string | null }).photographer_request_additional_notes
-  const photographerMissingphotos = (row as { photographer_missingphotos?: string | null }).photographer_missingphotos
-  const lowresSelectionUrl02 = (row as { lowres_selection_url02?: string | null }).lowres_selection_url02
-  const lowresLabNotes02 = (row as { lowres_lab_notes02?: string | null }).lowres_lab_notes02
-  const lowresSelectionUploadedAt02 = (row as { lowres_selection_uploaded_at02?: string | null }).lowres_selection_uploaded_at02
-  const clientSelectionUrl = (row as { client_selection_url?: string | null }).client_selection_url
-  const clientNotes01 = (row as { client_notes01?: string | null }).client_notes01
-  const clientSelectionUploadedAt = (row as { client_selection_uploaded_at?: string | null }).client_selection_uploaded_at
+  // URL arrays (JSONB — migration 034)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const r = row as any
+  const lowresSelectionUrl = parseJsonbStringArray(r.lowres_selection_url)
+  const lowresSelectionUploadedAt = (r.lowres_selection_uploaded_at as string | null) ?? null
+  const photographerSelectionUrl = parseJsonbStringArray(r.photographer_selection_url)
+  const photographerSelectionUploadedAt = (r.photographer_selection_uploaded_at as string | null) ?? null
+  const clientSelectionUrl = parseJsonbStringArray(r.client_selection_url)
+  const clientSelectionUploadedAt = (r.client_selection_uploaded_at as string | null) ?? null
+  const highresSelectionUrl = parseJsonbStringArray(r.highres_selection_url)
+  const highresSelectionUploadedAt = (r.highres_selection_uploaded_at as string | null) ?? null
+  const editionInstructionsUrl = parseJsonbStringArray(r.edition_instructions_url)
+  const editionInstructionsUploadedAt = (r.edition_instructions_uploaded_at as string | null) ?? null
+  const finalsSelectionUrl = parseJsonbStringArray(r.finals_selection_url)
+  const finalsSelectionUploadedAt = (r.finals_selection_uploaded_at as string | null) ?? null
+  // Step notes conversations (JSONB arrays — migration 034)
+  const stepNotesLowRes = parseJsonbNoteArray(r.step_notes_low_res)
+  const stepNotesPhotographerSelection = parseJsonbNoteArray(r.step_notes_photographer_selection)
+  const stepNotesClientSelection = parseJsonbNoteArray(r.step_notes_client_selection)
+  const stepNotesPhotographerReview = parseJsonbNoteArray(r.step_notes_photographer_review)
+  const stepNotesHighRes = parseJsonbNoteArray(r.step_notes_high_res)
+  const stepNotesEditionRequest = parseJsonbNoteArray(r.step_notes_edition_request)
+  const stepNotesFinalEdits = parseJsonbNoteArray(r.step_notes_final_edits)
+  const stepNotesPhotographerLastCheck = parseJsonbNoteArray(r.step_notes_photographer_last_check)
+  const stepNotesClientConfirmation = parseJsonbNoteArray(r.step_notes_client_confirmation)
+  // Step statuses (migration 032)
+  const rawStepStatuses = (row as { step_statuses?: Record<string, { stage: string; health: string | null }> | null }).step_statuses
+  const stepStatuses = rawStepStatuses && typeof rawStepStatuses === "object" ? rawStepStatuses : undefined
+  const completionPercentage = (row as { completion_percentage?: number | null }).completion_percentage ?? 0
   return {
     id: row.id,
     status,
+    substatus: status === "in_progress" ? (substatus as DomainCollection["substatus"]) : undefined,
+    stepStatuses,
+    completionPercentage,
     config,
     participants,
     creationData,
     updatedAt: row.updated_at,
     publishedAt,
-    lowResSelectionUrl: lowresSelectionUrl ?? undefined,
+    lowResSelectionUrl: lowresSelectionUrl.length > 0 ? lowresSelectionUrl : undefined,
     lowResSelectionUploadedAt: lowresSelectionUploadedAt ?? undefined,
-    lowResLabNotes: lowresLabNotes ?? undefined,
-    photographerSelectionUrl: photographerSelectionUrl ?? undefined,
+    photographerSelectionUrl: photographerSelectionUrl.length > 0 ? photographerSelectionUrl : undefined,
     photographerSelectionUploadedAt: photographerSelectionUploadedAt ?? undefined,
-    photographerNotes01: photographerNotes01 ?? undefined,
-    photographerRequestAdditionalNotes: photographerRequestAdditionalNotes ?? undefined,
-    photographerMissingphotos: photographerMissingphotos ?? undefined,
-    lowResSelectionUrl02: lowresSelectionUrl02 ?? undefined,
-    lowResSelectionUploadedAt02: lowresSelectionUploadedAt02 ?? undefined,
-    lowResLabNotes02: lowresLabNotes02 ?? undefined,
-    clientSelectionUrl: clientSelectionUrl ?? undefined,
+    clientSelectionUrl: clientSelectionUrl.length > 0 ? clientSelectionUrl : undefined,
     clientSelectionUploadedAt: clientSelectionUploadedAt ?? undefined,
-    clientNotes01: clientNotes01 ?? undefined,
+    highResSelectionUrl: highresSelectionUrl.length > 0 ? highresSelectionUrl : undefined,
+    highResSelectionUploadedAt: highresSelectionUploadedAt ?? undefined,
+    editionInstructionsUrl: editionInstructionsUrl.length > 0 ? editionInstructionsUrl : undefined,
+    editionInstructionsUploadedAt: editionInstructionsUploadedAt ?? undefined,
+    finalsSelectionUrl: finalsSelectionUrl.length > 0 ? finalsSelectionUrl : undefined,
+    finalsSelectionUploadedAt: finalsSelectionUploadedAt ?? undefined,
+    stepNotesLowRes: stepNotesLowRes.length > 0 ? stepNotesLowRes : undefined,
+    stepNotesPhotographerSelection: stepNotesPhotographerSelection.length > 0 ? stepNotesPhotographerSelection : undefined,
+    stepNotesClientSelection: stepNotesClientSelection.length > 0 ? stepNotesClientSelection : undefined,
+    stepNotesPhotographerReview: stepNotesPhotographerReview.length > 0 ? stepNotesPhotographerReview : undefined,
+    stepNotesHighRes: stepNotesHighRes.length > 0 ? stepNotesHighRes : undefined,
+    stepNotesEditionRequest: stepNotesEditionRequest.length > 0 ? stepNotesEditionRequest : undefined,
+    stepNotesFinalEdits: stepNotesFinalEdits.length > 0 ? stepNotesFinalEdits : undefined,
+    stepNotesPhotographerLastCheck: stepNotesPhotographerLastCheck.length > 0 ? stepNotesPhotographerLastCheck : undefined,
+    stepNotesClientConfirmation: stepNotesClientConfirmation.length > 0 ? stepNotesClientConfirmation : undefined,
   }
 }
 
@@ -463,6 +536,7 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     check_finals_photographer_check_time: conf.checkFinalsPhotographerDueTime ?? null,
     status: c.status ?? "draft",
     published_at: c.publishedAt ?? null,
+    substatus: c.substatus ?? null,
     // Do not send noba_user_ids, noba_edit_permission_by_user_id, participant_edit_permissions
     // on INSERT so creation works when migrations 011/012 are not applied or schema cache is stale.
     // If those columns exist, the DB will use their DEFAULTs ([] and {}).
@@ -476,39 +550,67 @@ export function mapDomainPatchToDbUpdate(
     participants?: CollectionParticipant[]
     status?: import("@/lib/domain/collections").CollectionStatus
     publishedAt?: string
-    lowResSelectionUrl?: string
+    substatus?: import("@/lib/domain/collections").CollectionSubstatus | null
+    stepStatuses?: Record<string, { stage: string; health: string | null }>
+    completionPercentage?: number
+    // URL arrays (JSONB)
+    lowResSelectionUrl?: string[]
     lowResSelectionUploadedAt?: string
-    lowResLabNotes?: string | null
-    photographerSelectionUrl?: string
+    photographerSelectionUrl?: string[]
     photographerSelectionUploadedAt?: string
-    photographerNotes01?: string | null
-    photographerRequestAdditionalNotes?: string | null
-    photographerMissingphotos?: string | null
-    lowResSelectionUrl02?: string
-    lowResSelectionUploadedAt02?: string
-    lowResLabNotes02?: string | null
-    clientSelectionUrl?: string
+    clientSelectionUrl?: string[]
     clientSelectionUploadedAt?: string
-    clientNotes01?: string | null
+    highResSelectionUrl?: string[]
+    highResSelectionUploadedAt?: string
+    editionInstructionsUrl?: string[]
+    editionInstructionsUploadedAt?: string
+    finalsSelectionUrl?: string[]
+    finalsSelectionUploadedAt?: string
+    // Step notes conversations (JSONB arrays)
+    stepNotesLowRes?: StepNoteEntry[]
+    stepNotesPhotographerSelection?: StepNoteEntry[]
+    stepNotesClientSelection?: StepNoteEntry[]
+    stepNotesPhotographerReview?: StepNoteEntry[]
+    stepNotesHighRes?: StepNoteEntry[]
+    stepNotesEditionRequest?: StepNoteEntry[]
+    stepNotesFinalEdits?: StepNoteEntry[]
+    stepNotesPhotographerLastCheck?: StepNoteEntry[]
+    stepNotesClientConfirmation?: StepNoteEntry[]
   }
 ): CollectionUpdate {
   const u: CollectionUpdate = {}
-  if (patch.status !== undefined) u.status = patch.status
+  if (patch.status !== undefined) {
+    u.status = patch.status
+    // DB constraint: substatus must be NULL when status != in_progress
+    if (patch.status !== "in_progress") u.substatus = null
+  }
   if (patch.publishedAt !== undefined) u.published_at = patch.publishedAt ?? null
-  if (patch.lowResSelectionUrl !== undefined) u.lowres_selection_url = patch.lowResSelectionUrl ?? null
+  if (patch.substatus !== undefined) u.substatus = patch.substatus ?? null
+  if (patch.stepStatuses !== undefined) u.step_statuses = patch.stepStatuses
+  if (patch.completionPercentage !== undefined) u.completion_percentage = patch.completionPercentage
+  // URL arrays
+  if (patch.lowResSelectionUrl !== undefined) u.lowres_selection_url = patch.lowResSelectionUrl
   if (patch.lowResSelectionUploadedAt !== undefined) u.lowres_selection_uploaded_at = patch.lowResSelectionUploadedAt ?? null
-  if (patch.lowResLabNotes !== undefined) u.lowres_lab_notes = patch.lowResLabNotes ?? null
-  if (patch.lowResSelectionUrl02 !== undefined) u.lowres_selection_url02 = patch.lowResSelectionUrl02 ?? null
-  if (patch.lowResSelectionUploadedAt02 !== undefined) u.lowres_selection_uploaded_at02 = patch.lowResSelectionUploadedAt02 ?? null
-  if (patch.lowResLabNotes02 !== undefined) u.lowres_lab_notes02 = patch.lowResLabNotes02 ?? null
-  if (patch.photographerSelectionUrl !== undefined) u.photographer_selection_url = patch.photographerSelectionUrl ?? null
+  if (patch.photographerSelectionUrl !== undefined) u.photographer_selection_url = patch.photographerSelectionUrl
   if (patch.photographerSelectionUploadedAt !== undefined) u.photographer_selection_uploaded_at = patch.photographerSelectionUploadedAt ?? null
-  if (patch.photographerNotes01 !== undefined) u.photographer_notes01 = patch.photographerNotes01 ?? null
-  if (patch.photographerRequestAdditionalNotes !== undefined) u.photographer_request_additional_notes = patch.photographerRequestAdditionalNotes ?? null
-  if (patch.photographerMissingphotos !== undefined) u.photographer_missingphotos = patch.photographerMissingphotos ?? null
-  if (patch.clientSelectionUrl !== undefined) u.client_selection_url = patch.clientSelectionUrl ?? null
+  if (patch.clientSelectionUrl !== undefined) u.client_selection_url = patch.clientSelectionUrl
   if (patch.clientSelectionUploadedAt !== undefined) u.client_selection_uploaded_at = patch.clientSelectionUploadedAt ?? null
-  if (patch.clientNotes01 !== undefined) u.client_notes01 = patch.clientNotes01 ?? null
+  if (patch.highResSelectionUrl !== undefined) u.highres_selection_url = patch.highResSelectionUrl
+  if (patch.highResSelectionUploadedAt !== undefined) u.highres_selection_uploaded_at = patch.highResSelectionUploadedAt ?? null
+  if (patch.editionInstructionsUrl !== undefined) u.edition_instructions_url = patch.editionInstructionsUrl
+  if (patch.editionInstructionsUploadedAt !== undefined) u.edition_instructions_uploaded_at = patch.editionInstructionsUploadedAt ?? null
+  if (patch.finalsSelectionUrl !== undefined) u.finals_selection_url = patch.finalsSelectionUrl
+  if (patch.finalsSelectionUploadedAt !== undefined) u.finals_selection_uploaded_at = patch.finalsSelectionUploadedAt ?? null
+  // Step notes conversations
+  if (patch.stepNotesLowRes !== undefined) u.step_notes_low_res = patch.stepNotesLowRes
+  if (patch.stepNotesPhotographerSelection !== undefined) u.step_notes_photographer_selection = patch.stepNotesPhotographerSelection
+  if (patch.stepNotesClientSelection !== undefined) u.step_notes_client_selection = patch.stepNotesClientSelection
+  if (patch.stepNotesPhotographerReview !== undefined) u.step_notes_photographer_review = patch.stepNotesPhotographerReview
+  if (patch.stepNotesHighRes !== undefined) u.step_notes_high_res = patch.stepNotesHighRes
+  if (patch.stepNotesEditionRequest !== undefined) u.step_notes_edition_request = patch.stepNotesEditionRequest
+  if (patch.stepNotesFinalEdits !== undefined) u.step_notes_final_edits = patch.stepNotesFinalEdits
+  if (patch.stepNotesPhotographerLastCheck !== undefined) u.step_notes_photographer_last_check = patch.stepNotesPhotographerLastCheck
+  if (patch.stepNotesClientConfirmation !== undefined) u.step_notes_client_confirmation = patch.stepNotesClientConfirmation
   const conf = patch.config
   if (conf) {
     if (conf.clientEntityId !== undefined) u.client_id = conf.clientEntityId

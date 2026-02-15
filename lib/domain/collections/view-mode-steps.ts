@@ -281,12 +281,29 @@ export function viewStepsWithStatus(
 
 /** Maps collection event types to view step ids (event → step completed). */
 export const EVENT_TYPE_TO_STEP_ID: Record<string, ViewStepId> = {
+  // Step 1: Shooting — completed when negatives are picked up (or shooting_ended for digital)
   negatives_pickup_marked: "shooting",
+  shooting_ended: "shooting",
+  // Step 2: Negatives drop off
   dropoff_confirmed: "negatives_dropoff",
+  // Step 3: Low-res scanning
   scanning_completed: "low_res_scanning",
+  // Step 4: Photographer selection
   photographer_selection_uploaded: "photographer_selection",
+  // Step 5: Client selection
   client_selection_confirmed: "client_selection",
+  // Step 6: Photographer review (validates client selection)
+  photographer_check_approved: "photographer_check_client_selection",
+  // Step 7: Low-res to high-res
+  highres_ready: "handprint_high_res",
+  // Step 8: Edition request
+  edition_request_submitted: "edition_request",
+  // Step 9: Final edits
+  final_edits_completed: "final_edits",
+  // Step 10: Photographer last check
   photographer_edits_approved: "photographer_last_check",
+  // Step 11: Client confirmation
+  client_confirmation_confirmed: "client_confirmation",
   collection_completed: "client_confirmation",
 }
 

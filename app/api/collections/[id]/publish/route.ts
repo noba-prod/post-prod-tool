@@ -27,10 +27,11 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Publish collection and run notifications (scheduled_notification_tracking) with admin client
+    // Publish collection and run notifications (scheduled_notification_tracking) with admin client.
+    // When status becomes in_progress, a shooting_started event is recorded.
     const service = createCollectionsServiceForServer()
     try {
-      await service.publishCollection(id)
+      await service.publishCollection(id, new Date(), user.id)
     } catch (err) {
       if (err instanceof CollectionsServiceError) {
         const status =
