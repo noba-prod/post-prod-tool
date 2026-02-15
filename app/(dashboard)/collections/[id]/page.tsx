@@ -308,15 +308,19 @@ export default function CollectionViewPage({
           body.step_note_low_res = { from: "lab", text: payload.notes.trim() }
         }
         await patchCollection(body)
-        await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
-        await fetchCompletedStepIds(id)
+        // Only advance when low-res scanning is the current active substatus.
+        if (collection?.substatus === "low_res_scanning") {
+          await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
+          await fetchCompletedStepIds(id)
+          await refetchCollection()
+        }
       } catch (err) {
         console.error("[CollectionViewPage] Upload low-res error:", err)
         toast.error(err instanceof Error ? err.message : "Failed to save low-res")
         throw err
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds]
+    [id, collection?.substatus, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
   )
 
   /** Step 3 (after first upload): additional footage — append URL to same array. */
@@ -333,11 +337,19 @@ export default function CollectionViewPage({
           body.step_note_low_res = { from: "lab", text: payload.notes.trim() }
         }
         await patchCollection(body)
+        // In revert iterations, "upload more" should complete low-res scanning
+        // and move forward to photographer selection again.
+        if (collection?.substatus === "low_res_scanning") {
+          await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
+          await fetchCompletedStepIds(id)
+          await refetchCollection()
+        }
       } catch (err) {
         console.error("[CollectionViewPage] Upload more low-res error:", err)
+        toast.error(err instanceof Error ? err.message : "Failed to upload more photos")
       }
     },
-    [id, patchCollection]
+    [id, collection?.substatus, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
   )
 
   // =============================================================================
