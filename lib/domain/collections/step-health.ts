@@ -9,7 +9,7 @@
  * - done + completed on or before deadline  → "on-time"
  * - done + completed after deadline         → "delayed"
  * - in-progress + well before deadline      → "on-track"
- * - in-progress + within 24h of deadline    → "at-risk"
+ * - in-progress + within 1h of deadline     → "at-risk"
  * - in-progress + deadline passed           → "delayed"
  * - upcoming                                → null
  */
@@ -50,8 +50,8 @@ export function getDeadlineForStep(
   switch (stepId) {
     case "shooting":
       return {
-        date: config.shootingStartDate ?? config.shootingDate,
-        time: config.shootingStartTime,
+        date: config.shootingEndDate,
+        time: config.shootingEndTime,
       }
     case "negatives_dropoff":
       return { date: config.dropoff_delivery_date, time: config.dropoff_delivery_time }
@@ -106,8 +106,8 @@ export function getDeadlineForStep(
 // DATE PARSING
 // =============================================================================
 
-/** 24-hour warning threshold in ms. */
-const AT_RISK_THRESHOLD_MS = 24 * 60 * 60 * 1000
+/** 1-hour warning threshold in ms. */
+const AT_RISK_THRESHOLD_MS = 60 * 60 * 1000
 
 /** Parse date + optional time into a Date. Returns null if invalid. */
 function parseDeadline(dateStr?: string, timeStr?: string): Date | null {

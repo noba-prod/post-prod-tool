@@ -135,10 +135,9 @@ export async function POST(
             // Substatus out of sync — event was recorded; log and continue gracefully
             console.warn("[POST /api/collections/[id]/events] Substatus transition skipped (out of sync):", err.message)
           } else if (err.code === "INVALID_STATUS") {
-            return NextResponse.json(
-              { error: err.message },
-              { status: 400 }
-            )
+            // Collection status is not in_progress (often due to stale UI state). Event was recorded.
+            // Keep the event successful and let canonical status sync resolve on next collection fetch.
+            console.warn("[POST /api/collections/[id]/events] Substatus transition skipped (invalid status):", err.message)
           } else if (err.code === "NOT_FOUND") {
             return NextResponse.json({ error: "Collection not found" }, { status: 404 })
           } else {

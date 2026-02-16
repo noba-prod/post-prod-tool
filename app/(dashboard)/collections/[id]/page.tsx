@@ -14,8 +14,17 @@ import {
   resolveUserForPermission,
   canUserEditStep,
   deriveStageStatusFromShootingStart,
+  computeStepHealth,
+  getDeadlineForStep,
 } from "@/lib/domain/collections"
-import type { StepId, UserForPermission, CollectionDraft, StepStage, StepHealth } from "@/lib/domain/collections"
+import type {
+  StepId,
+  UserForPermission,
+  CollectionDraft,
+  StepStage,
+  StepHealth,
+  ViewStepId,
+} from "@/lib/domain/collections"
 import type {
   ParticipantsModalIndividual,
   ParticipantsModalEntity,
@@ -34,7 +43,7 @@ function stageToDisplay(stage: StepStage | undefined, fallbackStatus: string): "
 }
 
 /** Maps StepHealth from DB to the template's timeStampStatus display value. */
-function healthToDisplay(health: StepHealth | undefined): "on-track" | "on-time" | "delayed" | "at-risk" {
+function healthToDisplay(health: StepHealth | undefined | null): "on-track" | "on-time" | "delayed" | "at-risk" {
   if (health === "on-time") return "on-time"
   if (health === "delayed") return "delayed"
   if (health === "at-risk") return "at-risk"
@@ -64,13 +73,28 @@ function viewStepsToTemplateSteps(
     const dbEntry = dbStepStatuses?.[step.id]
     const stage = dbEntry?.stage as StepStage | undefined
     const health = dbEntry?.health as StepHealth | undefined
+    const fallbackStage: StepStage =
+      step.status === "completed"
+        ? "done"
+        : step.status === "active"
+          ? "in-progress"
+          : "upcoming"
+    const effectiveStage = stage ?? fallbackStage
+    const deadline = collection
+      ? getDeadlineForStep(collection.config, step.id as ViewStepId)
+      : { date: undefined, time: undefined }
+    // Keep active-step health time-aware even when persisted step_statuses are stale.
+    const effectiveHealth: StepHealth =
+      effectiveStage === "in-progress"
+        ? computeStepHealth("in-progress", deadline.date, deadline.time, new Date())
+        : (health ?? computeStepHealth(effectiveStage, deadline.date, deadline.time, new Date()))
 
     return {
       id: step.id,
       title: step.title,
       status: stageToStepperStatus(stage, step.status),
       stageStatus: stageToDisplay(stage, step.status),
-      timeStampStatus: healthToDisplay(health),
+      timeStampStatus: healthToDisplay(effectiveHealth),
       deadlineLabel: "Deadline:",
       deadlineDate: step.deadlineDate ?? "—",
       deadlineTime: step.deadlineTime ?? "End of day (5:00pm)",
@@ -240,7 +264,10 @@ export default function CollectionViewPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventType, metadata }),
       })
-      if (!res.ok) throw new Error("Failed to trigger event")
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data?.error ?? "Failed to trigger event")
+      }
     },
     [id]
   )
@@ -272,6 +299,8 @@ export default function CollectionViewPage({
         await fetchCompletedStepIds(id)
       } catch (err) {
         console.error("[CollectionViewPage] Confirm pickup error:", err)
+        toast.error(err instanceof Error ? err.message : "Failed to trigger event")
+        throw err
       }
     },
     [id, fireEvent, fetchCompletedStepIds]
@@ -307,9 +336,10 @@ export default function CollectionViewPage({
         if (payload.notes?.trim()) {
           body.step_note_low_res = { from: "lab", text: payload.notes.trim() }
         }
-        await patchCollection(body)
-        // Only advance when low-res scanning is the current active substatus.
-        if (collection?.substatus === "low_res_scanning") {
+        const updated = await patchCollection(body)
+        // Use the collection returned by PATCH (source of truth) to avoid stale closure;
+        // only advance when low-res scanning is the current active substatus.
+        if (updated?.substatus === "low_res_scanning") {
           await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
           await fetchCompletedStepIds(id)
           await refetchCollection()
@@ -320,7 +350,7 @@ export default function CollectionViewPage({
         throw err
       }
     },
-    [id, collection?.substatus, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
   )
 
   /** Step 3 (after first upload): additional footage — append URL to same array. */
@@ -336,10 +366,9 @@ export default function CollectionViewPage({
         if (payload.notes?.trim()) {
           body.step_note_low_res = { from: "lab", text: payload.notes.trim() }
         }
-        await patchCollection(body)
-        // In revert iterations, "upload more" should complete low-res scanning
-        // and move forward to photographer selection again.
-        if (collection?.substatus === "low_res_scanning") {
+        const updated = await patchCollection(body)
+        // Use the collection returned by PATCH (source of truth) to avoid stale closure.
+        if (updated?.substatus === "low_res_scanning") {
           await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
           await fetchCompletedStepIds(id)
           await refetchCollection()
@@ -349,7 +378,7 @@ export default function CollectionViewPage({
         toast.error(err instanceof Error ? err.message : "Failed to upload more photos")
       }
     },
-    [id, collection?.substatus, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
   )
 
   // =============================================================================

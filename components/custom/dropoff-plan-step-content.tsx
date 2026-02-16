@@ -83,6 +83,45 @@ function formatEntityLocation(loc: Location): string {
   return parts.length ? parts.join(" ") : "—"
 }
 
+/**
+ * Split a one-line address into street, zipCode, city, country.
+ * Heuristic: from the end, last word = country, second-to-last = city, digits = zip, rest = street.
+ */
+function parseOneLineAddress(
+  line: string
+): { street: string; zipCode: string; city: string; country: string } {
+  const raw = line.trim()
+  if (!raw) return { street: "", zipCode: "", city: "", country: "" }
+  const tokens = raw.split(/\s+/)
+  if (tokens.length === 1) return { street: raw, zipCode: "", city: "", country: "" }
+
+  let country = ""
+  let city = ""
+  let zipCode = ""
+  let streetParts: string[] = tokens
+
+  // From the end: country (last alpha word), city (second-to-last alpha), zip (digits)
+  if (tokens.length >= 1 && /^[a-zA-ZÀ-ÿ\-]+$/.test(tokens[tokens.length - 1])) {
+    country = tokens[tokens.length - 1]
+    streetParts = tokens.slice(0, -1)
+  }
+  if (streetParts.length >= 1 && /^[a-zA-ZÀ-ÿ\-]+$/.test(streetParts[streetParts.length - 1])) {
+    city = streetParts[streetParts.length - 1]
+    streetParts = streetParts.slice(0, -1)
+  }
+  if (streetParts.length >= 1 && /^\d{4,10}$/.test(streetParts[streetParts.length - 1])) {
+    zipCode = streetParts[streetParts.length - 1]
+    streetParts = streetParts.slice(0, -1)
+  }
+
+  return {
+    street: streetParts.join(" ").trim(),
+    zipCode,
+    city,
+    country,
+  }
+}
+
 const SHIPPING_PROVIDER_OPTIONS = [
   { value: "dhl", label: "DHL" },
   { value: "fedex", label: "FedEx" },
@@ -134,6 +173,7 @@ export function DropoffPlanStepContent({
   const [labAddress, setLabAddress] = React.useState<string>("—")
   const shippingConstraint = chronologyConstraints?.["dropoff_plan_shipping"]
   const deliveryConstraint = chronologyConstraints?.["dropoff_plan_delivery"]
+  const savedDestinationAddress = c.dropoff_shipping_destination_address?.trim()
 
   // Edit address dialog: "pickup" = shooting address, "delivery" = lab address
   const [editAddressType, setEditAddressType] = React.useState<"pickup" | "delivery" | null>(null)
@@ -143,20 +183,29 @@ export function DropoffPlanStepContent({
   const [editCountry, setEditCountry] = React.useState("")
 
   const openEditPickup = React.useCallback(() => {
-    setEditStreet(c.shootingStreetAddress ?? "")
-    setEditZipCode(c.shootingZipCode ?? "")
-    setEditCity(c.shootingCity ?? "")
-    setEditCountry(c.shootingCountry ?? "")
+    // Prefer parsing the saved one-line origin; otherwise use shooting address fields
+    if (c.dropoff_shipping_origin_address?.trim()) {
+      const parsed = parseOneLineAddress(c.dropoff_shipping_origin_address)
+      setEditStreet(parsed.street)
+      setEditZipCode(parsed.zipCode)
+      setEditCity(parsed.city)
+      setEditCountry(parsed.country)
+    } else {
+      setEditStreet(c.shootingStreetAddress ?? "")
+      setEditZipCode(c.shootingZipCode ?? "")
+      setEditCity(c.shootingCity ?? "")
+      setEditCountry(c.shootingCountry ?? "")
+    }
     setEditAddressType("pickup")
-  }, [c.shootingStreetAddress, c.shootingZipCode, c.shootingCity, c.shootingCountry])
+  }, [c.dropoff_shipping_origin_address, c.shootingStreetAddress, c.shootingZipCode, c.shootingCity, c.shootingCountry])
 
   const openEditDelivery = React.useCallback(() => {
-    // Lab address is one string; put in street, leave rest for user to fill or we could parse
     const current = labAddress !== "—" ? labAddress : (c.dropoff_shipping_destination_address ?? "")
-    setEditStreet(current)
-    setEditZipCode("")
-    setEditCity("")
-    setEditCountry("")
+    const parsed = parseOneLineAddress(current)
+    setEditStreet(parsed.street)
+    setEditZipCode(parsed.zipCode)
+    setEditCity(parsed.city)
+    setEditCountry(parsed.country)
     setEditAddressType("delivery")
   }, [labAddress, c.dropoff_shipping_destination_address])
 
@@ -170,14 +219,9 @@ export function DropoffPlanStepContent({
     const city = editCity.trim()
     const country = editCountry.trim()
     const formatted = [street, zip, city, country].filter(Boolean).join(" ") || undefined
-    if (editAddressType === "pickup") {
-      onDropoffPlanChange({
-        shootingStreetAddress: street || undefined,
-        shootingZipCode: zip || undefined,
-        shootingCity: city || undefined,
-        shootingCountry: country || undefined,
-        dropoff_shipping_origin_address: formatted,
-      })
+    // Only update dropoff_shipping_origin_address; do not touch shooting_* columns (those are edited in Shooting setup).
+    if (editAddressType === "pickup" && formatted) {
+      onDropoffPlanChange({ dropoff_shipping_origin_address: formatted })
     } else if (editAddressType === "delivery" && formatted) {
       onDropoffPlanChange({ dropoff_shipping_destination_address: formatted })
       setLabAddress(formatted)
@@ -200,21 +244,19 @@ export function DropoffPlanStepContent({
     ? new Date(c.dropoff_delivery_date + "T12:00:00")
     : undefined
 
-  const originAddress = formatShootingAddress(c)
-
-  // Save origin address (shooting address) to config when it changes
-  React.useEffect(() => {
-    if (originAddress && originAddress !== "—" && originAddress !== c.dropoff_shipping_origin_address) {
-      onDropoffPlanChange({ dropoff_shipping_origin_address: originAddress })
-    }
-  }, [originAddress, c.dropoff_shipping_origin_address, onDropoffPlanChange])
+  // Display: prefer saved drop-off origin, otherwise show shooting address
+  const originAddress =
+    c.dropoff_shipping_origin_address?.trim() || formatShootingAddress(c)
 
   React.useEffect(() => {
     const lab = draft.participants.find((p) => p.role === "lab")
     const eid = lab?.entityId
+    if (savedDestinationAddress) {
+      setLabAddress(savedDestinationAddress)
+      return
+    }
     if (!eid) {
-      // Show saved lab address from config when participants don't have lab (e.g. after refresh or race)
-      setLabAddress(c.dropoff_shipping_destination_address?.trim() ?? "—")
+      setLabAddress("—")
       return
     }
     let cancelled = false
@@ -237,7 +279,7 @@ export function DropoffPlanStepContent({
         setLabAddress(address)
       }
       // Save destination address (lab address) to config
-      if (address && address !== "—" && address !== c.dropoff_shipping_destination_address) {
+      if (address && address !== "—") {
         onDropoffPlanChange({ dropoff_shipping_destination_address: address })
       }
     }
@@ -245,7 +287,7 @@ export function DropoffPlanStepContent({
     return () => {
       cancelled = true
     }
-  }, [draft.participants, c.dropoff_shipping_destination_address, onDropoffPlanChange])
+  }, [draft.participants, savedDestinationAddress, onDropoffPlanChange])
 
   React.useEffect(() => {
     if (!deliveryConstraint?.defaultDate || c.dropoff_delivery_date) return
@@ -277,7 +319,7 @@ export function DropoffPlanStepContent({
         originContent={
           <>
             <EntitySelected
-              label="Shooting address"
+              label="Pick-up"
               entityType="Address"
               value={originAddress}
               locked
@@ -286,7 +328,7 @@ export function DropoffPlanStepContent({
             />
             <RowVariants variant="2">
               <DatePicker
-                label="Pick up date"
+                label="Date"
                 date={pickUpDate}
                 onDateChange={(d) =>
                   onDropoffPlanChange({
@@ -313,7 +355,7 @@ export function DropoffPlanStepContent({
         destinationContent={
           <>
             <EntitySelected
-              label="Lab address"
+              label="Destination"
               entityType="Address"
               value={labAddress}
               locked
@@ -322,7 +364,7 @@ export function DropoffPlanStepContent({
             />
             <RowVariants variant="2">
               <DatePicker
-                label="Delivery date"
+                label="Date"
                 date={deliveryDate}
                 onDateChange={(d) =>
                   onDropoffPlanChange({

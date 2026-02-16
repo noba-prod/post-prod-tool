@@ -52,41 +52,26 @@ const SUBSTATUS_ORDER: CollectionSubstatus[] = [
 
 // =============================================================================
 // DERIVE PUBLISHED STATUS (HITO 4)
-// Determines collection status after publish based on shooting date vs now.
-// If shootingDate exists AND is in the past → "in_progress", else → "upcoming".
+// Determines collection status after publish based on shooting start date/time vs now.
+// If shootingStart exists AND is in the past → "in_progress", else → "upcoming".
 // =============================================================================
 
 /**
- * Derives the published status for a collection based on shooting date.
+ * Derives the published status for a collection based on shooting start date+time.
  * @param config Collection configuration
  * @param now Current date/time (defaults to new Date())
- * @returns "upcoming" if shooting date is missing or in the future, "in_progress" if in the past
+ * @returns "upcoming" if shooting start is missing or in the future, "in_progress" if in the past
  */
 export function derivePublishedStatus(
   config: CollectionConfig,
   now: Date = new Date()
 ): "upcoming" | "in_progress" {
-  // Use shootingDate (key date) if available, fallback to shootingStartDate
-  const shootingDateStr = config.shootingDate ?? config.shootingStartDate
-  if (!shootingDateStr?.trim()) {
-    return "upcoming"
-  }
-
-  // Parse date string (YYYY-MM-DD format)
-  const shootingDate = new Date(shootingDateStr + "T12:00:00")
-  if (Number.isNaN(shootingDate.getTime())) {
-    return "upcoming"
-  }
-
-  // Compare dates (ignore time, compare date-only)
-  const nowDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const shootingDateOnly = new Date(
-    shootingDate.getFullYear(),
-    shootingDate.getMonth(),
-    shootingDate.getDate()
+  const shootingStartMs = parseDateTimeMs(
+    config.shootingStartDate ?? config.shootingDate,
+    config.shootingStartTime
   )
-
-  return shootingDateOnly <= nowDateOnly ? "in_progress" : "upcoming"
+  if (Number.isNaN(shootingStartMs)) return "upcoming"
+  return now.getTime() >= shootingStartMs ? "in_progress" : "upcoming"
 }
 
 // =============================================================================
@@ -126,6 +111,9 @@ function normalizeTimeForComparison(timeStr: string | undefined): string {
   const t = (timeStr ?? "").trim().toLowerCase()
   if (!t) return "00:00:00"
   if (t === "morning") return "09:00:00"
+  if (t === "morning (9:00am)") return "09:00:00"
+  if (t === "midday" || t === "midday (12:00pm)" || t === "midday - 12:00pm") return "12:00:00"
+  if (t === "end-of-day" || t === "end of day (5:00pm)" || t === "end of day - 05:00pm") return "17:00:00"
   if (t === "afternoon") return "14:00:00"
   if (t === "evening") return "18:00:00"
   if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) return t.length === 5 ? `${t}:00` : t

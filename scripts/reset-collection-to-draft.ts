@@ -82,7 +82,10 @@ async function updateCollectionsWithColumnFallback(
 }
 
 function loadEnvLocal() {
-  const path = resolve(process.cwd(), ".env.local")
+  const path = resolve(
+    process.cwd(),
+    existsSync(resolve(process.cwd(), ".env.local")) ? ".env.local" : ".env"
+  )
   if (!existsSync(path)) return
   const content = readFileSync(path, "utf8")
   for (const line of content.split("\n")) {

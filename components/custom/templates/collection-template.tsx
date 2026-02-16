@@ -1632,9 +1632,13 @@ export function CollectionTemplate({
                     size="lg"
                     className="w-fit rounded-xl"
                     onClick={async () => {
-                      await onConfirmPickup?.("shooting")
-                      setOpenStepId(null)
-                      toast.success("Pickup confirmed.")
+                      try {
+                        await onConfirmPickup?.("shooting")
+                        setOpenStepId(null)
+                        toast.success("Pickup confirmed.")
+                      } catch {
+                        // Error toast is shown by the page callback.
+                      }
                     }}
                   >
                     Confirm pickup

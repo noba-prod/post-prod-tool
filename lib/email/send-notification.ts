@@ -14,6 +14,24 @@ function getResendFromEmail(): string {
   return ""
 }
 
+/** Base URL for the app (used for absolute links in emails). Same as invitations. */
+function getSiteUrl(): string {
+  return (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "")
+}
+
+/**
+ * Converts a CTA URL to an absolute URL for email links.
+ * Relative paths (e.g. /collections/xxx?step=yyy) are resolved against SITE_URL
+ * so links open correctly in the user's browser.
+ */
+function toAbsoluteCtaUrl(ctaUrl: string | undefined): string | undefined {
+  if (!ctaUrl?.trim()) return undefined
+  const trimmed = ctaUrl.trim()
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
+  const base = getSiteUrl()
+  return `${base}${trimmed.startsWith("/") ? trimmed : "/" + trimmed}`
+}
+
 export interface SendNotificationEmailResult {
   sent: boolean
   error?: string
@@ -42,10 +60,11 @@ function buildNotificationEmailHtml(params: SendNotificationEmailParams): string
     ? `Hi ${escapeHtml(params.recipientName)},`
     : "Hi,"
 
-  const ctaButton = params.ctaText && params.ctaUrl
+  const absoluteCtaUrl = toAbsoluteCtaUrl(params.ctaUrl)
+  const ctaButton = params.ctaText && absoluteCtaUrl
     ? `
     <p style="margin: 28px 0;">
-      <a href="${escapeHtml(params.ctaUrl)}" style="display: inline-block; background: #1a1a1a; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 600;">${escapeHtml(params.ctaText)}</a>
+      <a href="${escapeHtml(absoluteCtaUrl)}" style="display: inline-block; background: #1a1a1a; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 600;">${escapeHtml(params.ctaText)}</a>
     </p>
     `
     : ""

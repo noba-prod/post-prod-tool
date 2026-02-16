@@ -398,11 +398,27 @@ export default function CollectionCreatePage({
         const nextConfig = { ...prev.config, ...patch }
         return { ...prev, config: nextConfig }
       })
-      service.updateCollection(id, { config: patch }).then((updated) => {
+      // When shooting address fields change, also set dropoff_shipping_origin_address so Pick-up stays in sync when edited from this step only
+      const hasShootingAddress =
+        patch.shootingStreetAddress !== undefined ||
+        patch.shootingZipCode !== undefined ||
+        patch.shootingCity !== undefined ||
+        patch.shootingCountry !== undefined
+      const configToUse = { ...draft?.config, ...patch }
+      const formattedOrigin =
+        hasShootingAddress &&
+        [configToUse.shootingStreetAddress, configToUse.shootingZipCode, configToUse.shootingCity, configToUse.shootingCountry]
+          .filter(Boolean)
+          .join(" ")
+      const configPatch =
+        formattedOrigin !== undefined && formattedOrigin.length > 0
+          ? { ...patch, dropoff_shipping_origin_address: formattedOrigin }
+          : patch
+      service.updateCollection(id, { config: configPatch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },
-    [id, service]
+    [id, service, draft?.config]
   )
 
   const handleDropoffPlanChange = React.useCallback(
@@ -422,6 +438,10 @@ export default function CollectionCreatePage({
       | "dropoff_shipping_tracking"
     >>) => {
       if (!draft || !id) return
+      setDraft((prev) => {
+        if (!prev) return prev
+        return { ...prev, config: { ...prev.config, ...patch } }
+      })
       service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })
@@ -444,6 +464,11 @@ export default function CollectionCreatePage({
       | "lowResShippingTracking"
     >>) => {
       if (!draft || !id) return
+      setDraft((prev) => {
+        if (!prev) return prev
+        const nextConfig = { ...prev.config, ...patch }
+        return { ...prev, config: nextConfig }
+      })
       service.updateCollection(id, { config: patch }).then((updated) => {
         if (updated) setDraft(updated)
       })

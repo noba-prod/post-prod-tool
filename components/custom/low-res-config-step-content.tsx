@@ -37,6 +37,44 @@ function formatEntityLocation(loc: Location): string {
   return parts.length ? parts.join(" ") : "—"
 }
 
+/**
+ * Split a one-line address into street, zipCode, city, country.
+ * Heuristic: from the end, last word = country, second-to-last = city, digits = zip, rest = street.
+ */
+function parseOneLineAddress(
+  line: string
+): { street: string; zipCode: string; city: string; country: string } {
+  const raw = line.trim()
+  if (!raw) return { street: "", zipCode: "", city: "", country: "" }
+  const tokens = raw.split(/\s+/)
+  if (tokens.length === 1) return { street: raw, zipCode: "", city: "", country: "" }
+
+  let country = ""
+  let city = ""
+  let zipCode = ""
+  let streetParts: string[] = tokens
+
+  if (tokens.length >= 1 && /^[a-zA-ZÀ-ÿ\-]+$/.test(tokens[tokens.length - 1])) {
+    country = tokens[tokens.length - 1]
+    streetParts = tokens.slice(0, -1)
+  }
+  if (streetParts.length >= 1 && /^[a-zA-ZÀ-ÿ\-]+$/.test(streetParts[streetParts.length - 1])) {
+    city = streetParts[streetParts.length - 1]
+    streetParts = streetParts.slice(0, -1)
+  }
+  if (streetParts.length >= 1 && /^\d{4,10}$/.test(streetParts[streetParts.length - 1])) {
+    zipCode = streetParts[streetParts.length - 1]
+    streetParts = streetParts.slice(0, -1)
+  }
+
+  return {
+    street: streetParts.join(" ").trim(),
+    zipCode,
+    city,
+    country,
+  }
+}
+
 // ============================================================================
 // SUPABASE HELPERS
 // ============================================================================
@@ -121,6 +159,8 @@ export function LowResConfigStepContent({
   const [labAddress, setLabAddress] = React.useState<string>("—")
   const [handprintLabAddress, setHandprintLabAddress] = React.useState<string>("—")
   const deadlineConstraint = chronologyConstraints?.["low_res_config"]
+  const savedOriginAddress = c.lowResShippingOriginAddress?.trim()
+  const savedDestinationAddress = c.lowResShippingDestinationAddress?.trim()
 
   const deadlineDate = c.lowResScanDeadlineDate
     ? new Date(c.lowResScanDeadlineDate + "T12:00:00")
@@ -153,19 +193,21 @@ export function LowResConfigStepContent({
 
   const openEditOrigin = React.useCallback(() => {
     const current = labAddress !== "—" ? labAddress : (c.lowResShippingOriginAddress ?? "")
-    setEditStreet(current)
-    setEditZipCode("")
-    setEditCity("")
-    setEditCountry("")
+    const parsed = parseOneLineAddress(current)
+    setEditStreet(parsed.street)
+    setEditZipCode(parsed.zipCode)
+    setEditCity(parsed.city)
+    setEditCountry(parsed.country)
     setEditAddressType("origin")
   }, [labAddress, c.lowResShippingOriginAddress])
 
   const openEditDestination = React.useCallback(() => {
     const current = handprintLabAddress !== "—" ? handprintLabAddress : (c.lowResShippingDestinationAddress ?? "")
-    setEditStreet(current)
-    setEditZipCode("")
-    setEditCity("")
-    setEditCountry("")
+    const parsed = parseOneLineAddress(current)
+    setEditStreet(parsed.street)
+    setEditZipCode(parsed.zipCode)
+    setEditCity(parsed.city)
+    setEditCountry(parsed.country)
     setEditAddressType("destination")
   }, [handprintLabAddress, c.lowResShippingDestinationAddress])
 
@@ -201,7 +243,7 @@ export function LowResConfigStepContent({
     const eid = labParticipant?.entityId
     if (!eid) {
       setLabName("—")
-      setLabAddress("—")
+      setLabAddress(savedOriginAddress ?? "—")
       return
     }
     let cancelled = false
@@ -212,12 +254,12 @@ export function LowResConfigStepContent({
         if (cancelled) return
         setLabName(org?.name ?? "—")
         address = org?.address ?? "—"
-        setLabAddress(address)
+        setLabAddress(savedOriginAddress ?? address)
       } else {
         const res = await fetch(`/api/organizations/${eid}`)
         if (!res.ok) {
           setLabName("—")
-          setLabAddress("—")
+          setLabAddress(savedOriginAddress ?? "—")
           return
         }
         const data = await res.json().catch(() => null)
@@ -232,10 +274,10 @@ export function LowResConfigStepContent({
               country: entity.location.country ?? "",
             })
           : "—"
-        setLabAddress(address)
+        setLabAddress(savedOriginAddress ?? address)
       }
       // Save origin address (lab address) to config
-      if (address && address !== "—" && address !== c.lowResShippingOriginAddress) {
+      if (!savedOriginAddress && address && address !== "—") {
         onLowResConfigChange({ lowResShippingOriginAddress: address })
       }
     }
@@ -243,10 +285,14 @@ export function LowResConfigStepContent({
     return () => {
       cancelled = true
     }
-  }, [labParticipant?.entityId, c.lowResShippingOriginAddress, onLowResConfigChange])
+  }, [labParticipant?.entityId, savedOriginAddress, onLowResConfigChange])
 
   React.useEffect(() => {
     const eid = handprintParticipant?.entityId
+    if (savedDestinationAddress) {
+      setHandprintLabAddress(savedDestinationAddress)
+      return
+    }
     if (!eid) {
       setHandprintLabAddress("—")
       return
@@ -279,7 +325,7 @@ export function LowResConfigStepContent({
         setHandprintLabAddress(address)
       }
       // Save destination address (hand print lab address) to config
-      if (address && address !== "—" && address !== c.lowResShippingDestinationAddress) {
+      if (address && address !== "—") {
         onLowResConfigChange({ lowResShippingDestinationAddress: address })
       }
     }
@@ -287,7 +333,7 @@ export function LowResConfigStepContent({
     return () => {
       cancelled = true
     }
-  }, [handprintParticipant?.entityId, c.lowResShippingDestinationAddress, onLowResConfigChange])
+  }, [handprintParticipant?.entityId, savedDestinationAddress, onLowResConfigChange])
 
   React.useEffect(() => {
     if (!deadlineConstraint?.defaultDate || c.lowResScanDeadlineDate) return
@@ -354,8 +400,8 @@ export function LowResConfigStepContent({
           originContent={
             <>
               <EntitySelected
-                label="Origin"
-                entityType="Lab address"
+                label="Pick-up"
+                entityType="Address"
                 value={labAddress}
                 locked
                 editable
@@ -363,7 +409,7 @@ export function LowResConfigStepContent({
               />
               <RowVariants variant="2">
                 <DatePicker
-                  label="Pick up date"
+                  label="Date"
                   date={pickupDate}
                   onDateChange={(d) =>
                     onLowResConfigChange({
@@ -391,7 +437,7 @@ export function LowResConfigStepContent({
             <>
               <EntitySelected
                 label="Destination"
-                entityType="Hand print lab address"
+                entityType="Address"
                 value={handprintLabAddress}
                 locked
                 editable
@@ -399,7 +445,7 @@ export function LowResConfigStepContent({
               />
               <RowVariants variant="2">
                 <DatePicker
-                  label="Delivery date"
+                  label="Date"
                   date={deliveryDate}
                   onDateChange={(d) =>
                     onLowResConfigChange({

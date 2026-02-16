@@ -146,8 +146,8 @@ function getDeadlineIsoFromConfig(
   switch (stepId) {
     case "shooting":
       return {
-        date: config.shootingStartDate ?? config.shootingDate,
-        time: config.shootingStartTime,
+        date: config.shootingEndDate,
+        time: config.shootingEndTime,
       }
     case "negatives_dropoff":
       return { date: config.dropoff_delivery_date, time: config.dropoff_delivery_time }

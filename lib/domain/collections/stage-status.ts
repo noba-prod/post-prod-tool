@@ -13,6 +13,18 @@ export interface ShootingStartConfig {
   shootingDate?: string
 }
 
+function normalizeTimeForComparison(timeStr: string | undefined): string {
+  const t = (timeStr ?? "").trim().toLowerCase()
+  if (!t) return "00:00:00"
+  if (t === "morning" || t === "morning (9:00am)") return "09:00:00"
+  if (t === "midday" || t === "midday (12:00pm)" || t === "midday - 12:00pm") return "12:00:00"
+  if (t === "end-of-day" || t === "end of day (5:00pm)" || t === "end of day - 05:00pm") return "17:00:00"
+  if (t === "afternoon") return "14:00:00"
+  if (t === "evening") return "18:00:00"
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) return t.length === 5 ? `${t}:00` : t
+  return "00:00:00"
+}
+
 /**
  * Returns "in-progress" if shooting has started (start date+time <= now), else "upcoming".
  * If no shooting start date is set, returns the fallback (e.g. from collection.status).
@@ -29,9 +41,10 @@ export function deriveStageStatusFromShootingStart(
   const dateOnly = raw.includes("T") ? raw.slice(0, 10) : raw
   if (dateOnly.length < 10) return fallback
 
-  const timeStr = (config.shootingStartTime ?? "00:00:00").trim()
-  const timePart = timeStr.split(":").map(Number)
-  const [hh = 0, mm = 0] = timePart
+  const normalizedTime = normalizeTimeForComparison(config.shootingStartTime)
+  const [hhRaw, mmRaw] = normalizedTime.split(":").map(Number)
+  const hh = Number.isFinite(hhRaw) ? hhRaw : 0
+  const mm = Number.isFinite(mmRaw) ? mmRaw : 0
   const dateTimeStr = `${dateOnly}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`
   const shootingStart = new Date(dateTimeStr)
   if (Number.isNaN(shootingStart.getTime())) return fallback

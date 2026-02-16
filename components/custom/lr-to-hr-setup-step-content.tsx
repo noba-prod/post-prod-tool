@@ -177,8 +177,10 @@ export function LrToHrSetupStepContent({
     }
   }, [entityId, isDigital, ownerParticipant?.entityId, photographerUserIds.join(",")])
 
+  // Only auto-fill LR to HR due date after the user has set the previous step's date (Photographer check in handprint flow).
   React.useEffect(() => {
     if (!constraint?.defaultDate || c.lrToHrDueDate) return
+    if (c.hasHandprint && !c.photographerCheckDueDate) return
     onLrToHrSetupChange({
       lrToHrDueDate: constraint.defaultDate,
       ...(constraint.previousTimePreset && {
@@ -189,6 +191,8 @@ export function LrToHrSetupStepContent({
     constraint?.defaultDate,
     constraint?.previousTimePreset,
     c.lrToHrDueDate,
+    c.hasHandprint,
+    c.photographerCheckDueDate,
     onLrToHrSetupChange,
   ])
 

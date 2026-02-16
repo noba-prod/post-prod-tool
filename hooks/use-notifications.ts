@@ -41,9 +41,9 @@ export function useNotifications(
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch("/api/notifications?limit=50")
+      const response = await fetch("/api/notifications?limit=50", { signal })
       if (!response.ok) {
         throw new Error("Failed to fetch notifications")
       }
@@ -51,28 +51,37 @@ export function useNotifications(
       setNotifications(data.notifications || [])
       setError(null)
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       console.error("[useNotifications] Error fetching:", err)
       setError(err instanceof Error ? err.message : "Unknown error")
     }
   }, [])
 
-  const fetchUnreadCount = useCallback(async () => {
+  const fetchUnreadCount = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch("/api/notifications/unread-count")
+      const response = await fetch("/api/notifications/unread-count", { signal })
       if (!response.ok) {
         throw new Error("Failed to fetch unread count")
       }
       const data = await response.json()
-      setUnreadCount(data.count || 0)
+      setUnreadCount(data.count ?? 0)
     } catch (err) {
-      console.error("[useNotifications] Error fetching unread count:", err)
+      // Don't log or surface abort/network errors for unread count (non-critical)
+      if (err instanceof Error && err.name === "AbortError") return
+      console.debug("[useNotifications] Unread count fetch failed:", err)
     }
   }, [])
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true)
-    await Promise.all([fetchNotifications(), fetchUnreadCount()])
-    setIsLoading(false)
+    try {
+      await Promise.all([
+        fetchNotifications(signal),
+        fetchUnreadCount(signal),
+      ])
+    } finally {
+      if (!signal?.aborted) setIsLoading(false)
+    }
   }, [fetchNotifications, fetchUnreadCount])
 
   const markAsRead = useCallback(async (notificationId: string) => {
@@ -101,22 +110,23 @@ export function useNotifications(
     await Promise.all(unreadNotifications.map((n) => markAsRead(n.id)))
   }, [notifications, markAsRead])
 
-  // Initial fetch
+  // Initial fetch (with abort on unmount to avoid "Failed to fetch" from stale requests)
   useEffect(() => {
-    if (enabled) {
-      refresh()
-    }
+    if (!enabled) return
+    const ac = new AbortController()
+    refresh(ac.signal)
+    return () => ac.abort()
   }, [enabled, refresh])
 
-  // Polling for unread count
+  // Polling for unread count (abort in-flight request on cleanup)
   useEffect(() => {
     if (!enabled || pollInterval <= 0) return
-
-    const interval = setInterval(() => {
-      fetchUnreadCount()
-    }, pollInterval)
-
-    return () => clearInterval(interval)
+    const ac = new AbortController()
+    const id = setInterval(() => fetchUnreadCount(ac.signal), pollInterval)
+    return () => {
+      clearInterval(id)
+      ac.abort()
+    }
   }, [enabled, pollInterval, fetchUnreadCount])
 
   return {
