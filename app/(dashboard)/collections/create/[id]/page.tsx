@@ -411,7 +411,7 @@ export default function CollectionCreatePage({
           .filter(Boolean)
           .join(" ")
       const configPatch =
-        formattedOrigin !== undefined && formattedOrigin.length > 0
+        typeof formattedOrigin === "string" && formattedOrigin.length > 0
           ? { ...patch, dropoff_shipping_origin_address: formattedOrigin }
           : patch
       service.updateCollection(id, { config: configPatch }).then((updated) => {

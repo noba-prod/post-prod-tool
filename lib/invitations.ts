@@ -102,7 +102,6 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
       .eq("id", collectionId)
       .single()
     const collection = collectionData as Pick<Collection, "id" | "client_id" | "name"> | null
-
     if (collError || !collection?.client_id) {
       return {
         success: false,
