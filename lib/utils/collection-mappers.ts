@@ -603,6 +603,7 @@ export function mapDomainPatchToDbUpdate(
     substatus?: import("@/lib/domain/collections").CollectionSubstatus | null
     stepStatuses?: Record<string, { stage: string; health: string | null }>
     completionPercentage?: number
+    currentOwners?: import("@/lib/domain/collections").CurrentOwnerRole[]
     // URL arrays (JSONB)
     lowResSelectionUrl?: string[]
     lowResSelectionUploadedAt?: string
