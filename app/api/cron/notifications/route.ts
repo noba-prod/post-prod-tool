@@ -113,16 +113,26 @@ export async function POST(request: NextRequest) {
     const notificationsService = new NotificationsService(supabase)
 
     const startTime = Date.now()
+
+    // 1. Re-schedule for collections updated in the last 5 minutes (catches deadline changes)
+    const rescheduleResult = await notificationsService.rescheduleForUpdatedCollections()
+
+    // 2. Detect missed deadlines and fire events
+    const missedResult = await notificationsService.detectAndFireMissedDeadlines()
+
+    // 3. Process scheduled notifications
     const result = await notificationsService.processScheduledNotifications()
     const duration = Date.now() - startTime
 
     console.log(
-      `[Cron] Processed ${result.processed} notifications with ${result.errors} errors in ${duration}ms`
+      `[Cron] Rescheduled ${rescheduleResult.rescheduled} collections, fired ${missedResult.fired} missed-deadline events, processed ${result.processed} notifications with ${result.errors} errors in ${duration}ms`
     )
 
     return NextResponse.json(
       {
         success: true,
+        rescheduled: rescheduleResult.rescheduled,
+        missedDeadlinesFired: missedResult.fired,
         processed: result.processed,
         errors: result.errors,
         duration,

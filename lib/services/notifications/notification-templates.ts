@@ -2,7 +2,7 @@
  * Notification Templates Configuration
  * Source: notifications-automations.csv
  * 
- * These templates define all 24 notification types across 9 workflow steps.
+ * These templates define all notification types across 11 workflow steps.
  * They are used to seed the notification_templates database table.
  */
 
@@ -148,6 +148,21 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     emailRecipients: ["producer"],
     inappRecipients: ["producer"],
   },
+  {
+    code: "photographer_request_missing_photos",
+    step: 3,
+    stepName: "Low-res scanning",
+    title: "Photographer is requesting missing photos",
+    description: "{noteText}",
+    ctaText: "Review request",
+    ctaUrlTemplate: "/collections/{collectionId}?step=low_res_scanning",
+    triggerType: "on",
+    triggerEvent: "photographer_request_missing_photos",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["lab"],
+    inappRecipients: ["producer", "lab"],
+  },
 
   // ==========================================================================
   // Step 4: Photographer Selection
@@ -212,6 +227,21 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     emailRecipients: ["producer"],
     inappRecipients: ["producer"],
   },
+  {
+    code: "client_request_missing_photos",
+    step: 4,
+    stepName: "Photographer selection",
+    title: "Client is requesting missing photos",
+    description: "{noteText}",
+    ctaText: "Review request",
+    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_selection",
+    triggerType: "on",
+    triggerEvent: "client_request_missing_photos",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["lab", "photographer"],
+    inappRecipients: ["producer", "photographer"],
+  },
 
   // ==========================================================================
   // Step 5: Client Selection
@@ -251,15 +281,64 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     step: 5,
     stepName: "Client selection",
     title: "Client final selection submitted",
-    description: "The client has submitted the final image selection. Review it and proceed with high-resolution processing.",
-    ctaText: "Review client selection",
+    description: "The client has submitted the final image selection. Review it and validate to proceed with high-resolution processing.",
+    ctaText: "Validate client selection",
     ctaUrlTemplate: "/collections/{collectionId}?step=client_selection",
     triggerType: "on",
     triggerEvent: "client_selection_confirmed",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["hand_print_lab", "photographer"],
-    inappRecipients: ["hand_print_lab", "photographer"],
+    emailRecipients: ["photographer"],
+    inappRecipients: ["photographer", "producer"],
+  },
+
+  // ==========================================================================
+  // Step 6: Photographer Review (validates client selection)
+  // ==========================================================================
+  {
+    code: "photographer_review_risk",
+    step: 6,
+    stepName: "Photographer review",
+    title: "Photographer review at risk",
+    description: "The deadline for validating client selection is approaching. Please confirm everything is ok and add comments for high-res.",
+    ctaText: "Check HR",
+    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_check",
+    triggerType: "before",
+    triggerEvent: "photographer_check_deadline",
+    triggerOffsetMinutes: -60,
+    triggerCondition: null,
+    emailRecipients: ["photographer", "producer"],
+    inappRecipients: ["photographer"],
+  },
+  {
+    code: "photographer_check_delayed",
+    step: 6,
+    stepName: "Photographer review",
+    title: "Photographer review delayed for collection [ID]",
+    description: "Photographer review is delayed. Please coordinate with the handprint lab to adjust timings.",
+    ctaText: "Check collection",
+    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_check",
+    triggerType: "on",
+    triggerEvent: "photographer_check_deadline_missed",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["producer"],
+    inappRecipients: ["producer"],
+  },
+  {
+    code: "photographer_check_ready_for_hr",
+    step: 6,
+    stepName: "Photographer review",
+    title: "Client selection is ready for HR",
+    description: "Check photographer comments and validations before converting client selection to HR.",
+    ctaText: "Review comments",
+    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_check",
+    triggerType: "on",
+    triggerEvent: "photographer_check_approved",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["hand_print_lab"],
+    inappRecipients: ["hand_print_lab", "producer"],
   },
 
   // ==========================================================================
@@ -393,6 +472,21 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     emailRecipients: ["producer"],
     inappRecipients: ["producer"],
   },
+  {
+    code: "final_edits_request_missing_photos",
+    step: 9,
+    stepName: "Final edits",
+    title: "Photographer is requesting new edits",
+    description: "{noteText}",
+    ctaText: "Review request",
+    ctaUrlTemplate: "/collections/{collectionId}?step=final_edits",
+    triggerType: "on",
+    triggerEvent: "client_request_missing_photos",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["lab", "photographer"],
+    inappRecipients: ["producer", "photographer"],
+  },
 
   // ==========================================================================
   // Step 9: Photographer Last Check
@@ -442,6 +536,25 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     emailRecipients: ["producer"],
     inappRecipients: ["producer"],
   },
+
+  // ==========================================================================
+  // Step 11: Client Confirmation
+  // ==========================================================================
+  {
+    code: "client_confirmation_reminder",
+    step: 11,
+    stepName: "Client confirmation",
+    title: "Is collection finished?",
+    description: "Has the client received and confirmed finals?",
+    ctaText: "Collection finished",
+    ctaUrlTemplate: "/collections/{collectionId}?step=client_confirmation",
+    triggerType: "if",
+    triggerEvent: "project_deadline",
+    triggerOffsetMinutes: 60,
+    triggerCondition: "client_not_confirmed_completion",
+    emailRecipients: ["producer"],
+    inappRecipients: ["producer"],
+  },
 ]
 
 /**
@@ -469,8 +582,14 @@ export const TRIGGER_EVENT_TO_DEADLINE_FIELD: Record<string, string> = {
   // Edition
   final_edits_deadline: "precheck_studio_final_edits_date", // + time
   
-  // Photographer review
+  // Photographer check (validates client selection — step 6)
+  photographer_check_deadline: "photographer_check_due_date", // + photographer_check_due_time
+
+  // Photographer last check
   photographer_review_deadline: "check_finals_photographer_check_date", // + time
+
+  // Project deadline (used for client confirmation)
+  project_deadline: "project_deadline", // + project_deadline_time
 }
 
 /**

@@ -69,11 +69,35 @@ const DEADLINE_FIELD_MAP: Record<string, DeadlineMapping> = {
     dateField: "precheck_studio_final_edits_date",
     timeField: "precheck_studio_final_edits_time",
   },
+  photographer_check_deadline: {
+    dateField: "photographer_check_due_date",
+    timeField: "photographer_check_due_time",
+  },
   photographer_review_deadline: {
     dateField: "check_finals_photographer_check_date",
     timeField: "check_finals_photographer_check_time",
   },
+  project_deadline: {
+    dateField: "project_deadline",
+    timeField: "project_deadline_time",
+  },
 }
+
+/**
+ * Maps collection deadline fields to the *_deadline_missed event that should fire
+ * when the deadline passes without the expected action being completed.
+ * Format: [dateField, timeField, eventType]
+ */
+const DEADLINE_TO_MISSED_EVENT: [string, string, string][] = [
+  ["dropoff_delivery_date", "dropoff_delivery_time", "dropoff_deadline_missed"],
+  ["lowres_deadline_date", "lowres_deadline_time", "scanning_deadline_missed"],
+  ["photo_selection_photographer_preselection_date", "photo_selection_photographer_preselection_time", "photographer_selection_deadline_missed"],
+  ["photo_selection_client_selection_date", "photo_selection_client_selection_time", "client_selection_deadline_missed"],
+  ["photographer_check_due_date", "photographer_check_due_time", "photographer_check_deadline_missed"],
+  ["low_to_high_date", "low_to_high_time", "highres_deadline_missed"],
+  ["precheck_studio_final_edits_date", "precheck_studio_final_edits_time", "final_edits_deadline_missed"],
+  ["check_finals_photographer_check_date", "check_finals_photographer_check_time", "photographer_review_deadline_missed"],
+]
 
 export class NotificationsService implements INotificationsService {
   constructor(private readonly supabase: SupabaseClient<Database>) {}
@@ -235,9 +259,9 @@ export class NotificationsService implements INotificationsService {
       if (!context) {
         console.error("[NotificationsService] Collection not found:", collectionId)
       } else {
-        // 4. Process each template
+        // 4. Process each template (pass metadata for dynamic description interpolation)
         for (const template of templates) {
-          await this.processTemplate(template, collectionId, context)
+          await this.processTemplate(template, collectionId, context, metadata)
         }
       }
     }
@@ -431,8 +455,14 @@ export class NotificationsService implements INotificationsService {
       const deadlineDate = this.parseDeadline(dateValue, timeValue)
       if (!deadlineDate || !Number.isFinite(deadlineDate.getTime())) continue
 
-      // Calculate scheduled time
-      const scheduledFor = new Date(deadlineDate.getTime() + template.trigger_offset_minutes * 60000)
+      // For morning_reminder: schedule at 9:00 AM on the deadline day
+      let scheduledFor: Date
+      if (template.trigger_condition === "morning_reminder") {
+        scheduledFor = new Date(deadlineDate)
+        scheduledFor.setHours(9, 0, 0, 0)
+      } else {
+        scheduledFor = new Date(deadlineDate.getTime() + template.trigger_offset_minutes * 60000)
+      }
       if (!Number.isFinite(scheduledFor.getTime())) continue
 
       // Skip if already in the past
@@ -561,9 +591,98 @@ export class NotificationsService implements INotificationsService {
     return count || 0
   }
 
+  /**
+   * Re-schedule time-based notifications for in-progress collections that have
+   * been updated recently (within the last 5 minutes). This catches deadline
+   * changes made after the initial publish.
+   */
+  async rescheduleForUpdatedCollections(): Promise<{ rescheduled: number }> {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString()
+
+    const { data: collections, error } = await this.supabase
+      .from("collections")
+      .select("id")
+      .eq("status", "in_progress")
+      .gte("updated_at", fiveMinutesAgo)
+
+    if (error || !collections) return { rescheduled: 0 }
+
+    let rescheduled = 0
+    for (const col of collections) {
+      await this.scheduleTimeBasedNotifications(col.id)
+      rescheduled++
+    }
+
+    return { rescheduled }
+  }
+
+  /**
+   * Detect missed deadlines and fire the corresponding *_deadline_missed events.
+   * Called by the cron job alongside processScheduledNotifications().
+   */
+  async detectAndFireMissedDeadlines(): Promise<{ fired: number }> {
+    let fired = 0
+
+    const { data: collections, error } = await this.supabase
+      .from("collections")
+      .select("*")
+      .eq("status", "in_progress")
+
+    if (error || !collections) {
+      console.error("[NotificationsService] Failed to fetch in-progress collections:", error)
+      return { fired: 0 }
+    }
+
+    const now = new Date()
+
+    for (const collection of collections) {
+      const col = collection as Record<string, unknown>
+
+      for (const [dateField, timeField, eventType] of DEADLINE_TO_MISSED_EVENT) {
+        const dateVal = col[dateField] as string | null
+        if (!dateVal) continue
+
+        const timeVal = col[timeField] as string | null
+        const deadline = this.parseDeadline(dateVal, timeVal)
+        if (!deadline || deadline > now) continue
+
+        const { data: existing } = await this.supabase
+          .from("collection_events")
+          .select("id")
+          .eq("collection_id", collection.id)
+          .eq("event_type", eventType)
+          .limit(1)
+
+        if (existing && existing.length > 0) continue
+
+        await this.triggerEvent(collection.id, eventType as CollectionEventType)
+        fired++
+      }
+    }
+
+    return { fired }
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================
+
+  private static readonly NOTE_TEXT_FALLBACK = "A request has been made. Please check the collection for details."
+
+  /**
+   * Interpolate dynamic placeholders in template description.
+   * Currently supports {noteText} from event metadata.
+   */
+  private static interpolateDescription(
+    description: string,
+    metadata?: Record<string, unknown>
+  ): string {
+    if (!description.includes("{noteText}")) return description
+    const noteText = typeof metadata?.noteText === "string" && metadata.noteText.trim()
+      ? metadata.noteText.trim()
+      : NotificationsService.NOTE_TEXT_FALLBACK
+    return description.replace(/\{noteText\}/g, noteText)
+  }
 
   /**
    * Process a single template for a collection
@@ -571,7 +690,8 @@ export class NotificationsService implements INotificationsService {
   private async processTemplate(
     template: NotificationTemplate,
     collectionId: string,
-    context: { name: string; reference: string | null }
+    context: { name: string; reference: string | null },
+    metadata?: Record<string, unknown>
   ): Promise<void> {
     // Resolve email recipients
     const emailRecipients = await resolveRecipients(
@@ -589,6 +709,7 @@ export class NotificationsService implements INotificationsService {
 
     const title = formatNotificationTitle(template.title, context.name, context.reference)
     const ctaUrl = buildCtaUrl(template.cta_url_template, collectionId)
+    const body = NotificationsService.interpolateDescription(template.description, metadata)
 
     // Create email notifications
     for (const recipient of emailRecipients) {
@@ -599,7 +720,7 @@ export class NotificationsService implements INotificationsService {
         channel: "email",
         status: "pending",
         title,
-        body: template.description,
+        body,
         cta_text: template.cta_text,
         cta_url: ctaUrl,
       })
@@ -614,7 +735,7 @@ export class NotificationsService implements INotificationsService {
         channel: "in_app",
         status: "sent",
         title,
-        body: template.description,
+        body,
         cta_text: template.cta_text,
         cta_url: ctaUrl,
         sent_at: new Date().toISOString(),
@@ -713,6 +834,9 @@ export class NotificationsService implements INotificationsService {
       case "morning_reminder":
         // Always true for first-time morning reminders (controlled by scheduling)
         return true
+
+      case "client_not_confirmed_completion":
+        return !eventTypes.includes("client_confirmation_confirmed")
 
       default:
         console.warn(`[NotificationsService] Unknown condition: ${condition}`)

@@ -50,4 +50,12 @@ export class NoopNotificationsService implements INotificationsService {
   async getUnreadCount(_userId: string): Promise<number> {
     return 0
   }
+
+  async detectAndFireMissedDeadlines(): Promise<{ fired: number }> {
+    return { fired: 0 }
+  }
+
+  async rescheduleForUpdatedCollections(): Promise<{ rescheduled: number }> {
+    return { rescheduled: 0 }
+  }
 }

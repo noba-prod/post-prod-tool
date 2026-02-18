@@ -3,7 +3,7 @@
  * Internal/testing helper:
  * - resets collection status to draft
  * - clears published/substatus/progress fields
- * - removes workflow events and scheduled notifications
+ * - removes workflow events, notifications, and scheduled notification tracking
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -122,6 +122,19 @@ export async function POST(
       console.error("[reset-to-draft] Delete events error:", deleteEventsError)
       return NextResponse.json(
         { error: "Failed to delete collection events" },
+        { status: 500 }
+      )
+    }
+
+    const { error: deleteNotificationsError } = await admin
+      .from("notifications")
+      .delete()
+      .eq("collection_id", collectionId)
+
+    if (deleteNotificationsError) {
+      console.error("[reset-to-draft] Delete notifications error:", deleteNotificationsError)
+      return NextResponse.json(
+        { error: "Failed to delete notifications" },
         { status: 500 }
       )
     }

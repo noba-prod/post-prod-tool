@@ -23,6 +23,8 @@ export type CollectionEventType =
   | "photographer_selection_shared"
   | "photographer_selection_deadline_missed"
   | "photographer_requested_additional_photos"
+  | "photographer_request_missing_photos"
+  | "client_request_missing_photos"
   // Client selection events
   | "client_selection_started"
   | "client_selection_confirmed"
@@ -39,6 +41,7 @@ export type CollectionEventType =
   | "final_edits_deadline_missed"
   // Photographer review (validates client selection — step 6)
   | "photographer_check_approved"
+  | "photographer_check_deadline_missed"
   // Photographer review events (last check — step 10)
   | "photographer_review_started"
   | "photographer_edits_approved"
@@ -131,4 +134,14 @@ export interface INotificationsService {
    * Get count of unread notifications for a user.
    */
   getUnreadCount(userId: string): Promise<number>
+
+  /**
+   * Detect missed deadlines in active collections and fire *_deadline_missed events.
+   */
+  detectAndFireMissedDeadlines(): Promise<{ fired: number }>
+
+  /**
+   * Re-schedule time-based notifications for recently updated collections.
+   */
+  rescheduleForUpdatedCollections(): Promise<{ rescheduled: number }>
 }

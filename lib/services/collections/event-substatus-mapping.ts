@@ -46,6 +46,8 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   photographer_selection_deadline_missed: { action: "none" },
   // Missing photos: revert from photographer_selection/client_selection back to low_res_scanning
   photographer_requested_additional_photos: { action: "revert", substatus: "low_res_scanning" },
+  photographer_request_missing_photos: { action: "none" },
+  client_request_missing_photos: { action: "none" },
 
   // Client selection
   client_selection_started: { action: "none" },
@@ -54,6 +56,7 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
 
   // Photographer review (validates client selection — step 6; informational, does not advance substatus)
   photographer_check_approved: { action: "none" },
+  photographer_check_deadline_missed: { action: "none" },
 
   // High-res
   highres_started: { action: "none" },

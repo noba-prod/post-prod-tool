@@ -1,6 +1,7 @@
 /**
  * Resets a collection to draft mode for internal testing.
  * - Deletes all collection_events for the collection
+ * - Deletes all notifications for the collection
  * - Deletes scheduled_notification_tracking rows
  * - Resets workflow/progress fields and sets status back to draft
  *
@@ -137,6 +138,16 @@ async function main() {
 
   if (deleteEventsError) {
     console.error("Failed to delete collection_events:", deleteEventsError)
+    process.exit(1)
+  }
+
+  const { error: deleteNotificationsError } = await admin
+    .from("notifications")
+    .delete()
+    .eq("collection_id", collectionId)
+
+  if (deleteNotificationsError) {
+    console.error("Failed to delete notifications:", deleteNotificationsError)
     process.exit(1)
   }
 

@@ -429,6 +429,7 @@ export default function CollectionViewPage({
         }
         await patchCollection(body)
         await fireEvent("photographer_selection_uploaded", { url, notes: payload.notes })
+        await fireEvent("photographer_selection_shared")
         await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {

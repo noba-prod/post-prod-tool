@@ -97,6 +97,20 @@ export const CollectionEvents = {
   photographerSelectionShared: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "photographer_selection_shared", options),
 
+  // Missing photos requests
+  photographerRequestMissingPhotos: (collectionId: string, options?: TriggerEventOptions) =>
+    triggerCollectionEvent(collectionId, "photographer_request_missing_photos", options),
+
+  clientRequestMissingPhotos: (collectionId: string, options?: TriggerEventOptions) =>
+    triggerCollectionEvent(collectionId, "client_request_missing_photos", options),
+
+  // Photographer check (validates client selection — step 6)
+  photographerCheckApproved: (collectionId: string, options?: TriggerEventOptions) =>
+    triggerCollectionEvent(collectionId, "photographer_check_approved", options),
+
+  photographerCheckDeadlineMissed: (collectionId: string, options?: TriggerEventOptions) =>
+    triggerCollectionEvent(collectionId, "photographer_check_deadline_missed", options),
+
   // Client selection events
   clientSelectionConfirmed: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "client_selection_confirmed", options),
