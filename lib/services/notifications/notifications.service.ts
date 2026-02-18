@@ -608,7 +608,7 @@ export class NotificationsService implements INotificationsService {
     if (error || !collections) return { rescheduled: 0 }
 
     let rescheduled = 0
-    for (const col of collections) {
+    for (const col of collections as { id: string }[]) {
       await this.scheduleTimeBasedNotifications(col.id)
       rescheduled++
     }
