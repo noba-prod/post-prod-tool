@@ -635,7 +635,7 @@ export class NotificationsService implements INotificationsService {
 
     const now = new Date()
 
-    for (const collection of collections) {
+    for (const collection of collections as Array<Record<string, unknown> & { id: string }>) {
       const col = collection as Record<string, unknown>
 
       for (const [dateField, timeField, eventType] of DEADLINE_TO_MISSED_EVENT) {
