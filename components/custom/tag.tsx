@@ -83,7 +83,7 @@ const stageStatusLabels: Record<StageStatusValue, string> = {
   upcoming: "Upcoming",
   "in-progress": "In progress",
   "in-transit": "In transit",
-  done: "Done",
+  done: "Completed",
   delivered: "Delivered",
 }
 

@@ -17,6 +17,7 @@ export type {
   CreationData,
   CreationTemplateStep,
   ParticipantRole,
+  CurrentOwnerRole,
   StepId,
   StepNoteEntry,
   UserForPermission,

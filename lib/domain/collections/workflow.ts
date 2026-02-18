@@ -141,7 +141,8 @@ function parseDateTimeMs(
  * Used to sync the DB status column when dates have passed.
  * - draft: not published (no publishedAt)
  * - canceled: keep as-is (manual)
- * - completed: published AND project_deadline + project_deadline_time have passed
+ * - completed: keep as-is (explicit user action via "Complete collection" button),
+ *              OR published AND clientFinalsDeadline has passed (temporal)
  * - in_progress: published AND shooting start has passed AND not completed
  * - upcoming: published AND shooting start not yet passed
  */
@@ -153,6 +154,8 @@ export function deriveCanonicalCollectionStatus(
 ): CollectionStatus {
   if (!publishedAt?.trim()) return "draft"
   if (currentStatus === "canceled") return "canceled"
+  // Explicit completion (user clicked "Complete collection") overrides temporal rules.
+  if (currentStatus === "completed") return "completed"
 
   const nowMs = now.getTime()
 
@@ -333,7 +336,7 @@ export function isDraftComplete(draft: CollectionDraft): boolean {
 
 function getRequiredParticipantRoles(config: CollectionConfig): ParticipantRole[] {
   const roles: ParticipantRole[] = ["producer", "client", "photographer"]
-  // Agency is selected via Photographer's "Select agency" — no separate agency section/role (collections-logic)
+  if (config.hasAgency) roles.push("agency")
   // Lab only in handprint workflow; digital-only has no lab (collections-logic)
   if (config.hasHandprint) roles.push("lab")
   // Handprint lab required only when it is a different lab than low-res (collections-logic)
@@ -379,15 +382,15 @@ export function isParticipantsStepComplete(draft: CollectionDraft): boolean {
       return (p?.userIds?.length ?? 0) > 0
     }
 
-    // Photographer: at least one user; when hasAgency also requires entityId (the agency)
+    // Agency: entityId required + at least one user
+    if (role === "agency") {
+      if (!(p?.entityId ?? "").trim()) return false
+      return (p?.userIds?.length ?? 0) > 0
+    }
+
+    // Photographer: at least one user (agency users are tracked separately in role="agency")
     if (role === "photographer") {
-      if (!config.hasAgency) {
-        return (p?.userIds?.length ?? 0) > 0
-      }
-      return (
-        !!(p?.entityId ?? "").trim() &&
-        (p?.userIds?.length ?? 0) > 0
-      )
+      return (p?.userIds?.length ?? 0) > 0
     }
 
     return (p?.entityId ?? "").trim().length > 0
@@ -503,21 +506,29 @@ export function getStepOwner(
     case "low_res_scanning":
       return ["lab", producer]
     case "photographer_selection":
-      return ["photographer", producer]
+      return config.hasAgency
+        ? (["photographer", "agency", producer] as ParticipantRole[])
+        : (["photographer", producer] as ParticipantRole[])
     case "client_selection":
       return ["client", producer]
     case "photographer_check_client_selection":
-      return ["photographer", producer]
+      return config.hasAgency
+        ? (["photographer", "agency", producer] as ParticipantRole[])
+        : (["photographer", producer] as ParticipantRole[])
     case "handprint_high_res":
       return config.handprintIsDifferentLab
         ? (["handprint_lab", producer] as ParticipantRole[])
         : (["lab", producer] as ParticipantRole[])
     case "edition_request":
-      return ["photographer", producer]
+      return config.hasAgency
+        ? (["photographer", "agency", producer] as ParticipantRole[])
+        : (["photographer", producer] as ParticipantRole[])
     case "final_edits":
       return ["edition_studio", producer]
     case "photographer_last_check":
-      return ["photographer", producer]
+      return config.hasAgency
+        ? (["photographer", "agency", producer] as ParticipantRole[])
+        : (["photographer", producer] as ParticipantRole[])
     case "client_confirmation":
       return ["client", producer]
     default: {

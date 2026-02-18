@@ -125,7 +125,7 @@ export async function POST(
           // Revert: force-set substatus backwards (e.g. missing photos)
           await collectionsService.revertSubstatus(collectionId, advance.substatus)
         } else if (advance.action === "complete") {
-          await collectionsService.updateSubstatus(collectionId, "client_confirmation")
+          await collectionsService.completeCollection(collectionId)
         } else if (advance.action === "cancel") {
           await collectionsService.cancelCollection(collectionId)
         }

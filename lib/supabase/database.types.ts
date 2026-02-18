@@ -21,12 +21,13 @@ export type UserRole = 'admin' | 'editor' | 'viewer'
 export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'revoked'
 
 export type CollectionMemberRole = 
-  | 'manager'          // Client users who manage/approve the collection
-  | 'producer'         // Noba* (producer) users who own or collaborate on the collection
+  | 'client'           // Client users participating in the collection
+  | 'noba'             // Noba* internal users who own or collaborate on the collection
   | 'photographer'     // Users from photography_agency or self_photographer
-  | 'lab_technician'   // Users from lab_low_res_scan
-  | 'editor'           // Users from edition_studio
-  | 'print_technician' // Users from hand_print_lab
+  | 'agency'           // Users from photography_agency
+  | 'photo_lab'        // Users from lab_low_res_scan
+  | 'retouch_studio'   // Users from edition_studio
+  | 'handprint_lab'    // Users from hand_print_lab
 
 // Notifications (migration 016)
 export type NotificationTriggerType = 'before' | 'after' | 'on' | 'if' | 'first_time'
@@ -270,6 +271,8 @@ export interface Collection {
   // Per-step status tracking (migration 032)
   step_statuses: Record<string, { stage: string; health: string | null }>
   completion_percentage: number
+  // Current active owner roles (migration 036)
+  current_owners: CollectionMemberRole[]
   // noba* internal users (owner + members)
   noba_user_ids: string[]
   noba_edit_permission_by_user_id: Record<string, boolean>
@@ -366,6 +369,7 @@ export interface CollectionInsert {
   substatus?: string | null
   step_statuses?: Record<string, { stage: string; health: string | null }>
   completion_percentage?: number
+  current_owners?: CollectionMemberRole[]
   noba_user_ids?: string[]
   noba_edit_permission_by_user_id?: Record<string, boolean>
   participant_edit_permissions?: Record<string, Record<string, boolean>>
@@ -458,6 +462,7 @@ export interface CollectionUpdate {
   substatus?: string | null
   step_statuses?: Record<string, { stage: string; health: string | null }>
   completion_percentage?: number
+  current_owners?: CollectionMemberRole[]
   noba_user_ids?: string[]
   noba_edit_permission_by_user_id?: Record<string, boolean>
   participant_edit_permissions?: Record<string, Record<string, boolean>>

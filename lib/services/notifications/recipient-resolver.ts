@@ -29,10 +29,10 @@ interface CollectionWithAssignments {
  * Resolves a list of recipient types to actual users for a given collection.
  * 
  * Recipient mapping:
- * - producer: collection_members with role='producer'
- * - lab: collection_members with role='lab_technician' + all users from lab_low_res_id org
+ * - producer: collection_members with role='noba'
+ * - lab: collection_members with role='photo_lab' + all users from lab_low_res_id org
  * - photographer: collection_members with role='photographer'
- * - client: collection_members with role='manager' + all users from client_id org
+ * - client: collection_members with role='client' + all users from client_id org
  * - hand_print_lab: all users from hand_print_lab_id org
  * - edition_studio: all users from edition_studio_id org
  */
@@ -67,11 +67,11 @@ export async function resolveRecipients(
   for (const type of recipientTypes) {
     switch (type) {
       case "producer":
-        memberRoles.push("producer")
+        memberRoles.push("noba")
         break
       
       case "lab":
-        memberRoles.push("lab_technician")
+        memberRoles.push("photo_lab")
         if (collectionData.lab_low_res_id) {
           orgIds.add(collectionData.lab_low_res_id)
         }
@@ -82,7 +82,7 @@ export async function resolveRecipients(
         break
       
       case "client":
-        memberRoles.push("manager")
+        memberRoles.push("client")
         if (collectionData.client_id) {
           orgIds.add(collectionData.client_id)
         }

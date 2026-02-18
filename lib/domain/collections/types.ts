@@ -20,6 +20,16 @@ export const PARTICIPANT_ROLES = [
 
 export type ParticipantRole = (typeof PARTICIPANT_ROLES)[number]
 
+/** DB-level role names stored in collections.current_owners */
+export type CurrentOwnerRole =
+  | "noba"
+  | "client"
+  | "photographer"
+  | "agency"
+  | "photo_lab"
+  | "retouch_studio"
+  | "handprint_lab"
+
 // =============================================================================
 // STABLE STEP IDS — Execution / View Mode (collections-logic §10)
 // Never depend on UI ordering.
@@ -210,6 +220,8 @@ export interface Collection {
   stepStatuses?: Record<string, { stage: string; health: string | null }>
   /** Completion percentage (0-100) based on count of "done" visible steps. */
   completionPercentage?: number
+  /** Current active owner roles (derived from the active in-progress step). */
+  currentOwners?: CurrentOwnerRole[]
   config: CollectionConfig
   participants: CollectionParticipant[]
   creationData: CreationData

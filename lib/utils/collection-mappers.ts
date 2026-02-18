@@ -7,6 +7,7 @@ import type {
   Collection as DomainCollection,
   CollectionConfig,
   CollectionParticipant,
+  CurrentOwnerRole,
   CreationBlockId,
   CreationData,
   ParticipantRole,
@@ -68,6 +69,21 @@ function parseJsonbNoteArray(raw: unknown): StepNoteEntry[] {
   return []
 }
 
+/** Parse current_owners array from DB (text[]/enum[]). */
+function parseCurrentOwners(raw: unknown): CurrentOwnerRole[] {
+  if (!raw) return []
+  if (!Array.isArray(raw)) return []
+  return raw.filter((v): v is CurrentOwnerRole =>
+    v === "noba" ||
+    v === "client" ||
+    v === "photographer" ||
+    v === "agency" ||
+    v === "photo_lab" ||
+    v === "retouch_studio" ||
+    v === "handprint_lab"
+  )
+}
+
 /** Append a URL to an existing URL array (non-destructive). */
 export function appendToUrlArray(existing: string[] | undefined, newUrl: string): string[] {
   return [...(existing ?? []), newUrl]
@@ -81,11 +97,11 @@ export function appendNote(existing: StepNoteEntry[] | undefined, entry: StepNot
 /** DB → Domain: build config from flat DB row */
 function dbRowToConfig(row: DbCollection, members: CollectionMember[]): CollectionConfig {
   const managerUserId =
-    members.find((m) => m.role === "manager")?.user_id ?? ""
-  const ownerMember = members.find((m) => m.role === "producer" && (m as { is_owner?: boolean }).is_owner === true)
+    members.find((m) => m.role === "client")?.user_id ?? ""
+  const ownerMember = members.find((m) => m.role === "noba" && (m as { is_owner?: boolean }).is_owner === true)
   const ownerUserId =
-    ownerMember?.user_id ?? members.find((m) => m.role === "producer")?.user_id ?? undefined
-  const producerMembers = members.filter((m) => m.role === "producer")
+    ownerMember?.user_id ?? members.find((m) => m.role === "noba")?.user_id ?? undefined
+  const producerMembers = members.filter((m) => m.role === "noba")
   const producerUserIds = producerMembers.map((m) => m.user_id)
   const rowNobaUserIds = Array.isArray((row as { noba_user_ids?: unknown }).noba_user_ids)
     ? (row as { noba_user_ids: string[] }).noba_user_ids
@@ -167,12 +183,13 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
 }
 
 const DB_ROLE_TO_DOMAIN: Record<CollectionMemberRole, ParticipantRole | null> = {
-  manager: "client",
-  producer: "producer",
+  client: "client",
+  noba: "producer",
   photographer: "photographer",
-  lab_technician: "lab",
-  editor: "edition_studio",
-  print_technician: "handprint_lab",
+  agency: "agency",
+  photo_lab: "lab",
+  retouch_studio: "edition_studio",
+  handprint_lab: "handprint_lab",
 }
 
 /** Build editPermissionByUserId from member rows using the can_edit column.
@@ -204,7 +221,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
   }
   const participants: CollectionParticipant[] = []
   if (row.client_id) {
-    const clientMembers = byRole.get("manager") ?? []
+    const clientMembers = byRole.get("client") ?? []
     const clientUserIds = clientMembers.map((m) => m.user_id)
     participants.push({
       role: "client",
@@ -213,7 +230,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       editPermissionByUserId: editPermissionFromMembers(clientMembers, "client", storedLegacy),
     })
   }
-  const producerMembers = byRole.get("producer") ?? []
+  const producerMembers = byRole.get("noba") ?? []
   if (producerMembers.length > 0) {
     const producerUserIds = producerMembers.map((m) => m.user_id)
     participants.push({
@@ -225,21 +242,42 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
   }
   // Photographer participant: create if photographer_id is set OR if photographer members exist
   // (self-photographer without agency may have entityId undefined → photographer_id is null,
-  //  but the user is stored in collection_members with role "photographer")
+  //  but the user is stored in collection_members with role "photographer").
+  // When hasAgency: photographer = self-photographer only. Agency users must NOT appear in
+  // photographer (they are separate). Exclude any user_id that is in agency from photographer.
+  const hasAgency = row.photographer_collaborates_with_agency
+  const agencyMembers = byRole.get("agency") ?? []
+  const agencyUserIds = new Set(agencyMembers.map((m) => m.user_id))
   {
     const photoMembers = byRole.get("photographer") ?? []
-    if (row.photographer_id || photoMembers.length > 0) {
-      const userIds = photoMembers.map((m) => m.user_id)
+    const photoUserIds = hasAgency
+      ? photoMembers.map((m) => m.user_id).filter((uid) => !agencyUserIds.has(uid))
+      : photoMembers.map((m) => m.user_id)
+    const filteredPhotoMembers = hasAgency
+      ? photoMembers.filter((m) => !agencyUserIds.has(m.user_id))
+      : photoMembers
+    if ((!hasAgency && row.photographer_id) || filteredPhotoMembers.length > 0) {
       participants.push({
         role: "photographer",
+        entityId: hasAgency ? undefined : (row.photographer_id ?? undefined),
+        userIds: photoUserIds,
+        editPermissionByUserId: editPermissionFromMembers(filteredPhotoMembers, "photographer", storedLegacy),
+      })
+    }
+  }
+  if (hasAgency) {
+    const agencyUserIdsArr = agencyMembers.map((m) => m.user_id)
+    if (row.photographer_id || agencyMembers.length > 0) {
+      participants.push({
+        role: "agency",
         entityId: row.photographer_id ?? undefined,
-        userIds,
-        editPermissionByUserId: editPermissionFromMembers(photoMembers, "photographer", storedLegacy),
+        userIds: agencyUserIdsArr,
+        editPermissionByUserId: editPermissionFromMembers(agencyMembers, "agency", storedLegacy),
       })
     }
   }
   if (row.lab_low_res_id) {
-    const labMembers = byRole.get("lab_technician") ?? []
+    const labMembers = byRole.get("photo_lab") ?? []
     const userIds = labMembers.map((m) => m.user_id)
     participants.push({
       role: "lab",
@@ -249,7 +287,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
     })
   }
   if (row.edition_studio_id) {
-    const editorMembers = byRole.get("editor") ?? []
+    const editorMembers = byRole.get("retouch_studio") ?? []
     const userIds = editorMembers.map((m) => m.user_id)
     participants.push({
       role: "edition_studio",
@@ -259,7 +297,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
     })
   }
   if (row.hand_print_lab_id) {
-    const printMembers = byRole.get("print_technician") ?? []
+    const printMembers = byRole.get("handprint_lab") ?? []
     const userIds = printMembers.map((m) => m.user_id)
     participants.push({
       role: "handprint_lab",
@@ -291,17 +329,23 @@ export function deriveCompletedBlockIds(
   if (hasClient && hasPhotographer && hasProducer) {
     // Also check optional participants based on config
     let participantsComplete = true
+    if (config.hasAgency) {
+      const agency = participants.find(p => p.role === "agency")
+      if (!(agency?.entityId?.trim()) || (agency?.userIds?.length ?? 0) === 0) {
+        participantsComplete = false
+      }
+    }
     if (config.hasHandprint) {
       const lab = participants.find(p => p.role === "lab")
-      if (!(lab?.entityId?.trim())) participantsComplete = false
+      if (!(lab?.entityId?.trim()) || (lab?.userIds?.length ?? 0) === 0) participantsComplete = false
     }
     if (config.hasHandprint && config.handprintIsDifferentLab) {
       const handprintLab = participants.find(p => p.role === "handprint_lab")
-      if (!(handprintLab?.entityId?.trim())) participantsComplete = false
+      if (!(handprintLab?.entityId?.trim()) || (handprintLab?.userIds?.length ?? 0) === 0) participantsComplete = false
     }
     if (config.hasEditionStudio) {
       const editionStudio = participants.find(p => p.role === "edition_studio")
-      if (!(editionStudio?.entityId?.trim())) participantsComplete = false
+      if (!(editionStudio?.entityId?.trim()) || (editionStudio?.userIds?.length ?? 0) === 0) participantsComplete = false
     }
     if (participantsComplete) {
       completed.push("participants")
@@ -420,12 +464,14 @@ export function mapDbCollectionToDomain(
   const rawStepStatuses = (row as { step_statuses?: Record<string, { stage: string; health: string | null }> | null }).step_statuses
   const stepStatuses = rawStepStatuses && typeof rawStepStatuses === "object" ? rawStepStatuses : undefined
   const completionPercentage = (row as { completion_percentage?: number | null }).completion_percentage ?? 0
+  const currentOwners = parseCurrentOwners((row as { current_owners?: unknown }).current_owners)
   return {
     id: row.id,
     status,
     substatus: status === "in_progress" ? (substatus as DomainCollection["substatus"]) : undefined,
     stepStatuses,
     completionPercentage,
+    currentOwners: currentOwners.length > 0 ? currentOwners : undefined,
     config,
     participants,
     creationData,
@@ -456,19 +502,23 @@ export function mapDbCollectionToDomain(
 }
 
 const DOMAIN_ROLE_TO_DB: Record<ParticipantRole, CollectionMemberRole> = {
-  producer: "producer",
-  client: "manager",
+  producer: "noba",
+  client: "client",
   photographer: "photographer",
-  agency: "photographer",
-  lab: "lab_technician",
-  handprint_lab: "print_technician",
-  edition_studio: "editor",
+  agency: "agency",
+  lab: "photo_lab",
+  handprint_lab: "handprint_lab",
+  edition_studio: "retouch_studio",
 }
 
 /** Domain → DB insert */
 export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
   const conf = c.config
-  const photographerId = c.participants.find((p) => p.role === "photographer")?.entityId
+  const photographerParticipant = c.participants.find((p) => p.role === "photographer")
+  const agencyParticipant = c.participants.find((p) => p.role === "agency")
+  const photographerId = conf.hasAgency
+    ? agencyParticipant?.entityId
+    : photographerParticipant?.entityId
   const labId = c.participants.find((p) => p.role === "lab")?.entityId
   const editionStudioId = c.participants.find((p) => p.role === "edition_studio")?.entityId
   const handprintLabId = c.participants.find((p) => p.role === "handprint_lab")?.entityId
@@ -588,6 +638,7 @@ export function mapDomainPatchToDbUpdate(
   if (patch.substatus !== undefined) u.substatus = patch.substatus ?? null
   if (patch.stepStatuses !== undefined) u.step_statuses = patch.stepStatuses
   if (patch.completionPercentage !== undefined) u.completion_percentage = patch.completionPercentage
+  if (patch.currentOwners !== undefined) u.current_owners = patch.currentOwners as CollectionMemberRole[]
   // URL arrays
   if (patch.lowResSelectionUrl !== undefined) u.lowres_selection_url = patch.lowResSelectionUrl
   if (patch.lowResSelectionUploadedAt !== undefined) u.lowres_selection_uploaded_at = patch.lowResSelectionUploadedAt ?? null
@@ -674,7 +725,13 @@ export function mapDomainPatchToDbUpdate(
     // if (conf.nobaEditPermissionByUserId !== undefined) u.noba_edit_permission_by_user_id = conf.nobaEditPermissionByUserId
   }
   if (patch.participants) {
-    const photographerId = patch.participants.find((p) => p.role === "photographer")?.entityId
+    const photographerParticipant = patch.participants.find((p) => p.role === "photographer")
+    const agencyParticipant = patch.participants.find((p) => p.role === "agency")
+    const useAgencyRole =
+      patch.config?.hasAgency ?? patch.participants.some((p) => p.role === "agency")
+    const photographerId = useAgencyRole
+      ? agencyParticipant?.entityId
+      : photographerParticipant?.entityId
     const labId = patch.participants.find((p) => p.role === "lab")?.entityId
     const editionStudioId = patch.participants.find((p) => p.role === "edition_studio")?.entityId
     const handprintLabId = patch.participants.find((p) => p.role === "handprint_lab")?.entityId
@@ -699,14 +756,18 @@ export function mapParticipantsToDbMembers(
   // Use a Set to deduplicate by (user_id, role)
   const seen = new Set<string>()
   const out: CollectionMemberInsert[] = []
-  
+  const agencyParticipant = participants.find((p) => p.role === "agency")
+  const agencyUserIds = new Set(agencyParticipant?.userIds ?? [])
+
   for (const p of participants) {
     const dbRole = DOMAIN_ROLE_TO_DB[p.role]
     for (const userId of p.userIds ?? []) {
+      // When agency exists: never create photographer rows for agency users (they are separate).
+      if (dbRole === "photographer" && agencyUserIds.has(userId)) continue
       const key = `${userId}:${dbRole}`
       if (!seen.has(key)) {
         seen.add(key)
-        const isOwner = dbRole === "producer" && userId === ownerUserId
+        const isOwner = dbRole === "noba" && userId === ownerUserId
         // can_edit: read from editPermissionByUserId; default true for new members
         const canEdit = p.editPermissionByUserId?.[userId] ?? true
         out.push({ collection_id: collectionId, user_id: userId, role: dbRole, is_owner: isOwner, can_edit: canEdit })

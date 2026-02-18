@@ -51,6 +51,7 @@ import { ParticipantsCard } from "@/components/custom/participants-card"
 import { SwitchList } from "@/components/custom/switch-list"
 import { InformativeToast } from "@/components/custom/informative-toast"
 import { RowVariants, SlotPlaceholder } from "@/components/custom/row-variants"
+import { LinkAccordion } from "@/components/custom/link-accordion"
 
 export interface ComponentEntry {
   id: string
@@ -577,7 +578,7 @@ Gap: 16px | Padding: 40px`,
     id: "step-details",
     name: "step-details",
     title: "Step Details",
-    description: "Step detail card with 4 variants per Figma DS (node 13445-2873): primary (bg image + overlay, white text, CTA), secondary (zinc-100, dark text, CTA), notes (Notes from <entity> + additional info, no CTA), missingPhotos (Missing photos? + subtitle + repeat CTA). Uses design system typography: text-2xl font-semibold (main title), text-base (subtitle), text-sm (additional). Primary variant background image is configurable (default: /assets/bg-finals.png for documentation).",
+    description: "Step detail card with 6 variants per Figma DS (node 13445-2873): primary (bg image + overlay, white text, CTA), secondary (zinc-100, dark text, CTA), notes compressed (quote-style text with see more/less + author avatar; no title), notes displayed (expanded), missingPhotos (Missing photos? + subtitle + repeat CTA), additionalRequest (<entity> in lime + 'is requesting additional photos' + quote info). Primary bg image configurable (default: /assets/bg-finals.png).",
     demo: (
       <div className="flex flex-wrap gap-8 items-start">
         <div className="w-[247px] shrink-0 space-y-2">
@@ -600,11 +601,22 @@ Gap: 16px | Padding: 40px`,
             onAction={() => {}}
           />
         </div>
-        <div className="w-[247px] shrink-0 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Notes</p>
+        <div className="w-[365px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Notes (compressed)</p>
           <StepDetails
             variant="notes"
             mainTitle="Notes"
+            entityName="Client"
+            additionalInfo="This is a example of a very long text that carry more than on line of content, just to show how this component behave."
+            authorName="Erika Goldner"
+            authorImageUrl=""
+          />
+        </div>
+        <div className="w-[365px] shrink-0 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Additional Request</p>
+          <StepDetails
+            variant="additionalRequest"
+            mainTitle=""
             entityName="Client"
             additionalInfo="Additional information"
           />
@@ -618,6 +630,50 @@ Gap: 16px | Padding: 40px`,
             onAction={() => {}}
           />
         </div>
+      </div>
+    ),
+  },
+  {
+    id: "link-accordion",
+    name: "link-accordion",
+    title: "Link Accordion",
+    description: "Collapsible accordion for file links per Figma node 900-51168. Each item has: a label header with chevron toggle, a StepDetails primary card (compact 96px) with background image and action button, and an optional StepDetails notes card with see more/less and author info. Items separated by Separator.",
+    demo: (
+      <div className="w-full max-w-[400px]">
+        <LinkAccordion
+          items={[
+            {
+              label: "Original link",
+              primaryTitle: "Low-res photos",
+              primarySubtitle: "Uploaded: 1 day ago",
+              primaryBackgroundImage: "/assets/bg-lowres.png",
+              primaryOnAction: () => {},
+              noteText: "There was some problems when scanning latest negatives. If you notice any missing photos from the shoot, get in touch with us to solve problems.",
+              noteAuthorName: "Erika Goldner",
+              defaultOpen: true,
+            },
+            {
+              label: <><span>Additional footage </span><span className="text-lime-500">#01</span></>,
+              primaryTitle: "Low-res photos",
+              primarySubtitle: "Uploaded: 2 minutes ago",
+              primaryBackgroundImage: "/assets/bg-lowres.png",
+              primaryOnAction: () => {},
+              noteText: "New photos are ready! Check them out and let us know if something is missing",
+              noteAuthorName: "Erika Goldner",
+              defaultOpen: true,
+            },
+            {
+              label: <><span>Additional footage </span><span className="text-lime-500">#02</span></>,
+              primaryTitle: "Low-res photos",
+              primarySubtitle: "Uploaded: 1 minute ago",
+              primaryBackgroundImage: "/assets/bg-lowres.png",
+              // No primaryOnAction: item has no links from DB, so the action button is not shown
+              noteText: "New photos are ready! Check them out and let us know if something is missing",
+              noteAuthorName: "Erika Goldner",
+              defaultOpen: true,
+            },
+          ]}
+        />
       </div>
     ),
   },

@@ -145,6 +145,7 @@ export async function PATCH(
         body.lowres_selection_url.trim()
       )
       dbUpdate.lowres_selection_url = toColumnCompatibleArrayValue(raw.lowres_selection_url, next)
+      dbUpdate.lowres_selection_uploaded_at = now
     }
     if (body.photographer_selection_url !== undefined) {
       const next = appendToUrlArray(
@@ -155,6 +156,7 @@ export async function PATCH(
         raw.photographer_selection_url,
         next
       )
+      dbUpdate.photographer_selection_uploaded_at = now
     }
     if (body.client_selection_url !== undefined) {
       const next = appendToUrlArray(
@@ -162,6 +164,7 @@ export async function PATCH(
         body.client_selection_url.trim()
       )
       dbUpdate.client_selection_url = toColumnCompatibleArrayValue(raw.client_selection_url, next)
+      dbUpdate.client_selection_uploaded_at = now
     }
     if (body.highres_selection_url !== undefined) {
       const next = appendToUrlArray(

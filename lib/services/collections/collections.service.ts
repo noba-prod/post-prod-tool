@@ -7,6 +7,7 @@
 import type {
   Collection,
   CollectionConfig,
+  CurrentOwnerRole,
   CollectionSubstatus,
   ICollectionsRepository,
   ListCollectionsFilters,
@@ -60,6 +61,27 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
+function mapParticipantRoleToCurrentOwnerRole(
+  role: import("@/lib/domain/collections").ParticipantRole
+): CurrentOwnerRole {
+  switch (role) {
+    case "producer":
+      return "noba"
+    case "client":
+      return "client"
+    case "photographer":
+      return "photographer"
+    case "agency":
+      return "agency"
+    case "lab":
+      return "photo_lab"
+    case "edition_studio":
+      return "retouch_studio"
+    case "handprint_lab":
+      return "handprint_lab"
+  }
+}
+
 export class CollectionsService {
   constructor(
     private readonly repository: ICollectionsRepository,
@@ -68,15 +90,15 @@ export class CollectionsService {
 
   /**
    * Creates a new collection (draft) from modal config.
-   * - ownerUserId = logged-in noba producer (stored as role='producer', is_owner=true)
-   * - managerUserId = selected CLIENT manager (stored as role='manager', is_owner=false)
+   * - ownerUserId = logged-in noba producer (stored as role='noba', is_owner=true)
+   * - managerUserId = selected CLIENT user (stored as role='client', is_owner=false)
    */
   async createCollection(config: CollectionConfig): Promise<Collection> {
     validateCreateConfig(config)
     const id = generateId()
     const now = new Date().toISOString()
     const participants: import("@/lib/domain/collections").CollectionParticipant[] = []
-    // Client participant with selected manager (role='manager' in DB)
+    // Client participant with selected client user (role='client' in DB)
     if (config.clientEntityId?.trim()) {
       const clientUserIds = config.managerUserId?.trim() ? [config.managerUserId] : []
       participants.push({
@@ -88,7 +110,7 @@ export class CollectionsService {
           : {},
       })
     }
-    // Producer participant with owner (role='producer', is_owner=true in DB)
+    // Producer participant with owner (role='noba', is_owner=true in DB)
     if (config.ownerUserId?.trim()) {
       participants.push({
         role: "producer",
@@ -360,6 +382,39 @@ export class CollectionsService {
   }
 
   /**
+   * Completes a collection (e.g. when collection_completed event is triggered).
+   * Sets status to 'completed' and substatus to null.
+   * Unlike updateSubstatus, this works even if substatus is already client_confirmation
+   * (the idempotency guard in updateSubstatus would skip the status change).
+   */
+  async completeCollection(collectionId: string): Promise<Collection> {
+    const collection = await this.repository.getById(collectionId)
+    if (!collection) {
+      throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
+    }
+    if (collection.status === "completed") {
+      return collection
+    }
+    if (collection.status !== "in_progress") {
+      throw new CollectionsServiceError(
+        "Collection can only be completed from in_progress status",
+        "INVALID_STATUS"
+      )
+    }
+    const updated = await this.repository.update(collectionId, {
+      status: "completed",
+      substatus: null,
+    })
+    if (!updated) {
+      throw new CollectionsServiceError(
+        "Failed to complete collection",
+        "UPDATE_FAILED"
+      )
+    }
+    return updated
+  }
+
+  /**
    * Cancels a collection (e.g. when collection_cancelled event is triggered).
    * Sets status to 'canceled' and substatus to null.
    */
@@ -486,10 +541,20 @@ export class CollectionsService {
       client_confirmation: "client_confirmation",
     }
     const syncedSubstatus = activeStepId ? STEP_ID_TO_SUBSTATUS[activeStepId] : undefined
+    const currentOwners: CurrentOwnerRole[] = activeStepId
+      ? Array.from(
+          new Set(
+            getStepOwner(activeStepId as import("@/lib/domain/collections").StepId, collection).map(
+              mapParticipantRoleToCurrentOwnerRole
+            )
+          )
+        )
+      : []
 
     const updated = await this.repository.update(collectionId, {
       stepStatuses,
       completionPercentage,
+      currentOwners,
       ...(collection.status === "in_progress" && syncedSubstatus
         ? { substatus: syncedSubstatus }
         : {}),

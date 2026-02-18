@@ -16,6 +16,8 @@ import {
   deriveStageStatusFromShootingStart,
   computeStepHealth,
   getDeadlineForStep,
+  getStepOwner,
+  STEP_IDS,
 } from "@/lib/domain/collections"
 import type {
   StepId,
@@ -25,6 +27,7 @@ import type {
   StepHealth,
   ViewStepId,
 } from "@/lib/domain/collections"
+import type { CollectionMemberRole } from "@/lib/supabase/database.types"
 import type {
   ParticipantsModalIndividual,
   ParticipantsModalEntity,
@@ -48,6 +51,25 @@ function healthToDisplay(health: StepHealth | undefined | null): "on-track" | "o
   if (health === "delayed") return "delayed"
   if (health === "at-risk") return "at-risk"
   return "on-track"
+}
+
+function toDbCollectionRole(role: UserForPermission["role"]): CollectionMemberRole {
+  switch (role) {
+    case "producer":
+      return "noba"
+    case "client":
+      return "client"
+    case "photographer":
+      return "photographer"
+    case "agency":
+      return "agency"
+    case "lab":
+      return "photo_lab"
+    case "edition_studio":
+      return "retouch_studio"
+    case "handprint_lab":
+      return "handprint_lab"
+  }
 }
 
 /** Maps StepStage from DB to stepper row status (visual active/completed/locked state). */
@@ -102,7 +124,8 @@ function viewStepsToTemplateSteps(
       annotation: step.annotation,
       attention: step.attention,
       canEdit:
-        userForPermission && collection
+        userForPermission && collection &&
+        collection.status !== "completed" && collection.status !== "canceled"
           ? canUserEditStep(userForPermission, step.id as StepId, collection)
           : false,
     }
@@ -128,6 +151,8 @@ export default function CollectionViewPage({
   const [participantsMainPlayersIndividuals, setParticipantsMainPlayersIndividuals] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersEntities, setParticipantsMainPlayersEntities] = React.useState<ParticipantsModalEntity[]>([])
   const [completedStepIds, setCompletedStepIds] = React.useState<string[]>([])
+  // DEBUG: userId → display name (populated during participant load, dev only, safe to remove)
+  const [debugUserIdToName, setDebugUserIdToName] = React.useState<Record<string, string>>({})
 
   const service = React.useMemo(() => createCollectionsService(), [])
 
@@ -241,8 +266,12 @@ export default function CollectionViewPage({
     [steps]
   )
 
-  // Use backend-provided completion_percentage when available; fall back to client-side calculation
+  // Use backend-provided completion_percentage when available; fall back to client-side calculation.
+  // Completed/canceled collections always show 100%.
   const progress = React.useMemo(() => {
+    if (collection?.status === "completed" || collection?.status === "canceled") {
+      return 100
+    }
     if (collection?.completionPercentage != null && collection.completionPercentage > 0) {
       return collection.completionPercentage
     }
@@ -251,7 +280,7 @@ export default function CollectionViewPage({
       (id) => collection?.stepStatuses?.[id]?.stage === "done"
     ).length
     return Math.round((completedCount / visibleStepIds.length) * 100)
-  }, [collection?.completionPercentage, collection?.stepStatuses, visibleStepIds])
+  }, [collection?.status, collection?.completionPercentage, collection?.stepStatuses, visibleStepIds])
 
   // =============================================================================
   // HELPER: fire event + patch collection
@@ -297,13 +326,14 @@ export default function CollectionViewPage({
       try {
         await fireEvent("negatives_pickup_marked")
         await fetchCompletedStepIds(id)
+        await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Confirm pickup error:", err)
         toast.error(err instanceof Error ? err.message : "Failed to trigger event")
         throw err
       }
     },
-    [id, fireEvent, fetchCompletedStepIds]
+    [id, fireEvent, fetchCompletedStepIds, refetchCollection]
   )
 
   const handleConfirmDropoffDelivery = React.useCallback(
@@ -312,13 +342,14 @@ export default function CollectionViewPage({
       try {
         await fireEvent("dropoff_confirmed", { canMeetDeadline })
         await fetchCompletedStepIds(id)
+        await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Confirm dropoff delivery error:", err)
         toast.error(err instanceof Error ? err.message : "Failed to trigger event")
         throw err
       }
     },
-    [id, fireEvent, fetchCompletedStepIds]
+    [id, fireEvent, fetchCompletedStepIds, refetchCollection]
   )
 
   // =============================================================================
@@ -399,12 +430,13 @@ export default function CollectionViewPage({
         await patchCollection(body)
         await fireEvent("photographer_selection_uploaded", { url, notes: payload.notes })
         await fetchCompletedStepIds(id)
+        await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload photographer selection error:", err)
         toast.error("Failed to upload selection")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds]
+    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
   )
 
   // =============================================================================
@@ -470,7 +502,7 @@ export default function CollectionViewPage({
         if (notes.trim()) {
           await patchCollection({
             ...(isClientConfirmation
-              ? { step_note_photographer_last_check: { from: "client", text: notes.trim() } }
+              ? { step_note_client_confirmation: { from: "client", text: notes.trim() } }
               : { step_note_photographer_selection: { from: "client", text: notes.trim() } }),
           })
         }
@@ -635,8 +667,7 @@ export default function CollectionViewPage({
       try {
         if (notes?.trim()) {
           await patchCollection({
-            // Photographer last check feedback should be read by edition studio
-            step_note_edition_request: { from: "photographer", text: notes.trim() },
+            step_note_photographer_last_check: { from: "photographer", text: notes.trim() },
           })
         }
         // Revert substatus backwards to final_edits
@@ -664,6 +695,24 @@ export default function CollectionViewPage({
       } catch (err) {
         console.error("[CollectionViewPage] Validate finals error:", err)
         toast.error("Failed to validate finals")
+      }
+    },
+    [id, fireEvent, fetchCompletedStepIds, refetchCollection]
+  )
+
+  // =============================================================================
+  // STEP 11: Complete collection (client confirmation approved)
+  // =============================================================================
+  const handleCompleteCollection = React.useCallback(
+    async () => {
+      if (!id) return
+      try {
+        await fireEvent("collection_completed")
+        await fetchCompletedStepIds(id)
+        await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Complete collection error:", err)
+        toast.error("Failed to complete collection")
       }
     },
     [id, fireEvent, fetchCompletedStepIds, refetchCollection]
@@ -730,7 +779,9 @@ export default function CollectionViewPage({
     // Main players order: 1. Photographer (individual), 2. Client (entity), 3. Agency (entity, if invited),
     // 4. Photo Lab (entity, if invited), 5. Hand print lab (entity, if invited), 6. Retouch studio (entity, if invited)
     const clientId = config.clientEntityId?.trim() ? config.clientEntityId : undefined
-    const agencyId = config.hasAgency && photographer?.entityId ? photographer.entityId : undefined
+    const agencyId = config.hasAgency && agencyParticipant?.entityId
+      ? agencyParticipant.entityId
+      : undefined
     const labParticipant = participants.find((p) => p.role === "lab")
     const handprintLabParticipant = participants.find((p) => p.role === "handprint_lab")
     const editionStudioParticipant = participants.find((p) => p.role === "edition_studio")
@@ -873,10 +924,43 @@ export default function CollectionViewPage({
         })
         .filter(Boolean) as ParticipantsModalEntity[]
 
+      // DEBUG: build userId → display name map (dev only, safe to remove)
+      let debugIdToName: Record<string, string> | undefined
+      if (process.env.NODE_ENV === "development") {
+        const idToName: Record<string, string> = {}
+        const extractName = (u: { firstName?: string; lastName?: string; email?: string }) =>
+          [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || "—"
+        for (const d of nobaUsers) {
+          if (d?.user?.id) idToName[String(d.user.id).trim()] = extractName(d.user)
+        }
+        for (const d of photoUsers) {
+          if ((d as { user?: { id?: string } })?.user?.id) {
+            const u = (d as { user: { id: string; firstName?: string; lastName?: string; email?: string } }).user
+            idToName[u.id.trim()] = extractName(u)
+          }
+        }
+        const allUids = new Set<string>()
+        for (const p of participants) for (const uid of p.userIds ?? []) allUids.add(uid)
+        for (const uid of nobaUserIds) allUids.add(String(uid))
+        const missing = [...allUids].filter((uid) => !idToName[uid])
+        if (missing.length > 0) {
+          const extra = await Promise.all(
+            missing.map((uid) => fetch(`/api/users/${uid}`).then((r) => (r.ok ? r.json() : null)))
+          )
+          if (cancelled) return
+          for (const d of extra) {
+            if (d?.user?.id) idToName[String(d.user.id).trim()] = extractName(d.user)
+          }
+        }
+        debugIdToName = idToName
+      }
+      // END DEBUG
+
       if (!cancelled) {
         setParticipantsNobaTeam(nobaTeam)
         setParticipantsMainPlayersIndividuals(mainIndividuals)
         setParticipantsMainPlayersEntities(entities)
+        if (debugIdToName) setDebugUserIdToName(debugIdToName)
       }
     }
     load()
@@ -884,6 +968,55 @@ export default function CollectionViewPage({
       cancelled = true
     }
   }, [collection, user?.id])
+
+  // ---------------------------------------------------------------------------
+  // DEBUG: per-step owner roles + role→names map (dev only, safe to remove)
+  // ---------------------------------------------------------------------------
+  const debugStepOwners = React.useMemo(() => {
+    if (process.env.NODE_ENV !== "development" || !collection) return undefined
+    const map: Record<string, string[]> = {}
+    for (const stepId of STEP_IDS) {
+      map[stepId] = getStepOwner(stepId, collection).map((r) => toDbCollectionRole(r))
+    }
+    return map
+  }, [collection])
+
+  const debugCanEditPerStep = React.useMemo(() => {
+    if (process.env.NODE_ENV !== "development" || !collection) return undefined
+    const config = collection.config
+    const participants = collection.participants
+    const nobaUids = config.nobaUserIds ?? participants.find((p) => p.role === "producer")?.userIds ?? []
+    const map: Record<string, string[]> = {}
+    for (const stepId of STEP_IDS) {
+      const ownerRoles = getStepOwner(stepId, collection) // ParticipantRole[]
+      const names: string[] = []
+      const editByUserId = new Map<string, boolean>()
+      for (const role of ownerRoles) {
+        if (role === "producer") {
+          for (const uid of nobaUids) {
+            const id = String(uid).trim()
+            const hasEdit = config.nobaEditPermissionByUserId?.[id] ?? true
+            editByUserId.set(id, editByUserId.has(id) ? editByUserId.get(id)! && hasEdit : hasEdit)
+          }
+        } else {
+          const participant = participants.find((p) => p.role === role)
+          if (!participant) continue
+          for (const uid of participant.userIds ?? []) {
+            const hasEdit = participant.editPermissionByUserId?.[uid] ?? false
+            editByUserId.set(uid, editByUserId.has(uid) ? editByUserId.get(uid)! && hasEdit : hasEdit)
+          }
+        }
+      }
+      for (const [uid, hasEdit] of editByUserId) {
+        if (hasEdit && debugUserIdToName[uid]) names.push(debugUserIdToName[uid])
+      }
+      map[stepId] = names
+    }
+    return map
+  }, [collection, debugUserIdToName])
+  // ---------------------------------------------------------------------------
+  // END DEBUG
+  // ---------------------------------------------------------------------------
 
   if (loading) {
     return (
@@ -913,13 +1046,17 @@ export default function CollectionViewPage({
     )
   }
 
-  const stageStatus = deriveStageStatusFromShootingStart(
-    {
-      shootingStartDate: collection.config.shootingStartDate ?? collection.config.shootingDate,
-      shootingStartTime: collection.config.shootingStartTime,
-    },
-    collection.status === "in_progress" ? "in-progress" : "upcoming"
-  )
+  const stageStatus = collection.status === "completed"
+    ? "done" as const
+    : collection.status === "canceled"
+      ? "done" as const
+      : deriveStageStatusFromShootingStart(
+          {
+            shootingStartDate: collection.config.shootingStartDate ?? collection.config.shootingDate,
+            shootingStartTime: collection.config.shootingStartTime,
+          },
+          collection.status === "in_progress" ? "in-progress" : "upcoming"
+        )
   const shootingType = collection.config.hasHandprint ? "handprint" : "digital"
 
   return (
@@ -934,6 +1071,11 @@ export default function CollectionViewPage({
       showParticipantsButton={true}
       showSettingsButton={true}
       collectionId={id}
+      currentOwners={collection.currentOwners ?? []}
+      currentUserCollectionRole={userForPermission ? toDbCollectionRole(userForPermission.role) : null}
+      currentUserHasEditPermission={userForPermission?.hasEditPermission ?? false}
+      debugStepOwners={debugStepOwners}
+      debugCanEditPerStep={debugCanEditPerStep}
       steps={steps}
       participantsNobaTeam={participantsNobaTeam}
       participantsMainPlayersIndividuals={participantsMainPlayersIndividuals}
@@ -999,6 +1141,7 @@ export default function CollectionViewPage({
       finalsUploadedByEntityName={undefined}
       onRequestChanges={handleRequestChanges}
       onValidateFinals={handleValidateFinals}
+      onCompleteCollection={handleCompleteCollection}
       stepNotesPhotographerLastCheck={collection.stepNotesPhotographerLastCheck}
       stepNotesClientConfirmation={collection.stepNotesClientConfirmation}
       uploadLowResShippingReminderDate={collection.config.lowResShippingDeliveryDate}

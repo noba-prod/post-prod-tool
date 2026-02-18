@@ -166,7 +166,7 @@ const ROLE_LABELS: Record<ParticipantRole, string> = {
   client: "Client",
   photographer: "Photographer",
   agency: "Agency",
-  lab: "Lab",
+  lab: "Photo Lab",
   handprint_lab: "Hand Print Lab",
   edition_studio: "Retouch/Post Studio",
 }
@@ -322,7 +322,6 @@ export function ParticipantsStepContent({
         onConfigChange={onConfigChange}
       />
       {sections.map(({ role, prefilled }) => {
-        const dataRole = role === "agency" ? "photographer" : role
         return (
           <ParticipantSection
             key={role}
@@ -330,13 +329,13 @@ export function ParticipantsStepContent({
             label={ROLE_LABELS[role]}
             draft={draft}
             prefilled={prefilled}
-            onEntitySelect={(entityId) => setEntityId(dataRole, entityId)}
-            onAddMember={(userId, entityIdForNew) => addMember(dataRole, userId, entityIdForNew)}
+            onEntitySelect={(entityId) => setEntityId(role, entityId)}
+            onAddMember={(userId, entityIdForNew) => addMember(role, userId, entityIdForNew)}
             onRemoveMember={(userId, roleOverride) =>
-              removeMember(roleOverride ?? dataRole, userId)
+              removeMember(roleOverride ?? role, userId)
             }
             onEditPermissionChange={(userId, value, roleOverride) =>
-              setEditPermission(roleOverride ?? dataRole, userId, value)
+              setEditPermission(roleOverride ?? role, userId, value)
             }
           />
         )
@@ -547,9 +546,9 @@ interface ParticipantSectionProps {
   onEntitySelect: (entityId: string) => void
   /** When adding photographer without agency, pass entityId as second arg so participant is set in one update */
   onAddMember: (userId: string, entityIdForNew?: string) => void
-  /** roleOverride: when showing producer (manager) in Client section, pass "producer" so the correct participant is updated */
+  /** roleOverride: when showing producer in Client section, pass "producer" so the correct participant is updated */
   onRemoveMember: (userId: string, roleOverride?: ParticipantRole) => void
-  /** roleOverride: when showing producer (manager) in Client section, pass "producer" so edit permission is applied to producer */
+  /** roleOverride: when showing producer in Client section, pass "producer" so edit permission is applied to producer */
   onEditPermissionChange: (userId: string, value: boolean, roleOverride?: ParticipantRole) => void
 }
 
@@ -565,10 +564,8 @@ function ParticipantSection({
 }: ParticipantSectionProps) {
   const [addMemberOpen, setAddMemberOpen] = React.useState(false)
   const config = draft.config
-  // When role is "agency", data lives in photographer participant (DB has photographer_id only)
-  const dataRole = role === "agency" ? "photographer" : role
-  const participant = getParticipantByRole(draft.participants, dataRole)
-  const entityId = effectiveEntityId(participant, dataRole, draft.config)
+  const participant = getParticipantByRole(draft.participants, role)
+  const entityId = effectiveEntityId(participant, role, draft.config)
   const isPhotographerNoAgency = role === "photographer" && !config.hasAgency
   const isPhotographerWithAgency = role === "photographer" && config.hasAgency
   const isAgencySection = role === "agency"
@@ -640,7 +637,9 @@ function ParticipantSection({
   )
 
   const showEntityPicker = isAgencySection || role !== "photographer"
-  const addButtonLabel = isPhotographerNoAgency ? "Add photographer" : "Add user"
+  const addButtonLabel = role === "photographer" ? "Add photographer" : "Add user"
+  const isPhotographerSection = role === "photographer"
+  const addPhotographerDisabled = isPhotographerSection && memberUsers.length >= 1
   const pickerPlaceholder = isAgencySection ? "Select agency" : `Select ${label.toLowerCase()}`
 
   const handleOverlaySelect = React.useCallback(
@@ -679,6 +678,7 @@ function ParticipantSection({
             <Button
               variant="secondary"
               onClick={() => setAddMemberOpen(true)}
+              disabled={addPhotographerDisabled}
               className="h-10 gap-2 rounded-xl"
             >
               <Plus className="h-4 w-4" />
@@ -723,7 +723,8 @@ function ParticipantSection({
                   </TableCell>
                   <TableCell>
                     <Switch
-                      checked={!!editByUserId[u.id]}
+                      checked={isPhotographerSection ? true : !!editByUserId[u.id]}
+                      disabled={isPhotographerSection}
                       onCheckedChange={(v) =>
                         onEditPermissionChange(u.id, !!v, memberSourceRole[u.id])
                       }

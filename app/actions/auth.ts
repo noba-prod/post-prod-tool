@@ -252,7 +252,7 @@ export async function activateInvitation(token: string) {
     }
 
     // Add user to collection when invitation is collection-scoped
-    const invitedRole = invitation.invited_collection_role ?? "manager"
+    const invitedRole = invitation.invited_collection_role ?? "client"
     if (collectionId) {
       const { error: memberError } = await (supabase.from("collection_members") as any)
         .insert({

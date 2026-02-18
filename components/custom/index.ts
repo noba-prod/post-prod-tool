@@ -62,6 +62,7 @@ export { UserCreationForm } from "./user-creation-form"
 export { SelfPhotographerCreationForm } from "./self-photographer-creation-form"
 export { EntityBasicInformationForm } from "./entity-basic-information-form"
 export { StepDetails } from "./step-details"
+export { LinkAccordion } from "./link-accordion"
 
 // Demo components (organized in demos/ folder)
 export {
