@@ -123,12 +123,14 @@ const ROLE_DISPLAY: Record<string, string> = {
 }
 
 function toDbRoleFromDomainRole(role: CollectionParticipant["role"]):
+  | "noba"
   | "client"
   | "photographer"
   | "agency"
   | "photo_lab"
   | "retouch_studio"
   | "handprint_lab" {
+  if (role === "producer") return "noba"
   if (role === "lab") return "photo_lab"
   if (role === "edition_studio") return "retouch_studio"
   return role
@@ -167,7 +169,7 @@ export default function CollectionCreatePage({
   const [isSavingChanges, setIsSavingChanges] = React.useState(false)
   const { user } = useUserContext()
   const [participantSummaries, setParticipantSummaries] = React.useState<
-    { role: string; name: string }[]
+    { role: string; name: string; count: number }[]
   >([])
 
   const service = React.useMemo(() => createCollectionsService(), [])
@@ -274,11 +276,11 @@ export default function CollectionCreatePage({
       }
       const data = (await response.json()) as {
         handleByRole?: Partial<Record<
-          "client" | "photographer" | "agency" | "photo_lab" | "retouch_studio" | "handprint_lab",
+          "noba" | "client" | "photographer" | "agency" | "photo_lab" | "retouch_studio" | "handprint_lab",
           string
         >>
         memberCountByRole?: Partial<Record<
-          "client" | "photographer" | "agency" | "photo_lab" | "retouch_studio" | "handprint_lab",
+          "noba" | "client" | "photographer" | "agency" | "photo_lab" | "retouch_studio" | "handprint_lab",
           number
         >>
       }

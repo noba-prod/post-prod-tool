@@ -320,7 +320,7 @@ export function UserCreationForm({
     formData.profilePicture instanceof File
       ? objectUrl
       : !userRemovedProfilePicture && (initialUserData?.profilePictureUrl?.trim() || null)
-        ? initialUserData.profilePictureUrl.trim()
+        ? (initialUserData?.profilePictureUrl?.trim() ?? null)
         : null
 
   return (

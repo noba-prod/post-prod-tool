@@ -11,6 +11,7 @@ import { createCollectionsServiceForServer } from "@/lib/services/collections/se
 import { createInvitationsForNewMembers } from "@/lib/invitations"
 import { CollectionsServiceError } from "@/lib/services/collections"
 import type { CollectionConfig, CollectionParticipant } from "@/lib/domain/collections"
+import type { CollectionMember } from "@/lib/supabase/database.types"
 
 export async function POST(
   request: NextRequest,
@@ -71,7 +72,10 @@ export async function POST(
       .select("user_id, role")
       .eq("collection_id", id)
     const newMembers = (newMembersData ?? []) as { user_id: string; role: string }[]
-    const newMembersToInvite = newMembers.filter((m) => !oldUserIds.has(m.user_id))
+    const newMembersToInvite = newMembers.filter((m) => !oldUserIds.has(m.user_id)) as Pick<
+      CollectionMember,
+      "user_id" | "role"
+    >[]
 
     let invitationsCreated = 0
     let invitationsSent = 0
