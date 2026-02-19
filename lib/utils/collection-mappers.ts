@@ -103,9 +103,11 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     ownerMember?.user_id ?? members.find((m) => m.role === "noba")?.user_id ?? undefined
   const producerMembers = members.filter((m) => m.role === "noba")
   const producerUserIds = producerMembers.map((m) => m.user_id)
-  const rowNobaUserIds = Array.isArray((row as { noba_user_ids?: unknown }).noba_user_ids)
-    ? (row as { noba_user_ids: string[] }).noba_user_ids
-    : null
+  const rowNobaUserIds =
+    Array.isArray((row as { noba_user_ids?: unknown }).noba_user_ids) &&
+    (row as { noba_user_ids: string[] }).noba_user_ids.length > 0
+      ? (row as { noba_user_ids: string[] }).noba_user_ids
+      : null
   // Derive nobaEditPermissionByUserId from producer members' can_edit column (source of truth).
   // Fall back to legacy JSON columns for pre-028 data.
   const rowNobaEdit = (row as { noba_edit_permission_by_user_id?: unknown }).noba_edit_permission_by_user_id

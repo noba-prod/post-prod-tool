@@ -46,17 +46,42 @@ export async function resolveRecipients(
     return []
   }
 
-  // Get collection with organization assignments
-  const { data: collection, error: collectionError } = await supabase
+  // Get collection with organization assignments.
+  // Some environments may still be missing collections.noba_user_ids; in that case
+  // retry without the column so notifications keep working.
+  let collectionData: CollectionWithAssignments | null = null
+  const { data: collectionWithNobaUsers, error: collectionWithNobaUsersError } = await supabase
     .from("collections")
     .select("id, client_id, photographer_id, lab_low_res_id, edition_studio_id, hand_print_lab_id, noba_user_ids")
     .eq("id", collectionId)
     .single()
 
-  const collectionData = collection as CollectionWithAssignments | null
-  if (collectionError || !collectionData) {
-    console.error("[resolveRecipients] Collection not found:", collectionId, collectionError)
-    return []
+  const missingNobaUserIdsColumn =
+    collectionWithNobaUsersError &&
+    (collectionWithNobaUsersError as { code?: string }).code === "42703"
+
+  if (missingNobaUserIdsColumn) {
+    const { data: collectionWithoutNobaUsers, error: collectionWithoutNobaUsersError } = await supabase
+      .from("collections")
+      .select("id, client_id, photographer_id, lab_low_res_id, edition_studio_id, hand_print_lab_id")
+      .eq("id", collectionId)
+      .single()
+
+    if (collectionWithoutNobaUsersError || !collectionWithoutNobaUsers) {
+      console.error("[resolveRecipients] Collection not found:", collectionId, collectionWithoutNobaUsersError)
+      return []
+    }
+
+    collectionData = {
+      ...(collectionWithoutNobaUsers as Omit<CollectionWithAssignments, "noba_user_ids">),
+      noba_user_ids: null,
+    }
+  } else {
+    collectionData = collectionWithNobaUsers as CollectionWithAssignments | null
+    if (collectionWithNobaUsersError || !collectionData) {
+      console.error("[resolveRecipients] Collection not found:", collectionId, collectionWithNobaUsersError)
+      return []
+    }
   }
 
   const userIds = new Set<string>()

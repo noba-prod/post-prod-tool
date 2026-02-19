@@ -7,6 +7,8 @@
 
 import type { CollectionEventType } from "./notifications.interface"
 
+const NOTIFICATIONS_REFRESH_EVENT = "noba:notifications:refresh"
+
 export interface TriggerEventOptions {
   /** Additional metadata to include with the event */
   metadata?: Record<string, unknown>
@@ -59,6 +61,11 @@ export async function triggerCollectionEvent(
         success: false,
         error: data.error || "Failed to trigger event",
       }
+    }
+
+    // Ask notification consumers (navbar bell) to refresh immediately.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(NOTIFICATIONS_REFRESH_EVENT))
     }
 
     return { success: true }

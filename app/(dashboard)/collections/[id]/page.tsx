@@ -33,6 +33,8 @@ import type {
 } from "@/components/custom/participants-modal"
 import { toast } from "sonner"
 
+const NOTIFICATIONS_REFRESH_EVENT = "noba:notifications:refresh"
+
 /** Maps StepStage from DB to the template's stageStatus display value. */
 function stageToDisplay(stage: StepStage | undefined, fallbackStatus: string): "upcoming" | "in-progress" | "done" {
   if (stage === "done") return "done"
@@ -278,6 +280,9 @@ export default function CollectionViewPage({
         const data = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(data?.error ?? "Failed to trigger event")
       }
+      // Notify navbar bell to refresh immediately after event-triggered notifications
+      // are potentially created.
+      window.dispatchEvent(new Event(NOTIFICATIONS_REFRESH_EVENT))
     },
     [id]
   )

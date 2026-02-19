@@ -7,6 +7,8 @@
 import { useState, useEffect, useCallback } from "react"
 import type { UserNotification } from "@/lib/services/notifications"
 
+const NOTIFICATIONS_REFRESH_EVENT = "noba:notifications:refresh"
+
 interface UseNotificationsOptions {
   /** Poll interval in ms (default: 30000 = 30s) */
   pollInterval?: number
@@ -128,6 +130,18 @@ export function useNotifications(
       ac.abort()
     }
   }, [enabled, pollInterval, fetchUnreadCount])
+
+  // Immediate refresh hook for cross-component actions (e.g. step events)
+  useEffect(() => {
+    if (!enabled) return
+    const handler = () => {
+      void refresh()
+    }
+    window.addEventListener(NOTIFICATIONS_REFRESH_EVENT, handler)
+    return () => {
+      window.removeEventListener(NOTIFICATIONS_REFRESH_EVENT, handler)
+    }
+  }, [enabled, refresh])
 
   return {
     notifications,
