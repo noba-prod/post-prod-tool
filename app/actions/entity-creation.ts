@@ -34,7 +34,7 @@ function mapEntityTypeToOrganizationType(type: EntityType): OrganizationType {
     case "photo-lab":
       return "lab_low_res_scan"
     case "edition-studio":
-      return "edition_studio"
+      return "retouch_studio"
     case "hand-print-lab":
       return "hand_print_lab"
     case "self-photographer":
@@ -54,7 +54,7 @@ function mapOrganizationTypeToEntityType(type: OrganizationType): EntityType {
       return "agency"
     case "lab_low_res_scan":
       return "photo-lab"
-    case "edition_studio":
+    case "retouch_studio":
       return "edition-studio"
     case "hand_print_lab":
       return "hand-print-lab"

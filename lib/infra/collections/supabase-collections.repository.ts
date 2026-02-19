@@ -174,7 +174,11 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     }
     const { data: rows, error } = await query
     if (error) {
-      console.error("[SupabaseCollectionsRepository] list error:", error)
+      const msg =
+        (error as { message?: string }).message ??
+        (error as { code?: string }).code ??
+        JSON.stringify(error)
+      console.error("[SupabaseCollectionsRepository] list error:", msg, error)
       return []
     }
     const list = (rows ?? []) as DbCollection[]

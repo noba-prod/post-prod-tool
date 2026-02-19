@@ -157,63 +157,7 @@ export class NotificationsService implements INotificationsService {
       // Continue anyway to send notifications
     }
 
-    // 1b. dropoff_confirmed + canMeetDeadline: in-app notification to producer (owner)
-    if (
-      eventType === "dropoff_confirmed" &&
-      typeof (metadata as { canMeetDeadline?: boolean } | undefined)?.canMeetDeadline === "boolean"
-    ) {
-      const context = await getCollectionContext(this.supabase, collectionId)
-      if (context) {
-        const producers = await resolveRecipients(this.supabase, collectionId, ["producer"])
-        const canMeet = (metadata as { canMeetDeadline: boolean }).canMeetDeadline
-        const title = formatNotificationTitle("Delivery confirmed", context.name, context.reference)
-        const body = canMeet
-          ? "The lab has confirmed they can meet the next deadline."
-          : "The lab has reported they cannot meet the next deadline."
-        const ctaUrl = buildCtaUrl("/collections/{collectionId}", collectionId)
-        for (const recipient of producers) {
-          await this.createNotification({
-            collection_id: collectionId,
-            template_id: null,
-            user_id: recipient.userId,
-            channel: "in_app",
-            status: "sent",
-            title,
-            body,
-            cta_text: "View collection",
-            cta_url: ctaUrl,
-            sent_at: new Date().toISOString(),
-          })
-        }
-      }
-    }
-
-    // 1b2. negatives_pickup_marked: in-app to Photo Lab + Producer — "Negatives are on their way. Get ready to low-res scan."
-    if (eventType === "negatives_pickup_marked") {
-      const context = await getCollectionContext(this.supabase, collectionId)
-      if (context) {
-        const recipients = await resolveRecipients(this.supabase, collectionId, ["lab", "producer"])
-        const title = formatNotificationTitle("Negatives on the way", context.name, context.reference)
-        const body = "Negatives are on their way. Get ready to low-res scan."
-        const ctaUrl = buildCtaUrl("/collections/{collectionId}", collectionId)
-        for (const recipient of recipients) {
-          await this.createNotification({
-            collection_id: collectionId,
-            template_id: null,
-            user_id: recipient.userId,
-            channel: "in_app",
-            status: "sent",
-            title,
-            body,
-            cta_text: "View collection",
-            cta_url: ctaUrl,
-            sent_at: new Date().toISOString(),
-          })
-        }
-      }
-    }
-
-    // 1c. photographer_requested_additional_photos: in-app to producer + photo lab
+    // 1b. photographer_requested_additional_photos: in-app to producer + photo lab
     if (eventType === "photographer_requested_additional_photos") {
       const context = await getCollectionContext(this.supabase, collectionId)
       if (context) {
@@ -668,20 +612,70 @@ export class NotificationsService implements INotificationsService {
   // ============================================================================
 
   private static readonly NOTE_TEXT_FALLBACK = "A request has been made. Please check the collection for details."
+  private static readonly DROPOFF_MEETS_DEADLINE_TITLE =
+    "Lab received negatives - low-res scanning can stay on schedule"
+  private static readonly DROPOFF_MEETS_DEADLINE_SUBTITLE =
+    "The lab has confirmed receipt of the negatives and can meet the low-res scanning deadline."
+  private static readonly DROPOFF_MISSES_DEADLINE_TITLE =
+    "Lab received negatives - low-res scanning deadline at risk"
+  private static readonly DROPOFF_MISSES_DEADLINE_SUBTITLE =
+    "The lab has confirmed receipt of the negatives but cannot meet the low-res scanning deadline."
+  private static readonly DROPOFF_STATUS_UNKNOWN_TITLE =
+    "Lab received negatives"
+  private static readonly DROPOFF_STATUS_UNKNOWN_SUBTITLE =
+    "The lab has confirmed receipt of the negatives. Check if the low-res scanning deadline is still feasible."
+
+  private static getDropoffStatusCopy(
+    metadata?: Record<string, unknown>
+  ): { title: string; subtitle: string } {
+    const canMeetDeadline = (metadata as { canMeetDeadline?: unknown } | undefined)?.canMeetDeadline
+    if (canMeetDeadline === true) {
+      return {
+        title: NotificationsService.DROPOFF_MEETS_DEADLINE_TITLE,
+        subtitle: NotificationsService.DROPOFF_MEETS_DEADLINE_SUBTITLE,
+      }
+    }
+    if (canMeetDeadline === false) {
+      return {
+        title: NotificationsService.DROPOFF_MISSES_DEADLINE_TITLE,
+        subtitle: NotificationsService.DROPOFF_MISSES_DEADLINE_SUBTITLE,
+      }
+    }
+    return {
+      title: NotificationsService.DROPOFF_STATUS_UNKNOWN_TITLE,
+      subtitle: NotificationsService.DROPOFF_STATUS_UNKNOWN_SUBTITLE,
+    }
+  }
 
   /**
-   * Interpolate dynamic placeholders in template description.
-   * Currently supports {noteText} from event metadata.
+   * Interpolate dynamic placeholders in template text.
+   * Supports:
+   * - {noteText} from metadata.noteText
+   * - {dropoffConfirmationTitle}/{dropoffConfirmationSubtitle} from metadata.canMeetDeadline
    */
-  private static interpolateDescription(
-    description: string,
+  private static interpolateText(
+    text: string,
     metadata?: Record<string, unknown>
   ): string {
-    if (!description.includes("{noteText}")) return description
-    const noteText = typeof metadata?.noteText === "string" && metadata.noteText.trim()
-      ? metadata.noteText.trim()
-      : NotificationsService.NOTE_TEXT_FALLBACK
-    return description.replace(/\{noteText\}/g, noteText)
+    let result = text
+
+    if (result.includes("{noteText}")) {
+      const noteText = typeof metadata?.noteText === "string" && metadata.noteText.trim()
+        ? metadata.noteText.trim()
+        : NotificationsService.NOTE_TEXT_FALLBACK
+      result = result.replace(/\{noteText\}/g, noteText)
+    }
+
+    if (
+      result.includes("{dropoffConfirmationTitle}") ||
+      result.includes("{dropoffConfirmationSubtitle}")
+    ) {
+      const dropoffCopy = NotificationsService.getDropoffStatusCopy(metadata)
+      result = result.replace(/\{dropoffConfirmationTitle\}/g, dropoffCopy.title)
+      result = result.replace(/\{dropoffConfirmationSubtitle\}/g, dropoffCopy.subtitle)
+    }
+
+    return result
   }
 
   /**
@@ -707,9 +701,10 @@ export class NotificationsService implements INotificationsService {
       (template.inapp_recipients || []) as RecipientType[]
     )
 
-    const title = formatNotificationTitle(template.title, context.name, context.reference)
+    const interpolatedTitle = NotificationsService.interpolateText(template.title, metadata)
+    const title = formatNotificationTitle(interpolatedTitle, context.name, context.reference)
     const ctaUrl = buildCtaUrl(template.cta_url_template, collectionId)
-    const body = NotificationsService.interpolateDescription(template.description, metadata)
+    const body = NotificationsService.interpolateText(template.description, metadata)
 
     // Create email notifications
     for (const recipient of emailRecipients) {

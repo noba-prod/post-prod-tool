@@ -13,7 +13,7 @@ export type OrganizationType =
   | 'photography_agency'
   | 'self_photographer'
   | 'lab_low_res_scan'
-  | 'edition_studio'
+  | 'retouch_studio'
   | 'hand_print_lab'
 
 export type UserRole = 'admin' | 'editor' | 'viewer'

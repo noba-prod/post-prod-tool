@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { PhoneInput } from "./phone-input"
 import { OptionPicker } from "./option-picker"
-import { Upload } from "lucide-react"
+import { Upload, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Import domain types and helpers
@@ -59,6 +59,8 @@ interface UserCreationFormProps {
   isAdminUser?: boolean
   /** Form mode: 'create' for new users, 'edit' for editing existing users */
   mode?: "create" | "edit"
+  /** When true, user is editing their own profile (Profile details): different title/subtitle and Role field disabled */
+  isEditingSelf?: boolean
   /** Initial user data (for edit mode) */
   initialUserData?: User
   /** Initial form data */
@@ -98,7 +100,7 @@ interface UserCreationFormProps {
  * - First Name (text input, mandatory)
  * - Last Name (text input)
  * - Email (email input, mandatory)
- * - Phone Number (phone input, mandatory)
+ * - Phone Number (phone input, optional)
  * - Entity (select disabled, shows "EntityType: EntityName", mandatory)
  * - Role (select: Admin | Editor | Viewer, mandatory)
  * 
@@ -112,6 +114,7 @@ export function UserCreationForm({
   entity = null,
   isAdminUser = false,
   mode = "create",
+  isEditingSelf = false,
   initialUserData,
   initialData,
   disabled = false,
@@ -123,8 +126,15 @@ export function UserCreationForm({
   showPrimary: showPrimaryProp,
   showSecondary: showSecondaryProp,
 }: UserCreationFormProps) {
-  // Determine title and primary label based on mode
-  const title = mode === "edit" ? "Edit user" : (isAdminUser ? "New Admin User" : "Create User")
+  // Determine title and primary label based on mode (profile-details variant when editing self)
+  const title =
+    isEditingSelf && mode === "edit"
+      ? "Edit profile details"
+      : mode === "edit"
+        ? "Edit user"
+        : isAdminUser
+          ? "New Admin User"
+          : "Create User"
   const defaultPrimaryLabel = mode === "edit" ? "Save changes" : (isAdminUser ? "Create admin user" : "Register member")
   const finalPrimaryLabel = primaryLabel || defaultPrimaryLabel
   // View-only: hide action buttons; edit mode: show Cancel or Delete (when onDeleteClick) as secondary
@@ -253,12 +263,11 @@ export function UserCreationForm({
     }
   }, [open, entity, isAdminUser, parsedInitialData, mode, initialUserData])
 
-  // Validation
+  // Validation (First Name, Email required; Phone number optional)
   const isFormValid = React.useMemo(() => {
     return (
       formData.firstName.trim() !== "" &&
       formData.email.trim() !== "" &&
-      formData.phoneNumber.trim() !== "" &&
       formData.entity !== null &&
       formData.role !== null &&
       !emailAlreadyExists
@@ -289,17 +298,44 @@ export function UserCreationForm({
     fileInputRef.current?.click()
   }
 
+  // Preview URL for profile picture: object URL when new file selected, or existing profile URL
+  const [objectUrl, setObjectUrl] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    if (formData.profilePicture instanceof File) {
+      const url = URL.createObjectURL(formData.profilePicture)
+      setObjectUrl(url)
+      return () => {
+        URL.revokeObjectURL(url)
+        setObjectUrl(null)
+      }
+    }
+    setObjectUrl(null)
+    return undefined
+  }, [formData.profilePicture])
+  const [userRemovedProfilePicture, setUserRemovedProfilePicture] = React.useState(false)
+  React.useEffect(() => {
+    if (open) setUserRemovedProfilePicture(false)
+  }, [open])
+  const profilePreviewUrl =
+    formData.profilePicture instanceof File
+      ? objectUrl
+      : !userRemovedProfilePicture && (initialUserData?.profilePictureUrl?.trim() || null)
+        ? initialUserData.profilePictureUrl.trim()
+        : null
+
   return (
     <ModalWindow
       open={open}
       onOpenChange={onOpenChange}
       title={title}
       subtitle={
-        mode === "edit"
-          ? "Update user information"
-          : isAdminUser
-          ? "Create the admin user for this entity"
-          : "Add a new member to the entity"
+        isEditingSelf && mode === "edit"
+          ? "Update your info and upload a profile picture for better recognition"
+          : mode === "edit"
+            ? "Update user information"
+            : isAdminUser
+              ? "Create the admin user for this entity"
+              : "Add a new member to the entity"
       }
       primaryLabel={finalPrimaryLabel}
       secondaryLabel={finalSecondaryLabel}
@@ -391,11 +427,11 @@ export function UserCreationForm({
                 </FieldContent>
               </Field>
 
-              {/* Phone Number */}
+              {/* Phone Number (optional) */}
               <Field>
                 <FieldContent>
                   <PhoneInput
-                    label="Phone number"
+                    label="Phone number (optional)"
                     countryCode={formData.countryCode}
                     phoneNumber={formData.phoneNumber}
                     onCountryCodeChange={(code) =>
@@ -444,7 +480,7 @@ export function UserCreationForm({
                     placeholder="Select a role"
                     options={ALL_ROLES.map((r) => ({ value: r, label: roleToLabel(r) }))}
                     searchable={false}
-                    disabled={isAdminUser || disabled}
+                    disabled={isAdminUser || disabled || isEditingSelf}
                   />
                 </FieldContent>
               </Field>
@@ -460,7 +496,7 @@ export function UserCreationForm({
                 </div>
                 <FieldContent>
                   <div className={cn(
-                    "flex items-center gap-3 h-9 pl-2 pr-px py-0.5 border border-border rounded-lg",
+                    "flex items-center gap-1.5 h-9 py-1 px-0.5 border border-border rounded-lg",
                     disabled && "opacity-50 cursor-not-allowed"
                   )}>
                     <Input
@@ -472,11 +508,33 @@ export function UserCreationForm({
                       className="hidden"
                       disabled={disabled}
                     />
+                    {profilePreviewUrl ? (
+                      <>
+                        <img
+                          src={profilePreviewUrl}
+                          alt=""
+                          className="size-8 shrink-0 rounded-[10px] object-cover border border-border"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData((prev) => ({ ...prev, profilePicture: null }))
+                            setUserRemovedProfilePicture(true)
+                            if (fileInputRef.current) fileInputRef.current.value = ""
+                          }}
+                          disabled={disabled}
+                          className="shrink-0 rounded p-0.5 text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                          aria-label="Remove profile picture"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </>
+                    ) : null}
                     <span className="text-sm text-muted-foreground truncate flex-1 min-w-0">
                       {formData.profilePicture
                         ? formData.profilePicture.name
-                        : initialUserData?.profilePictureUrl
-                          ? "Current image"
+                        : profilePreviewUrl
+                          ? ""
                           : "No file chosen"}
                     </span>
                     <Button

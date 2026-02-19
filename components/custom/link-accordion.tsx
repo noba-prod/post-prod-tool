@@ -23,6 +23,8 @@ export interface LinkAccordionItem {
   noteText?: string
   noteAuthorName?: string
   noteAuthorImageUrl?: string
+  /** User name who wrote the note (profiles.first_name + last_name). Shown after '·' separator in the author row. */
+  noteAuthorUserName?: string
   /** Whether this item is initially expanded */
   defaultOpen?: boolean
 }
@@ -90,6 +92,7 @@ function LinkAccordionSection({
                 additionalInfo={item.noteText}
                 authorName={item.noteAuthorName}
                 authorImageUrl={item.noteAuthorImageUrl}
+                authorUserName={item.noteAuthorUserName}
               />
             )}
           </div>

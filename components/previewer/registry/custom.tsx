@@ -608,8 +608,9 @@ Gap: 16px | Padding: 40px`,
             mainTitle="Notes"
             entityName="Client"
             additionalInfo="This is a example of a very long text that carry more than on line of content, just to show how this component behave."
-            authorName="Erika Goldner"
+            authorName="Zara"
             authorImageUrl=""
+            authorUserName="Erika Goldner"
           />
         </div>
         <div className="w-[365px] shrink-0 space-y-2">
@@ -649,7 +650,8 @@ Gap: 16px | Padding: 40px`,
               primaryBackgroundImage: "/assets/bg-lowres.png",
               primaryOnAction: () => {},
               noteText: "There was some problems when scanning latest negatives. If you notice any missing photos from the shoot, get in touch with us to solve problems.",
-              noteAuthorName: "Erika Goldner",
+              noteAuthorName: "Carmencita Lab",
+              noteAuthorUserName: "Erika Goldner",
               defaultOpen: true,
             },
             {
@@ -659,7 +661,8 @@ Gap: 16px | Padding: 40px`,
               primaryBackgroundImage: "/assets/bg-lowres.png",
               primaryOnAction: () => {},
               noteText: "New photos are ready! Check them out and let us know if something is missing",
-              noteAuthorName: "Erika Goldner",
+              noteAuthorName: "Carmencita Lab",
+              noteAuthorUserName: "Erika Goldner",
               defaultOpen: true,
             },
             {
@@ -669,7 +672,8 @@ Gap: 16px | Padding: 40px`,
               primaryBackgroundImage: "/assets/bg-lowres.png",
               // No primaryOnAction: item has no links from DB, so the action button is not shown
               noteText: "New photos are ready! Check them out and let us know if something is missing",
-              noteAuthorName: "Erika Goldner",
+              noteAuthorName: "Carmencita Lab",
+              noteAuthorUserName: "Erika Goldner",
               defaultOpen: true,
             },
           ]}

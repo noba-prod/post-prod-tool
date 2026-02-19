@@ -25,7 +25,9 @@ export interface ParticipantsModalIndividual {
 export interface ParticipantsModalEntity {
   /** Entity display name */
   entityName: string
+  /** Responsible: user(s) with edit permission; if multiple, "UserName + N more". Displayed as "Responsible:" in the card. */
   managerName?: string
+  /** Total members count. Displayed as "Total members:" in the card. */
   teamMembersCount?: number
   imageUrl?: string
   /** Entity type label above card: e.g. "Client", "Photo Lab", "Hand Print Lab", "Agency", "Retouch studio". */

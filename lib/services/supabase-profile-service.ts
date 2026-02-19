@@ -42,7 +42,7 @@ export function mapOrganizationTypeToEntityType(orgType: OrganizationType): Enti
     "photography_agency": "agency",
     "self_photographer": "self-photographer",
     "lab_low_res_scan": "photo-lab",
-    "edition_studio": "edition-studio",
+    "retouch_studio": "edition-studio",
     "hand_print_lab": "hand-print-lab",
   }
   return mapping[orgType]

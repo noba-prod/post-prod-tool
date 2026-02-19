@@ -278,9 +278,9 @@ export interface CollectionTemplateProps {
   /** Called when owner uploads photographer selection (step 4). Marks step completed, notifies producer + client. */
   onUploadPhotographerSelection?: (payload: { url: string; notes?: string }) => void | Promise<void>
   /** Step notes conversation for low-res step (step 3). */
-  stepNotesLowRes?: Array<{ from: string; text: string; at: string }>
+  stepNotesLowRes?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step notes conversation for photographer selection step (step 4). */
-  stepNotesPhotographerSelection?: Array<{ from: string; text: string; at: string }>
+  stepNotesPhotographerSelection?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Called when photographer requests additional photos (missing photos flow). Posts event + note, triggers revert. */
   onRequestAdditionalPhotos?: (notes: string) => void | Promise<void>
   /** Step 5 (Client selection): called when client uploads final selection. */
@@ -292,13 +292,13 @@ export interface CollectionTemplateProps {
   /** Step 6: when the client selection URL was uploaded (ISO). */
   clientSelectionUploadedAt?: string
   /** Step notes conversation for client selection step (step 5). */
-  stepNotesClientSelection?: Array<{ from: string; text: string; at: string }>
+  stepNotesClientSelection?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 6: called when photographer validates client selection. */
   onValidateClientSelection?: (comments?: string) => void | Promise<void>
   /** Step 6: called when photographer requests more photos from client. */
   onRequestMorePhotosFromClient?: (notes: string) => void | Promise<void>
   /** Step notes conversation for photographer review step (step 6). */
-  stepNotesPhotographerReview?: Array<{ from: string; text: string; at: string }>
+  stepNotesPhotographerReview?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 7: called when lab uploads high-res selection. */
   onUploadHighRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
   /** Step 8 (Edition request): URL(s) of high-res selection (step 7 upload). Array — latest is last. */
@@ -308,7 +308,7 @@ export interface CollectionTemplateProps {
   /** Step 8: name of entity that uploaded high-res (e.g. Hand Print Lab name) for "Uploaded by @X". */
   highResUploadedByName?: string
   /** Step notes conversation for high-res step (step 7). */
-  stepNotesHighRes?: Array<{ from: string; text: string; at: string }>
+  stepNotesHighRes?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 8: entity name for notes block (e.g. "Hand Print Lab" or "Photo Lab"). */
   highResUploadedByEntityName?: string
   /** Step 8: called when photographer gives improvement instructions to retouch studio. */
@@ -318,7 +318,7 @@ export interface CollectionTemplateProps {
   /** Step 9: when the photographer gave instructions (step 8) — ISO. */
   editionRequestInstructionsUploadedAt?: string
   /** Step notes conversation for edition request step (step 8). */
-  stepNotesEditionRequest?: Array<{ from: string; text: string; at: string }>
+  stepNotesEditionRequest?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 9: called when edition studio uploads final retouched photos. */
   onUploadFinals?: (payload: { url: string; notes?: string }) => void | Promise<void>
   /** Step 10 (Photographer last check): URL(s) of finals from step 9. Array — latest is last. */
@@ -328,7 +328,7 @@ export interface CollectionTemplateProps {
   /** Step 10: name of entity that uploaded finals (e.g. Edition studio name) for "Uploaded by @X". */
   finalsUploadedByName?: string
   /** Step notes conversation for final edits step (step 9). */
-  stepNotesFinalEdits?: Array<{ from: string; text: string; at: string }>
+  stepNotesFinalEdits?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 10: entity name for notes block (e.g. "Retouch studio"). */
   finalsUploadedByEntityName?: string
   /** Step 10: called when photographer requests changes (secondary action). */
@@ -338,9 +338,11 @@ export interface CollectionTemplateProps {
   /** Step 11: called when client completes collection (primary action). */
   onCompleteCollection?: () => void | Promise<void>
   /** Step notes conversation for photographer last check step (step 10). */
-  stepNotesPhotographerLastCheck?: Array<{ from: string; text: string; at: string }>
+  stepNotesPhotographerLastCheck?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step notes conversation for client confirmation step (step 11). */
-  stepNotesClientConfirmation?: Array<{ from: string; text: string; at: string }>
+  stepNotesClientConfirmation?: Array<{ from: string; text: string; at: string; userId?: string }>
+  /** Map of userId → { name, entityName, entityImageUrl } for all collection members. Used to resolve step note author identity. */
+  noteAuthorsByUserId?: Record<string, { name: string; entityName?: string; entityImageUrl?: string }>
   /** Additional footage request: entity name + notes per step. Shown as "additionalRequest" variant when someone requested more photos via the "missing photos" flow. */
   additionalFootageRequest?: {
     /** Entity name requesting additional photos (e.g. "Photographer", "Client"). */
@@ -360,6 +362,8 @@ export interface CollectionTemplateProps {
   navBarProps?: NavBarConfig
   /** Current active owner roles for the active step (from collections.current_owners). */
   currentOwners?: CollectionMemberRole[]
+  /** Per-step owner roles (used for canShowModalActions: open step's owners, not active step). */
+  stepOwners?: Record<string, CollectionMemberRole[]>
   /** Current user collection role in DB format (noba, client, photographer, ...). */
   currentUserCollectionRole?: CollectionMemberRole | null
   /** Current user edit permission at collection level. */
@@ -462,12 +466,14 @@ export function CollectionTemplate({
   onCompleteCollection,
   stepNotesPhotographerLastCheck,
   stepNotesClientConfirmation,
+  noteAuthorsByUserId,
   additionalFootageRequest,
   uploadLowResShippingReminderDate,
   uploadLowResShippingReminderTime,
   uploadLowResShippingReminderDestination,
   navBarProps,
   currentOwners = [],
+  stepOwners,
   currentUserCollectionRole = null,
   currentUserHasEditPermission = false,
   debugStepOwners,
@@ -538,7 +544,7 @@ export function CollectionTemplate({
   const finalsUploadNotes = lastNoteText(stepNotesFinalEdits)
   const photographerValidationNotes = lastNoteText(stepNotesPhotographerReview)
 
-  /** Resolve uploader display name + image for link-accordion note author by role (from participants). */
+  /** Resolve uploader entity display (name + image) for link-accordion note author by role. */
   const resolveUploaderDisplay = React.useCallback(
     (expectedNoteFrom: string): { name: string; imageUrl?: string } | null => {
       if (expectedNoteFrom === "photographer") {
@@ -581,26 +587,31 @@ export function CollectionTemplate({
   const buildLinkAccordionItems = React.useCallback(
     (
       urlProp: string | string[] | undefined,
-      notes: Array<{ from: string; text: string; at: string }> | undefined,
+      notes: Array<{ from: string; text: string; at: string; userId?: string }> | undefined,
       cardTitle: string,
       bgImage: string,
       _uploaderName?: string,
       uploadedAt?: string,
       /** When set, only show the note for an item if it's from this role (upload-form notes only, not request-more-photos). */
       expectedNoteFrom?: string,
-      /** Resolved step owner display (name + image) for note author — e.g. from resolveUploaderDisplay(expectedNoteFrom). */
+      /** Resolved step owner display (entity name + image) for note author — e.g. from resolveUploaderDisplay(expectedNoteFrom). */
       uploaderDisplay?: { name: string; imageUrl?: string } | null,
     ): LinkAccordionItem[] => {
       const urls = allUrls(urlProp)
       if (urls.length === 0) return []
       const uploaderNotes =
         expectedNoteFrom != null ? (notes ?? []).filter((n) => n.from === expectedNoteFrom) : undefined
-      const authorName = uploaderDisplay?.name?.trim() || (expectedNoteFrom ? expectedNoteFrom.charAt(0).toUpperCase() + expectedNoteFrom.slice(1).replace(/_/g, " ") : undefined)
-      const authorImageUrl = uploaderDisplay?.imageUrl
+      const fallbackEntityName = uploaderDisplay?.name?.trim() || (expectedNoteFrom ? expectedNoteFrom.charAt(0).toUpperCase() + expectedNoteFrom.slice(1).replace(/_/g, " ") : undefined)
+      const fallbackEntityImageUrl = uploaderDisplay?.imageUrl
       return urls.map((url, idx) => {
         const note = uploaderNotes != null ? uploaderNotes[idx] : notes?.[idx]
         const at = (idx === 0 ? uploadedAt : undefined) ?? note?.at
         const trimmedText = note?.text?.trim()
+        const hasNote = note != null && (trimmedText?.length ?? 0) > 0
+        const noteAuthor = note?.userId ? noteAuthorsByUserId?.[note.userId] : undefined
+        const entityName = noteAuthor?.entityName?.trim() || fallbackEntityName
+        const entityImageUrl = noteAuthor?.entityImageUrl || fallbackEntityImageUrl
+        const userName = noteAuthor?.name?.trim() || undefined
         const label: React.ReactNode =
           idx === 0 ? (
             "Original link"
@@ -617,13 +628,14 @@ export function CollectionTemplate({
           primaryBackgroundImage: bgImage,
           primaryOnAction: () => window.open(url, "_blank", "noopener,noreferrer"),
           noteText: trimmedText && trimmedText.length > 0 ? trimmedText : undefined,
-          noteAuthorName: (note && (trimmedText?.length ?? 0) > 0) ? authorName : undefined,
-          noteAuthorImageUrl: (note && (trimmedText?.length ?? 0) > 0) ? authorImageUrl : undefined,
+          noteAuthorName: hasNote ? entityName : undefined,
+          noteAuthorImageUrl: hasNote ? entityImageUrl : undefined,
+          noteAuthorUserName: hasNote ? userName : undefined,
           defaultOpen: idx === urls.length - 1,
         } satisfies LinkAccordionItem
       })
     },
-    []
+    [noteAuthorsByUserId]
   )
 
   const [isSearchOpen, setIsSearchOpen] = React.useState(false)
@@ -829,12 +841,11 @@ export function CollectionTemplate({
     if (!openStep) return false
     // Fallback behavior for demos/legacy callers that don't pass current owner context.
     if (!currentUserCollectionRole) return !!openStep.canEdit
-    // Show actions if user is a current_owner with edit permission,
-    // regardless of step status (active, locked, completed…).
-    // This way the user always sees the action blocks for their owned steps
-    // (even if disabled/locked visually), improving UX.
-    return currentUserHasEditPermission && currentOwners.includes(currentUserCollectionRole)
-  }, [openStep, currentOwners, currentUserCollectionRole, currentUserHasEditPermission])
+    // Use step-specific owners (open step), not collection.currentOwners (active step),
+    // so Photo Lab doesn't see Shooting "Confirm pickup" when collection is on low_res_scanning.
+    const stepOwnerRoles = stepOwners?.[openStep.id] ?? currentOwners
+    return currentUserHasEditPermission && stepOwnerRoles.includes(currentUserCollectionRole)
+  }, [openStep, currentOwners, stepOwners, currentUserCollectionRole, currentUserHasEditPermission])
 
   return (
     <div
@@ -941,22 +952,6 @@ export function CollectionTemplate({
         showSecondary={false}
       >
         <div className={`px-5 pb-5 flex flex-col gap-6${openStep && openStep.status !== "active" && openStep.status !== "completed" ? " opacity-50 pointer-events-none" : ""}`}>
-          {/* DEBUG BADGE — dev only, safe to remove this entire block + the two debug props */}
-          {process.env.NODE_ENV === "development" && openStep && (() => {
-            const stepOwnerRoles = debugStepOwners?.[openStep.id] ?? currentOwners
-            const canEditNames = debugCanEditPerStep?.[openStep.id] ?? []
-            return (
-              <div className="rounded-md border border-dashed border-yellow-500 bg-yellow-50 dark:bg-yellow-950/30 p-2 text-[10px] font-mono leading-tight text-yellow-800 dark:text-yellow-300 space-y-0.5">
-                <div><strong>stepOwners:</strong> {JSON.stringify(stepOwnerRoles)}</div>
-                <div><strong>canEdit:</strong> {JSON.stringify(canEditNames)}</div>
-                <div><strong>myRole:</strong> {currentUserCollectionRole ?? "—"}</div>
-                <div><strong>editPerm:</strong> {String(currentUserHasEditPermission)}</div>
-                <div><strong>canShowActions:</strong> {String(canShowModalActions)}</div>
-                <div><strong>stepStatus:</strong> {openStep.status}</div>
-              </div>
-            )
-          })()}
-          {/* END DEBUG BADGE */}
           {openStep && (
             <>
               {openStep.id === "shooting" ? (
@@ -966,16 +961,7 @@ export function CollectionTemplate({
                   subtitle={[shootingStreetAddress, shootingCity].filter(Boolean).join(", ") || undefined}
                   additionalInfo={[shootingZipCode, shootingCountry].filter(Boolean).join(", ") || undefined}
                   backgroundImage="/assets/bg-shooting.png"
-                  makeCardClickable={true}
-                  onAction={() => {
-                    const query = [shootingStreetAddress, shootingCity, shootingZipCode, shootingCountry]
-                      .filter(Boolean)
-                      .join(", ")
-                    if (query) {
-                      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-                      window.open(url, "_blank", "noopener,noreferrer")
-                    }
-                  }}
+                  hideActionButton
                 />
               ) : openStep.id === "negatives_dropoff" ? (
                 <>
@@ -998,11 +984,7 @@ export function CollectionTemplate({
                         : "Tracking ID: —"
                     }
                     backgroundImage="/assets/bg-tracking.png"
-                    onAction={
-                      canShowModalActions && collectionId
-                        ? () => router.push(`/collections/create/${collectionId}`)
-                        : undefined
-                    }
+                    hideActionButton
                   />
                   <div className="flex flex-row gap-4 w-full">
                     <StepDetails
@@ -1079,13 +1061,8 @@ export function CollectionTemplate({
                     }
                     backgroundImage="/assets/bg-lowres.png"
                     hideActionButton
-                    onAction={
-                      canShowModalActions && collectionId
-                        ? () => router.push(`/collections/create/${collectionId}`)
-                        : undefined
-                    }
                   />
-                  {photographerMissingphotos?.trim() && (
+                  {canShowModalActions && photographerMissingphotos?.trim() && (
                     <StepDetails
                       variant="additionalRequest"
                       mainTitle=""
@@ -1150,51 +1127,53 @@ export function CollectionTemplate({
                       hideActionButton
                       className="min-w-0 flex-1"
                     />
-                    <StepDetails
-                      variant="primary"
-                      mainTitle="Low-res photos"
-                      subtitle={
-                        (() => {
-                          const photoLab = (participantsMainPlayersEntities ?? []).find(
-                            (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
-                          )
-                          const name = photoLab?.entityName ?? "—"
-                          return (
-                            <>
-                              Uploaded by <span className="text-lime-400">@{(name ?? "").replace(/^@/, "").trim()}</span>
-                            </>
-                          )
-                        })()
-                      }
-                      additionalInfo={
-                        (() => {
-                          const urls = allUrls(lowResSelectionUrl)
-                          if (urls.length === 0) return "Not uploaded yet"
-                          if (urls.length === 1)
-                            return lowResUploadedAt
-                              ? `View link · ${formatRelativeTime(lowResUploadedAt)}`
-                              : "View link"
-                          return `${urls.length} links · View`
-                        })()
-                      }
-                      backgroundImage="/assets/bg-lowres.png"
-                      makeCardClickable={allUrls(lowResSelectionUrl).length > 0}
-                      onAction={
-                        allUrls(lowResSelectionUrl).length > 0
-                          ? () => {
-                              const labName = (participantsMainPlayersEntities ?? []).find(
-                                (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
-                              )?.entityName
-                              openLinkDialog(
-                                "Low-res scans by lab",
-                                "Download and review the latest scans shared by the lab",
-                                buildLinkAccordionItems(lowResSelectionUrl, stepNotesLowRes, "Low-res photos", "/assets/bg-lowres.png", labName, lowResUploadedAt, "lab", resolveUploaderDisplay("lab"))
-                              )
-                            }
-                          : undefined
-                      }
-                      className="min-w-0 flex-1"
-                    />
+                    {canShowModalActions && (
+                      <StepDetails
+                        variant="primary"
+                        mainTitle="Low-res photos"
+                        subtitle={
+                          (() => {
+                            const photoLab = (participantsMainPlayersEntities ?? []).find(
+                              (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
+                            )
+                            const name = photoLab?.entityName ?? "—"
+                            return (
+                              <>
+                                Uploaded by <span className="text-lime-400">@{(name ?? "").replace(/^@/, "").trim()}</span>
+                              </>
+                            )
+                          })()
+                        }
+                        additionalInfo={
+                          (() => {
+                            const urls = allUrls(lowResSelectionUrl)
+                            if (urls.length === 0) return "Not uploaded yet"
+                            if (urls.length === 1)
+                              return lowResUploadedAt
+                                ? `View link · ${formatRelativeTime(lowResUploadedAt)}`
+                                : "View link"
+                            return `${urls.length} links · View`
+                          })()
+                        }
+                        backgroundImage="/assets/bg-lowres.png"
+                        makeCardClickable={allUrls(lowResSelectionUrl).length > 0}
+                        onAction={
+                          allUrls(lowResSelectionUrl).length > 0
+                            ? () => {
+                                const labName = (participantsMainPlayersEntities ?? []).find(
+                                  (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
+                                )?.entityName
+                                openLinkDialog(
+                                  "Low-res scans by lab",
+                                  "Download and review the latest scans shared by the lab",
+                                  buildLinkAccordionItems(lowResSelectionUrl, stepNotesLowRes, "Low-res photos", "/assets/bg-lowres.png", labName, lowResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                                )
+                              }
+                            : undefined
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                    )}
                   </div>
                   {canShowModalActions && additionalFootageRequest?.forStepId === "photographer_selection" && (
                     <StepDetails
@@ -1205,7 +1184,7 @@ export function CollectionTemplate({
                       isCompleted={additionalFootageRequest.isCompleted}
                     />
                   )}
-                  {clientRequestedMorePhotosFromPhotographer?.trim() && (
+                  {canShowModalActions && clientRequestedMorePhotosFromPhotographer?.trim() && (
                     <StepDetails
                       variant="additionalRequest"
                       mainTitle=""
@@ -1258,20 +1237,18 @@ export function CollectionTemplate({
                       )}
                     </section>
                   )}
-                  <StepDetails
-                    variant="missingPhotos"
-                    mainTitle="Missing photos?"
-                    entityName={
-                      (participantsMainPlayersEntities ?? []).find(
-                        (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
-                      )?.entityName ?? "photo lab"
-                    }
-                    onAction={
-                      canShowModalActions
-                        ? () => setMissingPhotosDialogOpen(true)
-                        : undefined
-                    }
-                  />
+                  {canShowModalActions && (
+                    <StepDetails
+                      variant="missingPhotos"
+                      mainTitle="Missing photos?"
+                      entityName={
+                        (participantsMainPlayersEntities ?? []).find(
+                          (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
+                        )?.entityName ?? "photo lab"
+                      }
+                      onAction={() => setMissingPhotosDialogOpen(true)}
+                    />
+                  )}
                 </div>
               ) : openStep.id === "client_selection" ? (
                 <div className="flex flex-col gap-5 w-full">
@@ -1284,43 +1261,45 @@ export function CollectionTemplate({
                         hideActionButton
                         className="min-w-0 flex-1"
                       />
-                      <StepDetails
-                        variant="primary"
-                        mainTitle="Photographer selection"
-                        subtitle={
-                          photographerName?.trim() ? (
-                            <>
-                              Uploaded by <span className="text-lime-400">@{(photographerName ?? "").replace(/^@/, "").trim()}</span>
-                            </>
-                          ) : (
-                            "Uploaded by photographer"
-                          )
-                        }
-                        additionalInfo={
-                          (() => {
-                            const urls = allUrls(photographerSelectionUrl)
-                            if (urls.length === 0) return "Not uploaded yet"
-                            if (urls.length === 1)
-                              return photographerSelectionUploadedAt
-                                ? `View link · ${formatRelativeTime(photographerSelectionUploadedAt)}`
-                                : "View link"
-                            return `${urls.length} links · View`
-                          })()
-                        }
-                        backgroundImage="/assets/bg-selection.png"
-                        makeCardClickable={allUrls(photographerSelectionUrl).length > 0}
-                        onAction={
-                          allUrls(photographerSelectionUrl).length > 0
-                            ? () =>
-                                openLinkDialog(
-                                  "Photographer selection",
-                                  "Download and review the latest selection shared by the photographer",
-                                  buildLinkAccordionItems(photographerSelectionUrl, stepNotesPhotographerSelection, "Photographer selection", "/assets/bg-selection.png", photographerName?.trim(), photographerSelectionUploadedAt, "photographer", resolveUploaderDisplay("photographer"))
-                                )
-                            : undefined
-                        }
-                        className="min-w-0 flex-1"
-                      />
+                      {canShowModalActions && (
+                        <StepDetails
+                          variant="primary"
+                          mainTitle="Photographer selection"
+                          subtitle={
+                            photographerName?.trim() ? (
+                              <>
+                                Uploaded by <span className="text-lime-400">@{(photographerName ?? "").replace(/^@/, "").trim()}</span>
+                              </>
+                            ) : (
+                              "Uploaded by photographer"
+                            )
+                          }
+                          additionalInfo={
+                            (() => {
+                              const urls = allUrls(photographerSelectionUrl)
+                              if (urls.length === 0) return "Not uploaded yet"
+                              if (urls.length === 1)
+                                return photographerSelectionUploadedAt
+                                  ? `View link · ${formatRelativeTime(photographerSelectionUploadedAt)}`
+                                  : "View link"
+                              return `${urls.length} links · View`
+                            })()
+                          }
+                          backgroundImage="/assets/bg-selection.png"
+                          makeCardClickable={allUrls(photographerSelectionUrl).length > 0}
+                          onAction={
+                            allUrls(photographerSelectionUrl).length > 0
+                              ? () =>
+                                  openLinkDialog(
+                                    "Photographer selection",
+                                    "Download and review the latest selection shared by the photographer",
+                                    buildLinkAccordionItems(photographerSelectionUrl, stepNotesPhotographerSelection, "Photographer selection", "/assets/bg-selection.png", photographerName?.trim(), photographerSelectionUploadedAt, "photographer", resolveUploaderDisplay("photographer"))
+                                  )
+                              : undefined
+                          }
+                          className="min-w-0 flex-1"
+                        />
+                      )}
                   </div>
                   {canShowModalActions && additionalFootageRequest?.forStepId === "client_selection" && (
                     <StepDetails
@@ -1350,20 +1329,18 @@ export function CollectionTemplate({
                       </Button>
                     </section>
                   )}
-                  <StepDetails
-                    variant="missingPhotos"
-                    mainTitle="Missing photos?"
-                    entityName={
-                      (participantsMainPlayersIndividuals ?? []).find(
-                        (u) => (u.roleLabel ?? "").toLowerCase() === "photographer"
-                      )?.name ?? "Photographer"
-                    }
-                    onAction={
-                      canShowModalActions
-                        ? () => setClientMissingPhotosDialogOpen(true)
-                        : undefined
-                    }
-                  />
+                  {canShowModalActions && (
+                    <StepDetails
+                      variant="missingPhotos"
+                      mainTitle="Missing photos?"
+                      entityName={
+                        (participantsMainPlayersIndividuals ?? []).find(
+                          (u) => (u.roleLabel ?? "").toLowerCase() === "photographer"
+                        )?.name ?? "Photographer"
+                      }
+                      onAction={() => setClientMissingPhotosDialogOpen(true)}
+                    />
+                  )}
                 </div>
               ) : openStep.id === "photographer_check_client_selection" ? (
                 <div className="flex flex-col gap-5 w-full">
@@ -1377,43 +1354,45 @@ export function CollectionTemplate({
                         hideActionButton
                         className="min-w-0 flex-1"
                       />
-                      <StepDetails
-                        variant="primary"
-                        mainTitle="Client selection"
-                        subtitle={
-                          clientName?.trim() ? (
-                            <>
-                              Uploaded by <span className="text-lime-400">@{(clientName ?? "").replace(/^@/, "").trim()}</span>
-                            </>
-                          ) : (
-                            "Uploaded by client"
-                          )
-                        }
-                        additionalInfo={
-                          (() => {
-                            const urls = allUrls(clientSelectionUrl)
-                            if (urls.length === 0) return "Not uploaded yet"
-                            if (urls.length === 1)
-                              return clientSelectionUploadedAt
-                                ? `View link · ${formatRelativeTime(clientSelectionUploadedAt)}`
-                                : "View link"
-                            return `${urls.length} links · View`
-                          })()
-                        }
-                        backgroundImage="/assets/bg-clientselect.png"
-                        makeCardClickable={allUrls(clientSelectionUrl).length > 0}
-                        onAction={
-                          allUrls(clientSelectionUrl).length > 0
-                            ? () =>
-                                openLinkDialog(
-                                  "Client selection",
-                                  "Download and review the latest selection shared by the client",
-                                  buildLinkAccordionItems(clientSelectionUrl, stepNotesClientSelection, "Client selection", "/assets/bg-clientselect.png", clientName?.replace(/^@/, "").trim(), clientSelectionUploadedAt, "client", resolveUploaderDisplay("client"))
-                                )
-                            : undefined
-                        }
-                        className="min-w-0 flex-1"
-                      />
+                      {canShowModalActions && (
+                        <StepDetails
+                          variant="primary"
+                          mainTitle="Client selection"
+                          subtitle={
+                            clientName?.trim() ? (
+                              <>
+                                Uploaded by <span className="text-lime-400">@{(clientName ?? "").replace(/^@/, "").trim()}</span>
+                              </>
+                            ) : (
+                              "Uploaded by client"
+                            )
+                          }
+                          additionalInfo={
+                            (() => {
+                              const urls = allUrls(clientSelectionUrl)
+                              if (urls.length === 0) return "Not uploaded yet"
+                              if (urls.length === 1)
+                                return clientSelectionUploadedAt
+                                  ? `View link · ${formatRelativeTime(clientSelectionUploadedAt)}`
+                                  : "View link"
+                              return `${urls.length} links · View`
+                            })()
+                          }
+                          backgroundImage="/assets/bg-clientselect.png"
+                          makeCardClickable={allUrls(clientSelectionUrl).length > 0}
+                          onAction={
+                            allUrls(clientSelectionUrl).length > 0
+                              ? () =>
+                                  openLinkDialog(
+                                    "Client selection",
+                                    "Download and review the latest selection shared by the client",
+                                    buildLinkAccordionItems(clientSelectionUrl, stepNotesClientSelection, "Client selection", "/assets/bg-clientselect.png", clientName?.replace(/^@/, "").trim(), clientSelectionUploadedAt, "client", resolveUploaderDisplay("client"))
+                                  )
+                              : undefined
+                          }
+                          className="min-w-0 flex-1"
+                        />
+                      )}
                     </div>
                     {canShowModalActions && additionalFootageRequest?.forStepId === "photographer_check_client_selection" && (
                       <StepDetails
@@ -1457,43 +1436,45 @@ export function CollectionTemplate({
                         hideActionButton
                         className="min-w-0 flex-1"
                       />
-                      <StepDetails
-                        variant="primary"
-                        mainTitle="Download high-res"
-                        subtitle={
-                          highResUploadedByName?.trim() ? (
-                            <>
-                              Uploaded by <span className="text-lime-400">@{(highResUploadedByName ?? "").replace(/^@/, "").trim()}</span>
-                            </>
-                          ) : (
-                            "Uploaded by lab"
-                          )
-                        }
-                        additionalInfo={
-                          (() => {
-                            const urls = allUrls(highResSelectionUrl)
-                            if (urls.length === 0) return "Not uploaded yet"
-                            if (urls.length === 1)
-                              return highResUploadedAt
-                                ? `View link · ${formatRelativeTime(highResUploadedAt)}`
-                                : "View link"
-                            return `${urls.length} links · View`
-                          })()
-                        }
-                        backgroundImage="/assets/bg-highres.png"
-                        makeCardClickable={allUrls(highResSelectionUrl).length > 0}
-                        onAction={
-                          allUrls(highResSelectionUrl).length > 0
-                            ? () =>
-                                openLinkDialog(
-                                  "High-res selection by lab",
-                                  "Download and review the latest high-res selection shared by the lab",
-                                  buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
-                                )
-                            : undefined
-                        }
-                        className="min-w-0 flex-1"
-                      />
+                      {canShowModalActions && (
+                        <StepDetails
+                          variant="primary"
+                          mainTitle="Download high-res"
+                          subtitle={
+                            highResUploadedByName?.trim() ? (
+                              <>
+                                Uploaded by <span className="text-lime-400">@{(highResUploadedByName ?? "").replace(/^@/, "").trim()}</span>
+                              </>
+                            ) : (
+                              "Uploaded by lab"
+                            )
+                          }
+                          additionalInfo={
+                            (() => {
+                              const urls = allUrls(highResSelectionUrl)
+                              if (urls.length === 0) return "Not uploaded yet"
+                              if (urls.length === 1)
+                                return highResUploadedAt
+                                  ? `View link · ${formatRelativeTime(highResUploadedAt)}`
+                                  : "View link"
+                              return `${urls.length} links · View`
+                            })()
+                          }
+                          backgroundImage="/assets/bg-highres.png"
+                          makeCardClickable={allUrls(highResSelectionUrl).length > 0}
+                          onAction={
+                            allUrls(highResSelectionUrl).length > 0
+                              ? () =>
+                                  openLinkDialog(
+                                    "High-res selection by lab",
+                                    "Download and review the latest high-res selection shared by the lab",
+                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                                  )
+                              : undefined
+                          }
+                          className="min-w-0 flex-1"
+                        />
+                      )}
                     </div>
                     {canShowModalActions && additionalFootageRequest?.forStepId === "edition_request" && (
                       <StepDetails
@@ -1536,82 +1517,84 @@ export function CollectionTemplate({
                     className="w-full"
                   />
                   <div className="flex flex-col gap-5 w-full">
-                    <div className="flex flex-row gap-5 w-full min-w-0">
-                      <StepDetails
-                        variant="primary"
-                        mainTitle="Improvement details"
-                        subtitle={
-                          photographerName?.trim() ? (
-                            <>
-                              Uploaded by <span className="text-lime-400">@{(photographerName ?? "").replace(/^@/, "").trim()}</span>
-                            </>
-                          ) : (
-                            "Uploaded by photographer"
-                          )
-                        }
-                        additionalInfo={
-                          (() => {
-                            const urls = allUrls(editionRequestInstructionsUrl)
-                            if (urls.length === 0) return "Not uploaded yet"
-                            if (urls.length === 1)
-                              return editionRequestInstructionsUploadedAt
-                                ? `View link · ${formatRelativeTime(editionRequestInstructionsUploadedAt)}`
-                                : "View link"
-                            return `${urls.length} links · View`
-                          })()
-                        }
-                        backgroundImage="/assets/bg-improvements.png"
-                        makeCardClickable={allUrls(editionRequestInstructionsUrl).length > 0}
-                        onAction={
-                          allUrls(editionRequestInstructionsUrl).length > 0
-                            ? () =>
-                                openLinkDialog(
-                                  "Improvement details by photographer",
-                                  "Download and review the improvement instructions from the photographer",
-                                  buildLinkAccordionItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "Improvement details", "/assets/bg-improvements.png", photographerName?.trim(), editionRequestInstructionsUploadedAt, "photographer", resolveUploaderDisplay("photographer"))
-                                )
-                            : undefined
-                        }
-                        className="min-w-0 flex-1"
-                      />
-                      <StepDetails
-                        variant="primary"
-                        mainTitle="Download high-res"
-                        subtitle={
-                          highResUploadedByName?.trim() ? (
-                            <>
-                              Uploaded by <span className="text-lime-400">@{(highResUploadedByName ?? "").replace(/^@/, "").trim()}</span>
-                            </>
-                          ) : (
-                            "Uploaded by lab"
-                          )
-                        }
-                        additionalInfo={
-                          (() => {
-                            const urls = allUrls(highResSelectionUrl)
-                            if (urls.length === 0) return "Not uploaded yet"
-                            if (urls.length === 1)
-                              return highResUploadedAt
-                                ? `View link · ${formatRelativeTime(highResUploadedAt)}`
-                                : "View link"
-                            return `${urls.length} links · View`
-                          })()
-                        }
-                        backgroundImage="/assets/bg-highres.png"
-                        makeCardClickable={allUrls(highResSelectionUrl).length > 0}
-                        onAction={
-                          allUrls(highResSelectionUrl).length > 0
-                            ? () =>
-                                openLinkDialog(
-                                  "High-res selection by lab",
-                                  "Download and review the latest high-res selection shared by the lab",
-                                  buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
-                                )
-                            : undefined
-                        }
-                        className="min-w-0 flex-1"
-                      />
-                    </div>
+                    {canShowModalActions && (
+                      <div className="flex flex-row gap-5 w-full min-w-0">
+                        <StepDetails
+                          variant="primary"
+                          mainTitle="Improvement details"
+                          subtitle={
+                            photographerName?.trim() ? (
+                              <>
+                                Uploaded by <span className="text-lime-400">@{(photographerName ?? "").replace(/^@/, "").trim()}</span>
+                              </>
+                            ) : (
+                              "Uploaded by photographer"
+                            )
+                          }
+                          additionalInfo={
+                            (() => {
+                              const urls = allUrls(editionRequestInstructionsUrl)
+                              if (urls.length === 0) return "Not uploaded yet"
+                              if (urls.length === 1)
+                                return editionRequestInstructionsUploadedAt
+                                  ? `View link · ${formatRelativeTime(editionRequestInstructionsUploadedAt)}`
+                                  : "View link"
+                              return `${urls.length} links · View`
+                            })()
+                          }
+                          backgroundImage="/assets/bg-improvements.png"
+                          makeCardClickable={allUrls(editionRequestInstructionsUrl).length > 0}
+                          onAction={
+                            allUrls(editionRequestInstructionsUrl).length > 0
+                              ? () =>
+                                  openLinkDialog(
+                                    "Improvement details by photographer",
+                                    "Download and review the improvement instructions from the photographer",
+                                    buildLinkAccordionItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "Improvement details", "/assets/bg-improvements.png", photographerName?.trim(), editionRequestInstructionsUploadedAt, "photographer", resolveUploaderDisplay("photographer"))
+                                  )
+                              : undefined
+                          }
+                          className="min-w-0 flex-1"
+                        />
+                        <StepDetails
+                          variant="primary"
+                          mainTitle="Download high-res"
+                          subtitle={
+                            highResUploadedByName?.trim() ? (
+                              <>
+                                Uploaded by <span className="text-lime-400">@{(highResUploadedByName ?? "").replace(/^@/, "").trim()}</span>
+                              </>
+                            ) : (
+                              "Uploaded by lab"
+                            )
+                          }
+                          additionalInfo={
+                            (() => {
+                              const urls = allUrls(highResSelectionUrl)
+                              if (urls.length === 0) return "Not uploaded yet"
+                              if (urls.length === 1)
+                                return highResUploadedAt
+                                  ? `View link · ${formatRelativeTime(highResUploadedAt)}`
+                                  : "View link"
+                              return `${urls.length} links · View`
+                            })()
+                          }
+                          backgroundImage="/assets/bg-highres.png"
+                          makeCardClickable={allUrls(highResSelectionUrl).length > 0}
+                          onAction={
+                            allUrls(highResSelectionUrl).length > 0
+                              ? () =>
+                                  openLinkDialog(
+                                    "High-res selection by lab",
+                                    "Download and review the latest high-res selection shared by the lab",
+                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                                  )
+                              : undefined
+                          }
+                          className="min-w-0 flex-1"
+                        />
+                      </div>
+                    )}
                     {canShowModalActions && additionalFootageRequest?.forStepId === "final_edits" && (
                       <StepDetails
                         variant="additionalRequest"
@@ -1671,62 +1654,64 @@ export function CollectionTemplate({
                         hideActionButton
                         className="min-w-0 flex-1"
                       />
-                      <StepDetails
-                        variant="primary"
-                        mainTitle="Download finals"
-                        subtitle={
-                          (() => {
-                            const url = finalsSelectionUrlLatest || highResSelectionUrlLatest
-                            const name = url === finalsSelectionUrlLatest ? finalsUploadedByName : highResUploadedByName
-                            return name?.trim() ? (
-                              <>
-                                Uploaded by <span className="text-lime-400">@{(name ?? "").replace(/^@/, "").trim()}</span>
-                              </>
-                            ) : (
-                              "Uploaded by studio"
-                            )
-                          })()
-                        }
-                        additionalInfo={
-                          (() => {
-                            const finalsUrls = allUrls(finalsSelectionUrl)
-                            const highResUrls = allUrls(highResSelectionUrl)
-                            const count = finalsUrls.length > 0 ? finalsUrls.length : highResUrls.length
-                            if (count === 0) return "Not uploaded yet"
-                            if (count === 1) {
-                              const at = finalsUrls.length > 0 ? finalsUploadedAt : highResUploadedAt
-                              return at ? `View link · ${formatRelativeTime(at)}` : "View link"
-                            }
-                            return `${count} links · View`
-                          })()
-                        }
-                        backgroundImage="/assets/bg-edition.png"
-                        makeCardClickable={allUrls(finalsSelectionUrl).length > 0 || allUrls(highResSelectionUrl).length > 0}
-                        onAction={
-                          (() => {
-                            const hasFinalsUrl = allUrls(finalsSelectionUrl).length > 0
-                            const hasHighResUrl = allUrls(highResSelectionUrl).length > 0
-                            if (hasFinalsUrl) {
-                              return () =>
-                                openLinkDialog(
-                                  "Final retouched photos",
-                                  "Download and review the final retouched photos from the edition studio",
-                                  buildLinkAccordionItems(finalsSelectionUrl, stepNotesFinalEdits, "Final photos", "/assets/bg-edition.png", finalsUploadedByName?.trim(), finalsUploadedAt, "edition_studio", resolveUploaderDisplay("edition_studio"))
-                                )
-                            }
-                            if (hasHighResUrl) {
-                              return () =>
-                                openLinkDialog(
-                                  "High-res selection by lab",
-                                  "Download and review the latest high-res selection shared by the lab",
-                                  buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
-                                )
-                            }
-                            return undefined
-                          })()
-                        }
-                        className="min-w-0 flex-1"
-                      />
+                      {canShowModalActions && (
+                        <StepDetails
+                          variant="primary"
+                          mainTitle="Download finals"
+                          subtitle={
+                            (() => {
+                              const url = finalsSelectionUrlLatest || highResSelectionUrlLatest
+                              const name = url === finalsSelectionUrlLatest ? finalsUploadedByName : highResUploadedByName
+                              return name?.trim() ? (
+                                <>
+                                  Uploaded by <span className="text-lime-400">@{(name ?? "").replace(/^@/, "").trim()}</span>
+                                </>
+                              ) : (
+                                "Uploaded by studio"
+                              )
+                            })()
+                          }
+                          additionalInfo={
+                            (() => {
+                              const finalsUrls = allUrls(finalsSelectionUrl)
+                              const highResUrls = allUrls(highResSelectionUrl)
+                              const count = finalsUrls.length > 0 ? finalsUrls.length : highResUrls.length
+                              if (count === 0) return "Not uploaded yet"
+                              if (count === 1) {
+                                const at = finalsUrls.length > 0 ? finalsUploadedAt : highResUploadedAt
+                                return at ? `View link · ${formatRelativeTime(at)}` : "View link"
+                              }
+                              return `${count} links · View`
+                            })()
+                          }
+                          backgroundImage="/assets/bg-edition.png"
+                          makeCardClickable={allUrls(finalsSelectionUrl).length > 0 || allUrls(highResSelectionUrl).length > 0}
+                          onAction={
+                            (() => {
+                              const hasFinalsUrl = allUrls(finalsSelectionUrl).length > 0
+                              const hasHighResUrl = allUrls(highResSelectionUrl).length > 0
+                              if (hasFinalsUrl) {
+                                return () =>
+                                  openLinkDialog(
+                                    "Final retouched photos",
+                                    "Download and review the final retouched photos from the edition studio",
+                                    buildLinkAccordionItems(finalsSelectionUrl, stepNotesFinalEdits, "Final photos", "/assets/bg-edition.png", finalsUploadedByName?.trim(), finalsUploadedAt, "edition_studio", resolveUploaderDisplay("edition_studio"))
+                                  )
+                              }
+                              if (hasHighResUrl) {
+                                return () =>
+                                  openLinkDialog(
+                                    "High-res selection by lab",
+                                    "Download and review the latest high-res selection shared by the lab",
+                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                                  )
+                              }
+                              return undefined
+                            })()
+                          }
+                          className="min-w-0 flex-1"
+                        />
+                      )}
                     </div>
                     {canShowModalActions && additionalFootageRequest?.forStepId === "photographer_last_check" && (
                       <StepDetails
@@ -1789,43 +1774,45 @@ export function CollectionTemplate({
                         hideActionButton
                         className="min-w-0 flex-1"
                       />
-                      <StepDetails
-                        variant="primary"
-                        mainTitle="Client selection"
-                        subtitle={
-                          clientName?.trim() ? (
-                            <>
-                              Uploaded by <span className="text-lime-400">@{(clientName ?? "").replace(/^@/, "").trim()}</span>
-                            </>
-                          ) : (
-                            "Uploaded by client"
-                          )
-                        }
-                        additionalInfo={
-                          (() => {
-                            const urls = allUrls(clientSelectionUrl)
-                            if (urls.length === 0) return "Not uploaded yet"
-                            if (urls.length === 1)
-                              return clientSelectionUploadedAt
-                                ? `View link · ${formatRelativeTime(clientSelectionUploadedAt)}`
-                                : "View link"
-                            return `${urls.length} links · View`
-                          })()
-                        }
-                        backgroundImage="/assets/bg-clientselect.png"
-                        makeCardClickable={allUrls(clientSelectionUrl).length > 0}
-                        onAction={
-                          allUrls(clientSelectionUrl).length > 0
-                            ? () =>
-                                openLinkDialog(
-                                  "Client selection",
-                                  "Download and review the latest selection shared by the client",
-                                  buildLinkAccordionItems(clientSelectionUrl, stepNotesClientSelection, "Client selection", "/assets/bg-clientselect.png", clientName?.replace(/^@/, "").trim(), clientSelectionUploadedAt, "client", resolveUploaderDisplay("client"))
-                                )
-                            : undefined
-                        }
-                        className="min-w-0 flex-1"
-                      />
+                      {canShowModalActions && (
+                        <StepDetails
+                          variant="primary"
+                          mainTitle="Client selection"
+                          subtitle={
+                            clientName?.trim() ? (
+                              <>
+                                Uploaded by <span className="text-lime-400">@{(clientName ?? "").replace(/^@/, "").trim()}</span>
+                              </>
+                            ) : (
+                              "Uploaded by client"
+                            )
+                          }
+                          additionalInfo={
+                            (() => {
+                              const urls = allUrls(clientSelectionUrl)
+                              if (urls.length === 0) return "Not uploaded yet"
+                              if (urls.length === 1)
+                                return clientSelectionUploadedAt
+                                  ? `View link · ${formatRelativeTime(clientSelectionUploadedAt)}`
+                                  : "View link"
+                              return `${urls.length} links · View`
+                            })()
+                          }
+                          backgroundImage="/assets/bg-clientselect.png"
+                          makeCardClickable={allUrls(clientSelectionUrl).length > 0}
+                          onAction={
+                            allUrls(clientSelectionUrl).length > 0
+                              ? () =>
+                                  openLinkDialog(
+                                    "Client selection",
+                                    "Download and review the latest selection shared by the client",
+                                    buildLinkAccordionItems(clientSelectionUrl, stepNotesClientSelection, "Client selection", "/assets/bg-clientselect.png", clientName?.replace(/^@/, "").trim(), clientSelectionUploadedAt, "client", resolveUploaderDisplay("client"))
+                                  )
+                              : undefined
+                          }
+                          className="min-w-0 flex-1"
+                        />
+                      )}
                     </div>
                     {canShowModalActions && additionalFootageRequest?.forStepId === "handprint_high_res" && (
                       <StepDetails
@@ -1932,11 +1919,7 @@ export function CollectionTemplate({
                       ? "You can edit and perform actions in this step."
                       : "You can view this step only; edits and downloads are not available."
                   }
-                  onAction={
-                    canShowModalActions && collectionId
-                      ? () => router.push(`/collections/create/${collectionId}`)
-                      : undefined
-                  }
+                  hideActionButton
                 />
               )}
               {/* Owner-only action block (Confirm pickup) — Shooting step only when not yet completed; closes modal, toast, updates stepper/progress, notifies Photo lab */}
@@ -2069,7 +2052,7 @@ export function CollectionTemplate({
       <ParticipantsModal
         open={participantsModalOpen}
         onOpenChange={setParticipantsModalOpen}
-        isInternalUser={userContext?.isNobaUser ?? false}
+        isInternalUser={(userContext?.isNobaUser && currentUserHasEditPermission) ?? false}
         nobaTeam={participantsNobaTeam}
         mainPlayersIndividuals={participantsMainPlayersIndividuals}
         mainPlayersEntities={participantsMainPlayersEntities}
@@ -2115,7 +2098,7 @@ export function CollectionTemplate({
               Will the lab meet the next deadline?
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col items-center justify-center gap-4 py-4">
+          <div className="flex flex-col items-start gap-4 py-4">
             {(() => {
               const negIndex = steps.findIndex((s) => s.id === "negatives_dropoff")
               const nextStep = negIndex >= 0 && negIndex < steps.length - 1 ? steps[negIndex + 1] : null

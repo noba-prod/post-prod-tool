@@ -117,9 +117,21 @@ const ROLE_DISPLAY: Record<string, string> = {
   client: "Client",
   photographer: "Photographer",
   agency: "Agency",
-  lab: "Lab",
+  lab: "Photo Lab",
   handprint_lab: "Hand Print Lab",
   edition_studio: "Retouch/Post Studio",
+}
+
+function toDbRoleFromDomainRole(role: CollectionParticipant["role"]):
+  | "client"
+  | "photographer"
+  | "agency"
+  | "photo_lab"
+  | "retouch_studio"
+  | "handprint_lab" {
+  if (role === "lab") return "photo_lab"
+  if (role === "edition_studio") return "retouch_studio"
+  return role
 }
 
 const PLACEHOLDER = (
@@ -250,42 +262,47 @@ export default function CollectionCreatePage({
       setParticipantSummaries([])
       return
     }
-    const entityIds = relevant.map((p) =>
-      p.role === "client" ? p.entityId ?? draft.config.clientEntityId : p.entityId
-    ).filter(Boolean) as string[]
     let cancelled = false
 
     const load = async () => {
-      if (isSupabaseConfigured()) {
-        const namesMap = await fetchOrganizationsByIds(entityIds)
-        if (cancelled) return
-        const list = relevant.map((p) => {
-          const eid = p.role === "client" ? p.entityId ?? draft.config.clientEntityId : p.entityId
-          return {
-            role: ROLE_DISPLAY[p.role] ?? p.role,
-            name: `@${eid && namesMap[eid] ? namesMap[eid] : "—"}`,
-          }
-        })
-        setParticipantSummaries(list)
-      } else {
-        const entityResList = await Promise.all(
-          entityIds.map((eid) => fetch(`/api/organizations/${eid}`).then((r) => (r.ok ? r.json() : null)))
-        )
-        if (cancelled) return
-        const entities = entityResList.map((data: { entity?: { name?: string } } | null) => data?.entity?.name ?? null)
-        const list = relevant.map((p, i) => ({
-          role: ROLE_DISPLAY[p.role] ?? p.role,
-          name: `@${entities[i] ?? "—"}`,
-        }))
-        setParticipantSummaries(list)
+      const response = await fetch(`/api/collections/${draft.id}/publish-participants`, {
+        cache: "no-store",
+      })
+      if (!response.ok) {
+        if (!cancelled) setParticipantSummaries([])
+        return
       }
+      const data = (await response.json()) as {
+        handleByRole?: Partial<Record<
+          "client" | "photographer" | "agency" | "photo_lab" | "retouch_studio" | "handprint_lab",
+          string
+        >>
+        memberCountByRole?: Partial<Record<
+          "client" | "photographer" | "agency" | "photo_lab" | "retouch_studio" | "handprint_lab",
+          number
+        >>
+      }
+      if (cancelled) return
+
+      const list = relevant.map((p, i) => {
+        const dbRole = toDbRoleFromDomainRole(p.role)
+        const roleHandle = data.handleByRole?.[dbRole] ?? "—"
+        const roleCount = data.memberCountByRole?.[dbRole]
+        const fallbackCount = p.userIds?.length ?? 1
+        return {
+          role: ROLE_DISPLAY[p.role] ?? p.role,
+          name: roleHandle,
+          count: typeof roleCount === "number" && roleCount > 0 ? roleCount : fallbackCount,
+        }
+      })
+      setParticipantSummaries(list)
     }
 
     load()
     return () => {
       cancelled = true
     }
-  }, [draft?.participants, draft?.config?.clientEntityId])
+  }, [draft?.id, draft?.participants, draft?.config?.clientEntityId])
 
   const steps = React.useMemo(() => {
     if (!draft?.config) return []
@@ -574,16 +591,32 @@ export default function CollectionCreatePage({
     setSaveChangesDialogOpen(true)
   }, [])
 
-  /** Edition mode: confirm save changes, update collection, redirect to view mode. */
+  /** Edition mode: confirm save changes, update collection, invite new participants, redirect to view mode. */
   const handleConfirmSaveChanges = React.useCallback(async () => {
     if (!draft || !id || isSavingChanges) return
     setIsSavingChanges(true)
     try {
-      await service.updateCollection(id, {
-        config: draft.config,
-        participants: draft.participants,
+      const res = await fetch(`/api/collections/${id}/save-changes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: draft.config,
+          participants: draft.participants,
+        }),
       })
-      toast.success("Changes saved.")
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        success?: boolean
+        message?: string
+        invitationsCreated?: number
+        invitationsSent?: number
+      }
+      if (!res.ok) {
+        toast.error(data.error || "Failed to save changes.")
+        setIsSavingChanges(false)
+        return
+      }
+      toast.success(data.message || "Changes saved.")
       setSaveChangesDialogOpen(false)
       router.push(`/collections/${id}`)
     } catch (err) {
@@ -591,7 +624,7 @@ export default function CollectionCreatePage({
     } finally {
       setIsSavingChanges(false)
     }
-  }, [draft, id, service, router, isSavingChanges])
+  }, [draft, id, router, isSavingChanges])
 
   const handleConfirmPublish = React.useCallback(async () => {
     if (
@@ -780,7 +813,7 @@ export default function CollectionCreatePage({
                   )
                 : isLrToHrStep
                   ? participantSummaries.filter((p) =>
-                      ["Client", "Lab", "Hand Print Lab"].includes(p.role)
+                      ["Client", "Photo Lab", "Hand Print Lab"].includes(p.role)
                     )
                   : isEditionConfig
                     ? participantSummaries.filter((p) =>
@@ -837,7 +870,7 @@ export default function CollectionCreatePage({
                   .filter((p) => p.role === "Client")
                   .map((p) => ({ value: p.name, label: p.name })),
                 ...participantSummaries
-                  .filter((p) => p.role === "Lab")
+                  .filter((p) => p.role === "Photo Lab")
                   .map((p) => ({ value: p.name, label: p.name })),
                 { value: "noba", label: "noba*" },
               ]}
@@ -974,9 +1007,7 @@ export default function CollectionCreatePage({
   const publishCardRight = { ...publishCardBase, status: publishCardRightStatus as "upcoming" | "in-progress" }
 
   const publishParticipants = participantSummaries.map((p) => {
-    const draftParticipant = draft.participants.find((d) => (ROLE_DISPLAY[d.role] ?? d.role) === p.role)
-    const count = draftParticipant?.userIds?.length ?? 1
-    return { role: p.role, name: p.name, count }
+    return { role: p.role, name: p.name, count: p.count }
   })
 
   return (

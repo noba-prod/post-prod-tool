@@ -168,6 +168,7 @@ export async function GET(
       return "draft"
     }
 
+    const isInternal = Boolean(profile?.is_internal)
     for (const row of collectionsRows as Array<{
       id: string
       name: string
@@ -178,6 +179,8 @@ export async function GET(
       shooting_city: string | null
       shooting_country: string | null
     }>) {
+      // Non-Noba users never see draft collections (client, photo_lab, handprint_lab, photographer, agency, retouch_studio)
+      if (!isInternal && row.status === "draft") continue
       const location = [row.shooting_city, row.shooting_country].filter(Boolean).join(", ") || "—"
       collectionsList.push({
         id: row.id,

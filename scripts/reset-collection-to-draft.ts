@@ -3,6 +3,7 @@
  * - Deletes all collection_events for the collection
  * - Deletes all notifications for the collection
  * - Deletes scheduled_notification_tracking rows
+ * - Deletes invitations scoped to the collection
  * - Resets workflow/progress fields and sets status back to draft
  *
  * Usage:
@@ -158,6 +159,16 @@ async function main() {
 
   if (deleteTrackingError) {
     console.error("Failed to delete scheduled_notification_tracking:", deleteTrackingError)
+    process.exit(1)
+  }
+
+  const { error: deleteInvitationsError } = await admin
+    .from("invitations")
+    .delete()
+    .eq("collection_id", collectionId)
+
+  if (deleteInvitationsError) {
+    console.error("Failed to delete invitations:", deleteInvitationsError)
     process.exit(1)
   }
 

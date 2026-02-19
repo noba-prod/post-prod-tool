@@ -58,7 +58,7 @@ function entityTypeToOrgTypes(entityType: EntityType): OrganizationType[] {
     agency: ["photography_agency"],
     "photo-lab": ["lab_low_res_scan"],
     "hand-print-lab": ["hand_print_lab"],
-    "edition-studio": ["edition_studio"],
+    "edition-studio": ["retouch_studio"],
   }
   return mapping[entityType] ?? []
 }
@@ -72,7 +72,7 @@ function orgTypeToEntityType(orgType: OrganizationType): EntityType {
     photography_agency: "agency",
     lab_low_res_scan: "photo-lab",
     hand_print_lab: "hand-print-lab",
-    edition_studio: "edition-studio",
+    retouch_studio: "edition-studio",
   }
   return mapping[orgType] ?? "client"
 }

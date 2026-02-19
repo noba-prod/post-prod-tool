@@ -272,6 +272,8 @@ export interface StepNoteEntry {
   text: string
   /** ISO timestamp when the note was added. */
   at: string
+  /** Profile ID (auth user) who wrote this note. Added in migration 040+; absent in legacy notes. */
+  userId?: string
 }
 
 /** Alias for backward compatibility; workflow and UI use same shape. */

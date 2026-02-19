@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 export type ParticipantsCardVariant = "default" | "individual" | "entity"
 
 export interface ParticipantsCardProps {
-  /** Variant: default (initials + title + 2 lines), individual (person: name, email, phone), entity (entity name + manager + team count) */
+  /** Variant: default (initials + title + 2 lines), individual (person: name, email, phone), entity (entity name + responsible + total members) */
   variant?: ParticipantsCardVariant
   /** Card title: "Title" (default), person name (individual), entity name (entity) */
   title?: string
@@ -23,16 +23,16 @@ export interface ParticipantsCardProps {
   email?: string
   /** Individual: phone number */
   phone?: string
-  /** Entity: manager display name */
+  /** Entity: responsible person(s) — user(s) with edit permission; if multiple: "UserName + N more" */
   managerName?: string
-  /** Entity: team members count */
+  /** Entity: total members count */
   teamMembersCount?: number
   className?: string
 }
 
 /**
  * Participants Card — Figma DS node 13731-2409.
- * Three variants: default (placeholder title + 2 lines), individual (person with email/phone), entity (entity name + manager + team count).
+ * Three variants: default (placeholder title + 2 lines), individual (person with email/phone), entity (entity name + responsible + total members).
  * Uses design system: bg-zinc-100, rounded-xl, p-3, gap-3; typography text-base font-semibold (title), text-sm text-muted-foreground (secondary).
  */
 export function ParticipantsCard({
@@ -108,7 +108,7 @@ export function ParticipantsCard({
               {managerName != null && managerName !== "" && (
                 <div className="flex min-w-0 items-center gap-1 text-sm">
                   <span className="shrink-0 font-normal text-muted-foreground">
-                    Manager:
+                    Responsible:
                   </span>
                   <span className="min-w-0 truncate font-normal text-foreground/90">
                     {managerName}
@@ -118,7 +118,7 @@ export function ParticipantsCard({
               {teamMembersCount != null && (
                 <div className="flex min-w-0 items-center gap-1 text-sm">
                   <span className="shrink-0 font-normal text-muted-foreground">
-                    Team members:
+                    Total members:
                   </span>
                   <span className="min-w-0 truncate font-normal text-foreground/90">
                     {String(teamMembersCount)}

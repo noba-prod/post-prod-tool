@@ -33,10 +33,12 @@ export interface StepDetailsProps {
   truncateSubtitle?: boolean
   /** Gap between title and subtitle block (primary/secondary). Use "compact" (6px) e.g. in LinkAccordion; default is 12px. */
   contentGap?: "default" | "compact"
-  /** Author name shown below notes content (notes variant only). */
+  /** Entity name shown below notes content (notes variant only). Avatar fallback = first initial of this name. */
   authorName?: string
-  /** Author avatar image URL (notes variant only). */
+  /** Entity avatar image URL (notes variant only) — typically organizations.profile_picture_url. */
   authorImageUrl?: string
+  /** User name who wrote the comment (notes variant only) — from profiles.first_name + last_name. Shown after '·' separator. */
+  authorUserName?: string
   /** When true (additionalRequest variant), shows a "Completed" chip indicating the request has been addressed. */
   isCompleted?: boolean
   className?: string
@@ -120,6 +122,7 @@ export function StepDetails({
   contentGap = "default",
   authorName,
   authorImageUrl,
+  authorUserName,
   isCompleted = false,
   className,
 }: StepDetailsProps) {
@@ -173,18 +176,28 @@ export function StepDetails({
           />
         )}
 
-        {/* Author row: Avatar ExtraSmall (20px) + name */}
+        {/* Author row: Avatar (entity picture) + entityName + · + userName */}
         {authorName && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <Avatar size="xs" className="size-5 shrink-0">
               {authorImageUrl && <AvatarImage src={authorImageUrl} alt="" />}
               <AvatarFallback className="text-[10px]">
                 {authorFirstInitial}
               </AvatarFallback>
             </Avatar>
-            <span className="text-xs font-semibold text-sidebar-foreground truncate">
-              {authorName}
-            </span>
+            <div className="flex items-center gap-1 min-w-0 truncate">
+              <span className="text-xs font-semibold text-sidebar-foreground truncate">
+                {authorName}
+              </span>
+              {authorUserName && (
+                <>
+                  <span className="text-xs text-muted-foreground shrink-0">·</span>
+                  <span className="text-xs font-medium text-muted-foreground truncate">
+                    {authorUserName}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

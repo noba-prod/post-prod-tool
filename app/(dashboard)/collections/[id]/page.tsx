@@ -10,7 +10,6 @@ import {
   getViewStepDefinitions,
   configToViewStepsInput,
   viewStepsWithStatusFromCollection,
-  EVENT_TYPE_TO_STEP_ID,
   resolveUserForPermission,
   canUserEditStep,
   deriveStageStatusFromShootingStart,
@@ -150,32 +149,19 @@ export default function CollectionViewPage({
   const [participantsNobaTeam, setParticipantsNobaTeam] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersIndividuals, setParticipantsMainPlayersIndividuals] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersEntities, setParticipantsMainPlayersEntities] = React.useState<ParticipantsModalEntity[]>([])
-  const [completedStepIds, setCompletedStepIds] = React.useState<string[]>([])
-  // DEBUG: userId → display name (populated during participant load, dev only, safe to remove)
-  const [debugUserIdToName, setDebugUserIdToName] = React.useState<Record<string, string>>({})
+  const [noteAuthorsByUserId, setNoteAuthorsByUserId] = React.useState<Record<string, { name: string; entityName?: string; entityImageUrl?: string }>>({})
 
   const service = React.useMemo(() => createCollectionsService(), [])
 
-  /** Derive completed step ids from collection_events. */
-  const fetchCompletedStepIds = React.useCallback(
-    async (collectionId: string) => {
-      try {
-        const res = await fetch(`/api/collections/${collectionId}/events`, { cache: "no-store" })
-        if (!res.ok) return
-        const data = (await res.json()) as { events?: Array<{ event_type?: string }> }
-        const events = data.events ?? []
-        const stepIds = new Set<string>()
-        for (const e of events) {
-          const stepId = e.event_type && EVENT_TYPE_TO_STEP_ID[e.event_type]
-          if (stepId) stepIds.add(stepId)
-        }
-        setCompletedStepIds(Array.from(stepIds))
-      } catch (err) {
-        console.error("[CollectionViewPage] Failed to fetch events:", err)
-      }
-    },
-    []
-  )
+  const completedStepIds = React.useMemo(() => {
+    if (!collection?.stepStatuses) return []
+    return Object.entries(collection.stepStatuses)
+      .filter(([, entry]) => {
+        const e = entry as { stage?: string }
+        return e.stage === "done"
+      })
+      .map(([id]) => id)
+  }, [collection?.stepStatuses])
 
   const userForPermission = React.useMemo(() => {
     if (!collection || !user?.id) return null
@@ -244,11 +230,6 @@ export default function CollectionViewPage({
       document.removeEventListener("visibilitychange", onVisibility)
     }
   }, [id, collection?.id, refetchCollection])
-
-  React.useEffect(() => {
-    if (!id || !collection || collection.status === "draft") return
-    fetchCompletedStepIds(id)
-  }, [id, collection?.id, collection?.status, fetchCompletedStepIds])
 
   // Steps, progress, and handler — must run on every render (Rules of Hooks)
   const steps = React.useMemo(() => {
@@ -325,7 +306,6 @@ export default function CollectionViewPage({
       if (!id || stepId !== "shooting") return
       try {
         await fireEvent("negatives_pickup_marked")
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Confirm pickup error:", err)
@@ -333,7 +313,7 @@ export default function CollectionViewPage({
         throw err
       }
     },
-    [id, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, fireEvent, refetchCollection]
   )
 
   const handleConfirmDropoffDelivery = React.useCallback(
@@ -341,7 +321,6 @@ export default function CollectionViewPage({
       if (!id || stepId !== "negatives_dropoff") return
       try {
         await fireEvent("dropoff_confirmed", { canMeetDeadline })
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Confirm dropoff delivery error:", err)
@@ -349,7 +328,7 @@ export default function CollectionViewPage({
         throw err
       }
     },
-    [id, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -372,7 +351,6 @@ export default function CollectionViewPage({
         // only advance when low-res scanning is the current active substatus.
         if (updated?.substatus === "low_res_scanning") {
           await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
-          await fetchCompletedStepIds(id)
           await refetchCollection()
         }
       } catch (err) {
@@ -381,7 +359,7 @@ export default function CollectionViewPage({
         throw err
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   /** Step 3 (after first upload): additional footage — append URL to same array. */
@@ -401,7 +379,6 @@ export default function CollectionViewPage({
         // Use the collection returned by PATCH (source of truth) to avoid stale closure.
         if (updated?.substatus === "low_res_scanning") {
           await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
-          await fetchCompletedStepIds(id)
           await refetchCollection()
         }
       } catch (err) {
@@ -409,7 +386,7 @@ export default function CollectionViewPage({
         toast.error(err instanceof Error ? err.message : "Failed to upload more photos")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -430,14 +407,13 @@ export default function CollectionViewPage({
         await patchCollection(body)
         await fireEvent("photographer_selection_uploaded", { url, notes: payload.notes })
         await fireEvent("photographer_selection_shared")
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload photographer selection error:", err)
         toast.error("Failed to upload selection")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -456,13 +432,12 @@ export default function CollectionViewPage({
         // Fire event (triggers revert in substatus mapping)
         await fireEvent("photographer_requested_additional_photos", { notes: notes.trim() })
         await refetchCollection()
-        await fetchCompletedStepIds(id)
       } catch (err) {
         console.error("[CollectionViewPage] Request additional photos error:", err)
         toast.error("Failed to save request")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -482,14 +457,13 @@ export default function CollectionViewPage({
         }
         await patchCollection(body)
         await fireEvent("client_selection_confirmed", { url, notes: payload.notes })
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload client selection error:", err)
         toast.error("Failed to save selection")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -515,13 +489,12 @@ export default function CollectionViewPage({
           notes: notes.trim(),
         })
         await refetchCollection()
-        await fetchCompletedStepIds(id)
       } catch (err) {
         console.error("[CollectionViewPage] Request more photos from photographer error:", err)
         toast.error("Failed to save request")
       }
     },
-    [id, collection?.substatus, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, collection?.substatus, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -537,14 +510,13 @@ export default function CollectionViewPage({
           })
         }
         await fireEvent("photographer_check_approved", { comments })
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Validate client selection error:", err)
         toast.error("Failed to validate selection")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -570,13 +542,12 @@ export default function CollectionViewPage({
           notes: notes.trim(),
         })
         await refetchCollection()
-        await fetchCompletedStepIds(id)
       } catch (err) {
         console.error("[CollectionViewPage] Request more photos from client error:", err)
         toast.error("Failed to save request")
       }
     },
-    [id, collection?.substatus, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, collection?.substatus, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -596,14 +567,13 @@ export default function CollectionViewPage({
         }
         await patchCollection(body)
         await fireEvent("highres_ready", { url, notes: payload.notes })
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload high-res error:", err)
         toast.error("Failed to upload high-res")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -622,14 +592,13 @@ export default function CollectionViewPage({
         }
         await patchCollection(body)
         await fireEvent("edition_request_submitted", { url: payload.url, details: payload.details })
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Give instructions error:", err)
         toast.error("Failed to save instructions")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -649,14 +618,13 @@ export default function CollectionViewPage({
         }
         await patchCollection(body)
         await fireEvent("final_edits_completed", { url, notes: payload.notes })
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload finals error:", err)
         toast.error("Failed to upload finals")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -674,13 +642,12 @@ export default function CollectionViewPage({
         // Revert substatus backwards to final_edits
         await fireEvent("photographer_requested_additional_photos", { source: "photographer_last_check", notes: notes?.trim() })
         await refetchCollection()
-        await fetchCompletedStepIds(id)
       } catch (err) {
         console.error("[CollectionViewPage] Request changes error:", err)
         toast.error("Failed to save request")
       }
     },
-    [id, patchCollection, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -691,14 +658,13 @@ export default function CollectionViewPage({
       if (!id) return
       try {
         await fireEvent("photographer_edits_approved")
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Validate finals error:", err)
         toast.error("Failed to validate finals")
       }
     },
-    [id, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -709,312 +675,138 @@ export default function CollectionViewPage({
       if (!id) return
       try {
         await fireEvent("collection_completed")
-        await fetchCompletedStepIds(id)
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Complete collection error:", err)
         toast.error("Failed to complete collection")
       }
     },
-    [id, fireEvent, fetchCompletedStepIds, refetchCollection]
+    [id, fireEvent, refetchCollection]
   )
 
-  // Resolve client and photographer names from collection data via API
-  React.useEffect(() => {
-    if (!collection) return
-    const clientId = collection.config.clientEntityId
-    const photographer = collection.participants.find((p) => p.role === "photographer")
-    const photographerUserId = photographer?.userIds?.[0]
-
-    if (clientId) {
-      fetch(`/api/organizations/${clientId}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: { entity?: { name?: string } } | null) => {
-          const name = data?.entity?.name
-          setClientName(name ? `@${name.toLowerCase()}` : "—")
-        })
-        .catch(() => setClientName("—"))
-    } else {
-      setClientName("—")
-    }
-    if (photographerUserId) {
-      fetch(`/api/users/${photographerUserId}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: { user?: { firstName?: string; lastName?: string; email?: string } } | null) => {
-          const u = data?.user
-          if (!u) {
-            setPhotographerName(undefined)
-            return
-          }
-          const name = [u.firstName, u.lastName].filter(Boolean).join(" ")
-          setPhotographerName(name || u.email || undefined)
-        })
-        .catch(() => setPhotographerName(undefined))
-    } else {
-      setPhotographerName(undefined)
-    }
-  }, [collection])
-
-  // Load participants for modal: noba team (individuals), main players (photographer as individual, client/agency/lab/edition/handprint as entities; order: photographer, client, then rest)
+  // Reset client/photographer names when collection changes (participants-display will populate them)
   React.useEffect(() => {
     if (!collection) {
+      setClientName("—")
+      setPhotographerName(undefined)
+      return
+    }
+    const clientId = collection.config.clientEntityId
+    if (!clientId) setClientName("—")
+  }, [collection])
+
+  // Load participants for modal: full list for everyone who can view the collection (server resolves with admin so no per-role filtering)
+  React.useEffect(() => {
+    if (!collection?.id) {
       setParticipantsNobaTeam([])
       setParticipantsMainPlayersIndividuals([])
       setParticipantsMainPlayersEntities([])
       return
     }
     let cancelled = false
-    const config = collection.config
-    const participants = collection.participants
-    const currentUserId = user?.id?.trim()
-
-    const producer = participants.find((p) => p.role === "producer")
-    const nobaUserIds = config.nobaUserIds ?? producer?.userIds ?? []
-    const photographer = participants.find((p) => p.role === "photographer")
-    const agencyParticipant = participants.find((p) => p.role === "agency")
-    const agencyUserIds = new Set(agencyParticipant?.userIds ?? [])
-    const photographerUserIds = (photographer?.userIds ?? []).filter(
-      (uid) => !agencyUserIds.has(uid)
-    )
-
-    // Main players order: 1. Photographer (individual), 2. Client (entity), 3. Agency (entity, if invited),
-    // 4. Photo Lab (entity, if invited), 5. Hand print lab (entity, if invited), 6. Retouch studio (entity, if invited)
-    const clientId = config.clientEntityId?.trim() ? config.clientEntityId : undefined
-    const agencyId = config.hasAgency && agencyParticipant?.entityId
-      ? agencyParticipant.entityId
-      : undefined
-    const labParticipant = participants.find((p) => p.role === "lab")
-    const handprintLabParticipant = participants.find((p) => p.role === "handprint_lab")
-    const editionStudioParticipant = participants.find((p) => p.role === "edition_studio")
-    const entityIds: string[] = []
-    const entityTypeLabels: string[] = []
-    if (clientId) {
-      entityIds.push(clientId)
-      entityTypeLabels.push("Client")
-    }
-    if (agencyId) {
-      entityIds.push(agencyId)
-      entityTypeLabels.push("Agency")
-    }
-    if (labParticipant?.entityId) {
-      entityIds.push(labParticipant.entityId)
-      entityTypeLabels.push("Photo Lab")
-    }
-    if (handprintLabParticipant?.entityId) {
-      entityIds.push(handprintLabParticipant.entityId)
-      entityTypeLabels.push("Hand Print Lab")
-    }
-    if (editionStudioParticipant?.entityId) {
-      entityIds.push(editionStudioParticipant.entityId)
-      entityTypeLabels.push("Retouch studio")
-    }
-
-    async function load() {
-      const ownerUserId = config.ownerUserId?.trim()
-      // Resolve owner: from config (DB is_owner) or fallback to current user when they're in noba list (e.g. old data)
-      const resolveOwnerUserId = (): string | undefined =>
-        ownerUserId || (currentUserId && nobaUserIds.some((id) => String(id).trim() === currentUserId) ? currentUserId : undefined)
-
-      const userToIndividual = (
-        u: {
-          id?: string
-          firstName?: string
-          lastName?: string
-          email?: string
-          phoneNumber?: string
-          profilePictureUrl?: string
-        },
-        roleLabel?: string
-      ): ParticipantsModalIndividual => {
-        const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || "—"
-        const initials = name !== "—" ? name.slice(0, 2).toUpperCase().replace(/\s/g, "") : undefined
-        return {
-          name,
-          email: u.email ?? undefined,
-          phone: u.phoneNumber ?? undefined,
-          imageUrl: u.profilePictureUrl,
-          initials: initials || undefined,
-          roleLabel,
-        }
-      }
-
-      const nobaUsers = await Promise.all(
-        nobaUserIds.map((uid) =>
-          fetch(`/api/users/${uid}`).then((r) => (r.ok ? r.json() : null))
+    fetch(`/api/collections/${collection.id}/participants-display`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: {
+        nobaTeam?: ParticipantsModalIndividual[]
+        mainPlayersIndividuals?: ParticipantsModalIndividual[]
+        mainPlayersEntities?: ParticipantsModalEntity[]
+        photographerName?: string
+        clientDisplayName?: string
+        noteAuthorsByUserId?: Record<string, { name: string; entityName?: string; entityImageUrl?: string }>
+      } | null) => {
+        if (cancelled || !data) return
+        setParticipantsNobaTeam(data.nobaTeam ?? [])
+        setParticipantsMainPlayersIndividuals(data.mainPlayersIndividuals ?? [])
+        setParticipantsMainPlayersEntities(data.mainPlayersEntities ?? [])
+        setPhotographerName(data.photographerName ?? undefined)
+        setNoteAuthorsByUserId(data.noteAuthorsByUserId ?? {})
+        setClientName(
+          data.clientDisplayName
+            ? `@${data.clientDisplayName.toLowerCase()}`
+            : "—"
         )
-      )
-      if (cancelled) return
-      const effectiveOwnerId = resolveOwnerUserId()
-      const nobaTeam: ParticipantsModalIndividual[] = nobaUsers
-        .map((data: { user?: { id?: string; firstName?: string; lastName?: string; email?: string; phoneNumber?: string; profilePictureUrl?: string } } | null) => {
-          if (!data?.user) return null
-          const uid = data.user.id != null ? String(data.user.id).trim() : ""
-          const isOwner = !!effectiveOwnerId && uid === effectiveOwnerId
-          const roleLabel = isOwner ? "producer" : "collaborator"
-          return userToIndividual(data.user, roleLabel)
-        })
-        .filter(Boolean) as ParticipantsModalIndividual[]
-
-      const [photoUsers, orgResponses] = await Promise.all([
-        Promise.all(
-          photographerUserIds.map((uid) =>
-            fetch(`/api/users/${uid}`).then((r) => (r.ok ? r.json() : null))
-          )
-        ),
-        Promise.all(
-          entityIds.map((eid) =>
-            fetch(`/api/organizations/${eid}`).then((r) => (r.ok ? r.json() : null))
-          )
-        ),
-      ])
-      if (cancelled) return
-
-      const agencyIndex = agencyId ? entityIds.indexOf(agencyId) : -1
-      const agencyResponse =
-        agencyIndex >= 0 && agencyIndex < orgResponses.length
-          ? (orgResponses[agencyIndex] as {
-              teamMembers?: Array<{ id?: string }>
-            } | null)
-          : null
-      const agencyTeamMemberIds = new Set(
-        (agencyResponse?.teamMembers ?? []).map((m) => m.id).filter(Boolean) as string[]
-      )
-
-      const mainIndividuals: ParticipantsModalIndividual[] = photoUsers
-        .filter(
-          (data: { user?: { id?: string } } | null) =>
-            data?.user?.id && !agencyTeamMemberIds.has(data.user.id)
-        )
-        .map(
-          (data: {
-            user?: {
-              id?: string
-              firstName?: string
-              lastName?: string
-              email?: string
-              phoneNumber?: string
-              profilePictureUrl?: string
-            }
-          } | null) =>
-            data?.user ? userToIndividual(data.user, "photographer") : null
-        )
-        .filter(Boolean) as ParticipantsModalIndividual[]
-
-      const entities: ParticipantsModalEntity[] = orgResponses
-        .map((data: {
-          entity?: { name?: string; profilePictureUrl?: string | null }
-          adminUser?: { firstName?: string; lastName?: string }
-          teamMembers?: unknown[]
-        } | null, index: number) => {
-          if (!data?.entity?.name) return null
-          const managerName = data.adminUser
-            ? [data.adminUser.firstName, data.adminUser.lastName].filter(Boolean).join(" ").trim() || undefined
-            : undefined
-          const imageUrl =
-            data.entity?.profilePictureUrl && data.entity.profilePictureUrl.trim() !== ""
-              ? data.entity.profilePictureUrl
-              : undefined
-          const entityTypeLabel = entityTypeLabels[index] ?? "Entity"
-          return {
-            entityName: data.entity.name,
-            managerName: managerName ?? undefined,
-            teamMembersCount: Array.isArray(data.teamMembers) ? data.teamMembers.length : undefined,
-            imageUrl,
-            entityTypeLabel,
-          }
-        })
-        .filter(Boolean) as ParticipantsModalEntity[]
-
-      // DEBUG: build userId → display name map (dev only, safe to remove)
-      let debugIdToName: Record<string, string> | undefined
-      if (process.env.NODE_ENV === "development") {
-        const idToName: Record<string, string> = {}
-        const extractName = (u: { firstName?: string; lastName?: string; email?: string }) =>
-          [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || "—"
-        for (const d of nobaUsers) {
-          if (d?.user?.id) idToName[String(d.user.id).trim()] = extractName(d.user)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setParticipantsNobaTeam([])
+          setParticipantsMainPlayersIndividuals([])
+          setParticipantsMainPlayersEntities([])
+          setPhotographerName(undefined)
+          setClientName("—")
         }
-        for (const d of photoUsers) {
-          if ((d as { user?: { id?: string } })?.user?.id) {
-            const u = (d as { user: { id: string; firstName?: string; lastName?: string; email?: string } }).user
-            idToName[u.id.trim()] = extractName(u)
-          }
-        }
-        const allUids = new Set<string>()
-        for (const p of participants) for (const uid of p.userIds ?? []) allUids.add(uid)
-        for (const uid of nobaUserIds) allUids.add(String(uid))
-        const missing = [...allUids].filter((uid) => !idToName[uid])
-        if (missing.length > 0) {
-          const extra = await Promise.all(
-            missing.map((uid) => fetch(`/api/users/${uid}`).then((r) => (r.ok ? r.json() : null)))
-          )
-          if (cancelled) return
-          for (const d of extra) {
-            if (d?.user?.id) idToName[String(d.user.id).trim()] = extractName(d.user)
-          }
-        }
-        debugIdToName = idToName
-      }
-      // END DEBUG
-
-      if (!cancelled) {
-        setParticipantsNobaTeam(nobaTeam)
-        setParticipantsMainPlayersIndividuals(mainIndividuals)
-        setParticipantsMainPlayersEntities(entities)
-        if (debugIdToName) setDebugUserIdToName(debugIdToName)
-      }
-    }
-    load()
+      })
     return () => {
       cancelled = true
     }
-  }, [collection, user?.id])
+  }, [collection?.id])
 
-  // ---------------------------------------------------------------------------
-  // DEBUG: per-step owner roles + role→names map (dev only, safe to remove)
-  // ---------------------------------------------------------------------------
-  const debugStepOwners = React.useMemo(() => {
-    if (process.env.NODE_ENV !== "development" || !collection) return undefined
-    const map: Record<string, string[]> = {}
+  // Per-step owners (used for canShowModalActions — must use open step's owners, not collection.currentOwners)
+  const stepOwners = React.useMemo((): Record<string, CollectionMemberRole[]> => {
+    if (!collection) return {}
+    const map: Record<string, CollectionMemberRole[]> = {}
     for (const stepId of STEP_IDS) {
       map[stepId] = getStepOwner(stepId, collection).map((r) => toDbCollectionRole(r))
     }
     return map
   }, [collection])
 
+  // ---------------------------------------------------------------------------
+  // DEBUG: per-step owner roles + role→names map (dev only, safe to remove)
+  // ---------------------------------------------------------------------------
+  const debugStepOwners = React.useMemo(() => {
+    if (process.env.NODE_ENV !== "development" || !collection) return undefined
+    return stepOwners
+  }, [collection, stepOwners])
+
   const debugCanEditPerStep = React.useMemo(() => {
     if (process.env.NODE_ENV !== "development" || !collection) return undefined
     const config = collection.config
     const participants = collection.participants
     const nobaUids = config.nobaUserIds ?? participants.find((p) => p.role === "producer")?.userIds ?? []
+    const roleLabels: Record<string, string> = {
+      producer: "Producer",
+      client: "Client",
+      photographer: "Photographer",
+      agency: "Agency",
+      lab: "Photo Lab",
+      handprint_lab: "Hand Print Lab",
+      edition_studio: "Retouch Studio",
+    }
     const map: Record<string, string[]> = {}
     for (const stepId of STEP_IDS) {
-      const ownerRoles = getStepOwner(stepId, collection) // ParticipantRole[]
+      const ownerRoles = getStepOwner(stepId, collection)
       const names: string[] = []
-      const editByUserId = new Map<string, boolean>()
+      const rolesWithEdit = new Set<string>()
       for (const role of ownerRoles) {
         if (role === "producer") {
           for (const uid of nobaUids) {
             const id = String(uid).trim()
             const hasEdit = config.nobaEditPermissionByUserId?.[id] ?? true
-            editByUserId.set(id, editByUserId.has(id) ? editByUserId.get(id)! && hasEdit : hasEdit)
+            if (hasEdit) {
+              if (noteAuthorsByUserId[id]) names.push(noteAuthorsByUserId[id].name)
+              else rolesWithEdit.add(role)
+            }
           }
         } else {
           const participant = participants.find((p) => p.role === role)
           if (!participant) continue
           for (const uid of participant.userIds ?? []) {
             const hasEdit = participant.editPermissionByUserId?.[uid] ?? false
-            editByUserId.set(uid, editByUserId.has(uid) ? editByUserId.get(uid)! && hasEdit : hasEdit)
+            if (hasEdit) {
+              if (noteAuthorsByUserId[uid]) names.push(noteAuthorsByUserId[uid].name)
+              else rolesWithEdit.add(role)
+            }
           }
         }
       }
-      for (const [uid, hasEdit] of editByUserId) {
-        if (hasEdit && debugUserIdToName[uid]) names.push(debugUserIdToName[uid])
+      for (const role of rolesWithEdit) {
+        const label = roleLabels[role] ?? role
+        if (!names.includes(label)) names.push(label)
       }
       map[stepId] = names
     }
     return map
-  }, [collection, debugUserIdToName])
+  }, [collection, noteAuthorsByUserId])
   // ---------------------------------------------------------------------------
   // END DEBUG
   // ---------------------------------------------------------------------------
@@ -1073,6 +865,7 @@ export default function CollectionViewPage({
       showSettingsButton={true}
       collectionId={id}
       currentOwners={collection.currentOwners ?? []}
+      stepOwners={stepOwners}
       currentUserCollectionRole={userForPermission ? toDbCollectionRole(userForPermission.role) : null}
       currentUserHasEditPermission={userForPermission?.hasEditPermission ?? false}
       debugStepOwners={debugStepOwners}
@@ -1145,6 +938,7 @@ export default function CollectionViewPage({
       onCompleteCollection={handleCompleteCollection}
       stepNotesPhotographerLastCheck={collection.stepNotesPhotographerLastCheck}
       stepNotesClientConfirmation={collection.stepNotesClientConfirmation}
+      noteAuthorsByUserId={noteAuthorsByUserId}
       uploadLowResShippingReminderDate={collection.config.lowResShippingDeliveryDate}
       uploadLowResShippingReminderTime={collection.config.lowResShippingDeliveryTime}
       uploadLowResShippingReminderDestination={collection.config.lowResShippingDestinationAddress}

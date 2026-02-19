@@ -23,6 +23,7 @@ interface CollectionWithAssignments {
   lab_low_res_id: string | null
   edition_studio_id: string | null
   hand_print_lab_id: string | null
+  noba_user_ids: string[] | null
 }
 
 /**
@@ -48,7 +49,7 @@ export async function resolveRecipients(
   // Get collection with organization assignments
   const { data: collection, error: collectionError } = await supabase
     .from("collections")
-    .select("id, client_id, photographer_id, lab_low_res_id, edition_studio_id, hand_print_lab_id")
+    .select("id, client_id, photographer_id, lab_low_res_id, edition_studio_id, hand_print_lab_id, noba_user_ids")
     .eq("id", collectionId)
     .single()
 
@@ -68,6 +69,12 @@ export async function resolveRecipients(
     switch (type) {
       case "producer":
         memberRoles.push("noba")
+        // Fallback/source of truth for producer recipients:
+        // collections.noba_user_ids is maintained by the collection workflow and
+        // prevents missing recipients when collection_members is stale or restricted.
+        for (const uid of collectionData.noba_user_ids ?? []) {
+          if (uid?.trim()) userIds.add(uid)
+        }
         break
       
       case "lab":

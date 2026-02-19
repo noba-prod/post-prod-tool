@@ -8,8 +8,9 @@ type CreateMemberPayload = {
   firstName: string
   lastName?: string
   email: string
-  phoneNumber: string
-  countryCode: string
+  /** Optional; when empty or omitted, profile.phone is set to null */
+  phoneNumber?: string
+  countryCode?: string
   role: "admin" | "editor" | "viewer"
 }
 
@@ -121,8 +122,8 @@ export async function POST(
     first_name: payload.firstName.trim(),
     last_name: payload.lastName?.trim() || null,
     email,
-    phone: payload.phoneNumber.trim() || null,
-    prefix: payload.countryCode.trim() || null,
+    phone: (payload.phoneNumber ?? "").trim() || null,
+    prefix: (payload.countryCode ?? "").trim() || null,
     role: payload.role,
     is_internal: isNobaOrg,
   }

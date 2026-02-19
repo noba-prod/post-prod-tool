@@ -871,6 +871,7 @@ export function ViewTemplate({
             if (!open) setIsProfileModalOpen(false)
           }}
           mode="edit"
+          isEditingSelf={true}
           initialUserData={userContext.user}
           entity={{
             type: userContext.entity.type,

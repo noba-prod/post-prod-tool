@@ -193,3 +193,103 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
     }
   }
 }
+
+/**
+ * Create invitations and send emails only for the given (new) members.
+ * Use when participants are updated (e.g. photographer changed) - invite only new users.
+ * Idempotent: skips creating a duplicate invitation for the same (email, collection_id).
+ */
+export async function createInvitationsForNewMembers(
+  collectionId: string,
+  members: Pick<CollectionMember, "user_id" | "role">[]
+) {
+  const supabase = createAdminClient()
+
+  try {
+    const { data: collectionData, error: collError } = await supabase
+      .from("collections")
+      .select("id, client_id, name")
+      .eq("id", collectionId)
+      .single()
+    const collection = collectionData as Pick<Collection, "id" | "client_id" | "name"> | null
+    if (collError || !collection?.client_id) {
+      return {
+        success: false,
+        error: "Collection not found or has no client",
+        created: 0,
+      }
+    }
+
+    const organizationId = collection.client_id
+    if (members.length === 0) {
+      return { success: true, created: 0, sent: 0 }
+    }
+
+    const userIds = [...new Set(members.map((m) => m.user_id))]
+    const { data: profilesData, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, email")
+      .in("id", userIds)
+    const profiles = (profilesData ?? []) as Pick<Profile, "id" | "email">[]
+
+    if (profilesError || !profiles.length) {
+      return {
+        success: false,
+        error: profilesError?.message ?? "Could not load participant emails",
+        created: 0,
+      }
+    }
+
+    const emailByUserId = new Map(profiles.map((p) => [p.id, p.email]))
+    const collectionName = (collection as { name?: string | null }).name ?? "a collection"
+    let created = 0
+    let sent = 0
+
+    for (const member of members) {
+      const email = emailByUserId.get(member.user_id)?.trim()
+      if (!email) continue
+
+      const existing = await supabase
+        .from("invitations")
+        .select("id")
+        .eq("collection_id", collectionId)
+        .eq("email", email.toLowerCase())
+        .eq("status", "pending")
+        .maybeSingle()
+
+      if (existing.data) continue
+
+      const result = await createInvitation({
+        organizationId,
+        email,
+        collectionId,
+        invitedCollectionRole: member.role,
+        expiresInDays: 7,
+      })
+      if (result.success && result.activationUrl) {
+        created++
+        const emailResult = await sendInvitationEmail(
+          email,
+          result.activationUrl,
+          collectionName
+        )
+        if (emailResult.sent) sent++
+        await sleep(RESEND_RATE_LIMIT_DELAY_MS)
+      }
+    }
+
+    return {
+      success: true,
+      created,
+      sent,
+      message: created > 0 ? `Created ${created} invitation(s), ${sent} email(s) sent to new participants` : undefined,
+    }
+  } catch (error) {
+    console.error("Create invitations for new members error:", error)
+    return {
+      success: false,
+      error: "An unexpected error occurred",
+      created: 0,
+    }
+  }
+}

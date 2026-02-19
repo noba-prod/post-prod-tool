@@ -33,24 +33,18 @@ function isSupabaseConfigured(): boolean {
   )
 }
 
-async function fetchOrganizationNamesFromSupabase(ids: string[]): Promise<Record<string, string>> {
+async function fetchVisibleClientNames(ids: string[]): Promise<Record<string, string>> {
   if (ids.length === 0) return {}
-  const supabase = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase
-    .from("organizations") as any)
-    .select("id, name")
-    .in("id", ids)
-  if (error) {
-    console.error("[CollectionsPage] Failed to fetch organization names:", error)
+  const response = await fetch(
+    `/api/collections/client-names?ids=${encodeURIComponent(ids.join(","))}`,
+    { cache: "no-store" }
+  )
+  if (!response.ok) {
+    console.error("[CollectionsPage] Failed to fetch visible client names")
     return {}
   }
-  const orgs = (data ?? []) as Pick<Organization, "id" | "name">[]
-  const map: Record<string, string> = {}
-  for (const org of orgs) {
-    map[org.id] = org.name
-  }
-  return map
+  const data = (await response.json()) as { namesById?: Record<string, string> }
+  return data.namesById ?? {}
 }
 
 async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[]> {
@@ -146,7 +140,7 @@ export default function CollectionsPage() {
   const router = useRouter()
   const pathname = usePathname()
   const authAdapter = useAuthAdapter()
-  const { isNobaProducerUser } = useUserContext()
+  const { isNobaProducerUser, isNobaUser } = useUserContext()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [collections, setCollections] = useState<Collection[]>([])
@@ -228,7 +222,7 @@ export default function CollectionsPage() {
     load()
   }, [session])
 
-  // Resolve client display names for collections (entity by clientEntityId)
+  // Resolve client display names for collections (works for all roles via server-side endpoint)
   useEffect(() => {
     if (collections.length === 0) {
       setClientNamesByEntityId({})
@@ -241,7 +235,7 @@ export default function CollectionsPage() {
     }
     const load = async () => {
       if (isSupabaseConfigured()) {
-        const map = await fetchOrganizationNamesFromSupabase(ids)
+        const map = await fetchVisibleClientNames(ids)
         setClientNamesByEntityId(map)
       } else {
         setClientNamesByEntityId({})
@@ -271,6 +265,10 @@ export default function CollectionsPage() {
 
   const filteredCollections = React.useMemo(() => {
     let result = [...collections]
+    // Non-Noba users (client, photo_lab, handprint_lab, photographer, agency, retouch_studio) never see draft collections
+    if (!isNobaUser) {
+      result = result.filter((c) => c.status !== "draft")
+    }
     if (filters.client) {
       result = result.filter((c) => c.config.clientEntityId === filters.client)
     }
@@ -294,7 +292,7 @@ export default function CollectionsPage() {
       return filters.sortOrder === "desc" ? tB - tA : tA - tB
     })
     return result
-  }, [collections, filters.client, filters.status, filters.photographer, filters.createdBy, filters.sortOrder])
+  }, [collections, isNobaUser, filters.client, filters.status, filters.photographer, filters.createdBy, filters.sortOrder])
 
   /** Navigate to collection: draft → setup flow, published → view flow */
   const handleCollectionClick = React.useCallback(

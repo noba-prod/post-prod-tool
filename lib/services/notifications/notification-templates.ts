@@ -67,7 +67,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerOffsetMinutes: 0,
     triggerCondition: null,
     emailRecipients: ["lab"],
-    inappRecipients: [], // in-app for this event sent in triggerEvent (lab + producer)
+    inappRecipients: ["lab"],
   },
   {
     code: "dropoff_confirmation_reminder",
@@ -97,6 +97,21 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerOffsetMinutes: 0,
     triggerCondition: null,
     emailRecipients: ["producer"],
+    inappRecipients: ["producer"],
+  },
+  {
+    code: "dropoff_confirmed_status",
+    step: 2,
+    stepName: "Negatives drop off",
+    title: "{dropoffConfirmationTitle}",
+    description: "{dropoffConfirmationSubtitle}",
+    ctaText: "Check collection",
+    ctaUrlTemplate: "/collections/{collectionId}?step=low_res_scanning",
+    triggerType: "on",
+    triggerEvent: "dropoff_confirmed",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: [],
     inappRecipients: ["producer"],
   },
 

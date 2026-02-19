@@ -218,6 +218,7 @@ export async function PATCH(
           from: noteInput.from,
           text: noteInput.text.trim(),
           at: now,
+          userId: user.id,
         }
         const existing = parseStoredNotes(raw[rawKey])
         const next = appendNote(existing, entry)
