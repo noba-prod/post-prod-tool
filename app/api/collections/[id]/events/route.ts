@@ -1,10 +1,15 @@
 /**
  * POST /api/collections/[id]/events
  * Triggers a collection event, updates collection substatus when applicable, and processes notifications.
+ *
+ * Uses service-role client for NotificationsService to bypass RLS when inserting/updating
+ * collection_events and notifications. This ensures event-driven notifications are sent
+ * regardless of the triggering user's permissions (e.g. lab, photographer).
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NotificationsService, type CollectionEventType } from "@/lib/services/notifications"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
 import { CollectionsServiceError } from "@/lib/services/collections"
@@ -87,8 +92,11 @@ export async function POST(
       return NextResponse.json({ error: "Collection not found" }, { status: 404 })
     }
 
-    // Trigger the event (records in collection_events and sends notifications)
-    const notificationsService = new NotificationsService(supabase)
+    // Trigger the event (records in collection_events and sends notifications).
+    // Use service-role client to bypass RLS — ensures notifications are sent and
+    // collection_events.notifications_processed is updated regardless of user role.
+    const adminClient = createAdminClient()
+    const notificationsService = new NotificationsService(adminClient)
     await notificationsService.triggerEvent(
       collectionId,
       eventType as CollectionEventType,

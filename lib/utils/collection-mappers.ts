@@ -86,7 +86,12 @@ function parseCurrentOwners(raw: unknown): CurrentOwnerRole[] {
 
 /** Append a URL to an existing URL array (non-destructive). */
 export function appendToUrlArray(existing: string[] | undefined, newUrl: string): string[] {
-  return [...(existing ?? []), newUrl]
+  const trimmed = newUrl.trim()
+  if (!trimmed) return [...(existing ?? [])]
+  const current = [...(existing ?? [])]
+  // Guard against accidental double-submit/retry appending the same link.
+  if (current[current.length - 1] === trimmed) return current
+  return [...current, trimmed]
 }
 
 /** Append a note entry to an existing notes array (non-destructive). */

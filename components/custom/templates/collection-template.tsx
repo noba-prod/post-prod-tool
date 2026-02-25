@@ -583,6 +583,7 @@ export function CollectionTemplate({
    *  primarySubtitle shows relative time since upload (uploadedAt for first item, notes[idx].at for each).
    *  Only notes from the uploader (expectedNoteFrom) are shown per item — i.e. the "Notes and comments" from the upload form, not request-more-photos notes from others.
    *  Note author is the step owner (uploader): use uploaderDisplayName + uploaderImageUrl when provided (from participants), else fallback to role label.
+   *  URLs are deduplicated (first occurrence kept) to avoid "Original link" + "Additional selection" when client sent only one link.
    */
   const buildLinkAccordionItems = React.useCallback(
     (
@@ -597,7 +598,13 @@ export function CollectionTemplate({
       /** Resolved step owner display (entity name + image) for note author — e.g. from resolveUploaderDisplay(expectedNoteFrom). */
       uploaderDisplay?: { name: string; imageUrl?: string } | null,
     ): LinkAccordionItem[] => {
-      const urls = allUrls(urlProp)
+      const rawUrls = allUrls(urlProp)
+      const seen = new Set<string>()
+      const urls = rawUrls.filter((u) => {
+        if (seen.has(u)) return false
+        seen.add(u)
+        return true
+      })
       if (urls.length === 0) return []
       const uploaderNotes =
         expectedNoteFrom != null ? (notes ?? []).filter((n) => n.from === expectedNoteFrom) : undefined
@@ -1386,7 +1393,7 @@ export function CollectionTemplate({
                                   openLinkDialog(
                                     "Client selection",
                                     "Download and review the latest selection shared by the client",
-                                    buildLinkAccordionItems(clientSelectionUrl, stepNotesClientSelection, "Client selection", "/assets/bg-clientselect.png", clientName?.replace(/^@/, "").trim(), clientSelectionUploadedAt, "client", resolveUploaderDisplay("client"))
+                                    buildLinkAccordionItems(clientSelectionUrl, stepNotesPhotographerReview, "Client selection", "/assets/bg-clientselect.png", clientName?.replace(/^@/, "").trim(), clientSelectionUploadedAt, "photographer", resolveUploaderDisplay("photographer"))
                                   )
                               : undefined
                           }
@@ -1805,8 +1812,8 @@ export function CollectionTemplate({
                               ? () =>
                                   openLinkDialog(
                                     "Client selection",
-                                    "Download and review the latest selection shared by the client",
-                                    buildLinkAccordionItems(clientSelectionUrl, stepNotesClientSelection, "Client selection", "/assets/bg-clientselect.png", clientName?.replace(/^@/, "").trim(), clientSelectionUploadedAt, "client", resolveUploaderDisplay("client"))
+                                    "Download and review the latest selection shared by the client, including photographer instructions for high-res",
+                                    buildLinkAccordionItems(clientSelectionUrl, stepNotesPhotographerReview, "Client selection", "/assets/bg-clientselect.png", clientName?.replace(/^@/, "").trim(), clientSelectionUploadedAt, "photographer", resolveUploaderDisplay("photographer"))
                                   )
                               : undefined
                           }
@@ -1871,9 +1878,25 @@ export function CollectionTemplate({
                         size="lg"
                         className="w-fit rounded-xl bg-white text-black hover:bg-white/90"
                         onClick={() => {
-                          const url = finalsSelectionUrlLatest || highResSelectionUrlLatest
-                          if (url) {
-                            window.open(url, "_blank", "noopener")
+                          const finalsUrls = allUrls(finalsSelectionUrl)
+                          const highResUrls = allUrls(highResSelectionUrl)
+                          const hasFinals = finalsUrls.length > 0
+                          const hasHighRes = highResUrls.length > 0
+                          if (hasFinals) {
+                            openLinkDialog(
+                              "Final selection",
+                              "Download and review the final selection, including lab comments",
+                              buildLinkAccordionItems(finalsSelectionUrl, stepNotesFinalEdits, "Final photos", "/assets/bg-edition.png", finalsUploadedByName?.trim(), finalsUploadedAt, "edition_studio", resolveUploaderDisplay("edition_studio"))
+                            )
+                          } else if (hasHighRes) {
+                            openLinkDialog(
+                              "Final selection",
+                              "Download and review the final selection, including lab comments",
+                              buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                            )
+                          } else {
+                            const url = finalsSelectionUrlLatest || highResSelectionUrlLatest
+                            if (url) window.open(url, "_blank", "noopener")
                           }
                         }}
                       >

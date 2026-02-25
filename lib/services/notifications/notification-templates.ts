@@ -303,8 +303,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "client_selection_confirmed",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["photographer"],
-    inappRecipients: ["photographer", "producer"],
+    emailRecipients: ["hand_print_lab", "photographer"],
+    inappRecipients: ["hand_print_lab", "photographer", "producer"],
   },
 
   // ==========================================================================
@@ -401,8 +401,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "highres_ready",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["photographer", "producer"],
-    inappRecipients: ["photographer", "producer"],
+    emailRecipients: ["photographer", "producer", "client"],
+    inappRecipients: ["photographer", "producer", "client"],
   },
 
   // ==========================================================================

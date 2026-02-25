@@ -124,6 +124,7 @@ export class NotificationsService implements INotificationsService {
     triggeredByUserId?: string,
     metadata?: Record<string, unknown>
   ): Promise<void> {
+    let eventId: string | null = null
     // Idempotent: at most one shooting_started per collection (multiple code paths can call this)
     if (eventType === "shooting_started") {
       const { data: existing } = await this.supabase
@@ -155,6 +156,8 @@ export class NotificationsService implements INotificationsService {
     if (eventError) {
       console.error("[NotificationsService] Failed to record event:", eventError)
       // Continue anyway to send notifications
+    } else {
+      eventId = event?.id ?? null
     }
 
     // 1b. photographer_requested_additional_photos: in-app to producer + photo lab
@@ -166,18 +169,22 @@ export class NotificationsService implements INotificationsService {
         const body = "The photographer has requested additional footage. Please upload a new selection in step 3."
         const ctaUrl = buildCtaUrl("/collections/{collectionId}", collectionId)
         for (const recipient of recipients) {
-          await this.createNotification({
-            collection_id: collectionId,
-            template_id: null,
-            user_id: recipient.userId,
-            channel: "in_app",
-            status: "sent",
-            title,
-            body,
-            cta_text: "View collection",
-            cta_url: ctaUrl,
-            sent_at: new Date().toISOString(),
-          })
+          try {
+            await this.createNotification({
+              collection_id: collectionId,
+              template_id: null,
+              user_id: recipient.userId,
+              channel: "in_app",
+              status: "sent",
+              title,
+              body,
+              cta_text: "View collection",
+              cta_url: ctaUrl,
+              sent_at: new Date().toISOString(),
+            })
+          } catch (err) {
+            console.error("[NotificationsService] Failed creating additional photos notification:", err)
+          }
         }
       }
     }
@@ -204,18 +211,35 @@ export class NotificationsService implements INotificationsService {
         console.error("[NotificationsService] Collection not found:", collectionId)
       } else {
         // 4. Process each template (pass metadata for dynamic description interpolation)
-        for (const template of templates) {
-          await this.processTemplate(template, collectionId, context, metadata)
+        for (const template of templates as NotificationTemplate[]) {
+          try {
+            await this.processTemplate(template, collectionId, context, metadata)
+          } catch (err) {
+            // Keep processing remaining templates for this event
+            console.error(
+              "[NotificationsService] Template processing failed:",
+              { templateCode: template.code, eventType, collectionId },
+              err
+            )
+          }
         }
       }
     }
 
     // 5. Mark event as processed
-    if (event?.id) {
-      await this.supabase
+    if (eventId) {
+      const { error: processedError } = await this.supabase
         .from("collection_events")
         .update({ notifications_processed: true, processed_at: new Date().toISOString() } as never)
-        .eq("id", event.id)
+        .eq("id", eventId)
+      if (processedError) {
+        console.error("[NotificationsService] Failed to mark event as processed:", {
+          collectionId,
+          eventType,
+          eventId,
+          processedError,
+        })
+      }
     }
   }
 
@@ -660,8 +684,14 @@ export class NotificationsService implements INotificationsService {
     let result = text
 
     if (result.includes("{noteText}")) {
-      const noteText = typeof metadata?.noteText === "string" && metadata.noteText.trim()
-        ? metadata.noteText.trim()
+      const noteTextValue =
+        (typeof metadata?.noteText === "string" && metadata.noteText.trim()) ||
+        (typeof metadata?.notes === "string" && metadata.notes.trim()) ||
+        (typeof metadata?.comments === "string" && metadata.comments.trim()) ||
+        (typeof metadata?.details === "string" && metadata.details.trim()) ||
+        null
+      const noteText = noteTextValue
+        ? noteTextValue
         : NotificationsService.NOTE_TEXT_FALLBACK
       result = result.replace(/\{noteText\}/g, noteText)
     }
