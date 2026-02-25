@@ -99,6 +99,49 @@ const DEADLINE_TO_MISSED_EVENT: [string, string, string][] = [
   ["check_finals_photographer_check_date", "check_finals_photographer_check_time", "photographer_review_deadline_missed"],
 ]
 
+/** Substatus order for "substatus >= X" comparison. Matches workflow.ts. */
+const SUBSTATUS_ORDER = [
+  "shooting",
+  "negatives_drop_off",
+  "low_res_scanning",
+  "photographer_selection",
+  "client_selection",
+  "low_res_to_high_res",
+  "edition_request",
+  "final_edits",
+  "photographer_last_check",
+  "client_confirmation",
+] as const
+
+/** Maps trigger_event to completion criteria. Skip scheduled notification if milestone already done. */
+const TRIGGER_EVENT_TO_COMPLETION: Record<
+  string,
+  { minSubstatus?: (typeof SUBSTATUS_ORDER)[number]; completionEvent?: string }
+> = {
+  shooting_end: { minSubstatus: "negatives_drop_off", completionEvent: "negatives_pickup_marked" },
+  dropoff_deadline: { minSubstatus: "low_res_scanning", completionEvent: "dropoff_confirmed" },
+  scanning_deadline: { minSubstatus: "photographer_selection", completionEvent: "scanning_completed" },
+  photographer_selection_deadline: {
+    minSubstatus: "client_selection",
+    completionEvent: "photographer_selection_uploaded",
+  },
+  client_selection_deadline: {
+    minSubstatus: "low_res_to_high_res",
+    completionEvent: "client_selection_confirmed",
+  },
+  photographer_check_deadline: { completionEvent: "photographer_check_approved" },
+  highres_deadline: { minSubstatus: "edition_request", completionEvent: "highres_ready" },
+  final_edits_deadline: {
+    minSubstatus: "photographer_last_check",
+    completionEvent: "final_edits_completed",
+  },
+  photographer_review_deadline: {
+    minSubstatus: "client_confirmation",
+    completionEvent: "photographer_edits_approved",
+  },
+  project_deadline: { completionEvent: "collection_completed" },
+}
+
 export class NotificationsService implements INotificationsService {
   constructor(private readonly supabase: SupabaseClient<Database>) {}
 
@@ -284,6 +327,19 @@ export class NotificationsService implements INotificationsService {
               .eq("id", scheduled.id)
             continue
           }
+        }
+
+        // Skip if milestone already completed (e.g. client confirmed before deadline)
+        const milestoneCompleted = await this.isMilestoneAlreadyCompleted(
+          scheduled.collection_id,
+          template
+        )
+        if (milestoneCompleted) {
+          await this.supabase
+            .from("scheduled_notification_tracking")
+            .update({ is_sent: true, sent_at: now } as never)
+            .eq("id", scheduled.id)
+          continue
         }
 
         const context = await getCollectionContext(this.supabase, scheduled.collection_id)
@@ -830,6 +886,56 @@ export class NotificationsService implements INotificationsService {
       console.error("[NotificationsService] Failed to parse deadline:", dateStr, timeStr)
       return null
     }
+  }
+
+  /**
+   * Check if the milestone for a scheduled notification has already been completed.
+   * If true, the notification should be skipped (marked as sent without sending).
+   */
+  private async isMilestoneAlreadyCompleted(
+    collectionId: string,
+    template: NotificationTemplate
+  ): Promise<boolean> {
+    const criteria = TRIGGER_EVENT_TO_COMPLETION[template.trigger_event]
+    if (!criteria) return false
+
+    const { data: collection, error: colError } = await this.supabase
+      .from("collections")
+      .select("status, substatus")
+      .eq("id", collectionId)
+      .single()
+
+    if (colError || !collection) return false
+
+    const status = (collection as { status: string }).status
+    const substatus = (collection as { substatus: string | null }).substatus
+
+    if (status === "completed") return true
+
+    const { data: events } = await this.supabase
+      .from("collection_events")
+      .select("event_type")
+      .eq("collection_id", collectionId)
+    const eventTypes = ((events || []) as Pick<CollectionEventRow, "event_type">[]).map(
+      (e) => e.event_type
+    )
+
+    if (
+      criteria.completionEvent &&
+      eventTypes.includes(criteria.completionEvent as CollectionEventType)
+    ) {
+      return true
+    }
+
+    if (criteria.minSubstatus && substatus) {
+      const currentIdx = SUBSTATUS_ORDER.indexOf(substatus as (typeof SUBSTATUS_ORDER)[number])
+      const minIdx = SUBSTATUS_ORDER.indexOf(criteria.minSubstatus)
+      if (currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx) {
+        return true
+      }
+    }
+
+    return false
   }
 
   /**
