@@ -559,13 +559,13 @@ export function CollectionTemplate({
         )
         return e ? { name: e.entityName, imageUrl: e.imageUrl } : null
       }
-      if (expectedNoteFrom === "lab") {
+      if (expectedNoteFrom === "photo_lab" || expectedNoteFrom === "lab") {
         const e = (participantsMainPlayersEntities ?? []).find(
           (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
         )
         return e ? { name: e.entityName, imageUrl: e.imageUrl } : null
       }
-      if (expectedNoteFrom === "edition_studio") {
+      if (expectedNoteFrom === "retouch_studio" || expectedNoteFrom === "edition_studio") {
         const e = (participantsMainPlayersEntities ?? []).find(
           (e) =>
             (e.entityTypeLabel ?? "").toLowerCase().includes("retouch") ||
@@ -607,7 +607,14 @@ export function CollectionTemplate({
       })
       if (urls.length === 0) return []
       const uploaderNotes =
-        expectedNoteFrom != null ? (notes ?? []).filter((n) => n.from === expectedNoteFrom) : undefined
+        expectedNoteFrom != null
+          ? (notes ?? []).filter((n) => {
+              if (n.from === expectedNoteFrom) return true
+              if (expectedNoteFrom === "photo_lab" && n.from === "lab") return true
+              if (expectedNoteFrom === "retouch_studio" && n.from === "edition_studio") return true
+              return false
+            })
+          : undefined
       const fallbackEntityName = uploaderDisplay?.name?.trim() || (expectedNoteFrom ? expectedNoteFrom.charAt(0).toUpperCase() + expectedNoteFrom.slice(1).replace(/_/g, " ") : undefined)
       const fallbackEntityImageUrl = uploaderDisplay?.imageUrl
       return urls.map((url, idx) => {
@@ -1173,7 +1180,7 @@ export function CollectionTemplate({
                                 openLinkDialog(
                                   "Low-res scans by lab",
                                   "Download and review the latest scans shared by the lab",
-                                  buildLinkAccordionItems(lowResSelectionUrl, stepNotesLowRes, "Low-res photos", "/assets/bg-lowres.png", labName, lowResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                                  buildLinkAccordionItems(lowResSelectionUrl, stepNotesLowRes, "Low-res photos", "/assets/bg-lowres.png", labName, lowResUploadedAt, "photo_lab", resolveUploaderDisplay("photo_lab"))
                                 )
                               }
                             : undefined
@@ -1475,7 +1482,7 @@ export function CollectionTemplate({
                                   openLinkDialog(
                                     "High-res selection by lab",
                                     "Download and review the latest high-res selection shared by the lab",
-                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "photo_lab", resolveUploaderDisplay("photo_lab"))
                                   )
                               : undefined
                           }
@@ -1594,7 +1601,7 @@ export function CollectionTemplate({
                                   openLinkDialog(
                                     "High-res selection by lab",
                                     "Download and review the latest high-res selection shared by the lab",
-                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "photo_lab", resolveUploaderDisplay("photo_lab"))
                                   )
                               : undefined
                           }
@@ -1702,7 +1709,7 @@ export function CollectionTemplate({
                                   openLinkDialog(
                                     "Final retouched photos",
                                     "Download and review the final retouched photos from the edition studio",
-                                    buildLinkAccordionItems(finalsSelectionUrl, stepNotesFinalEdits, "Final photos", "/assets/bg-edition.png", finalsUploadedByName?.trim(), finalsUploadedAt, "edition_studio", resolveUploaderDisplay("edition_studio"))
+                                    buildLinkAccordionItems(finalsSelectionUrl, stepNotesFinalEdits, "Final photos", "/assets/bg-edition.png", finalsUploadedByName?.trim(), finalsUploadedAt, "retouch_studio", resolveUploaderDisplay("retouch_studio"))
                                   )
                               }
                               if (hasHighResUrl) {
@@ -1710,7 +1717,7 @@ export function CollectionTemplate({
                                   openLinkDialog(
                                     "High-res selection by lab",
                                     "Download and review the latest high-res selection shared by the lab",
-                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                                    buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "photo_lab", resolveUploaderDisplay("photo_lab"))
                                   )
                               }
                               return undefined
@@ -1886,13 +1893,13 @@ export function CollectionTemplate({
                             openLinkDialog(
                               "Final selection",
                               "Download and review the final selection, including lab comments",
-                              buildLinkAccordionItems(finalsSelectionUrl, stepNotesFinalEdits, "Final photos", "/assets/bg-edition.png", finalsUploadedByName?.trim(), finalsUploadedAt, "edition_studio", resolveUploaderDisplay("edition_studio"))
+                              buildLinkAccordionItems(finalsSelectionUrl, stepNotesFinalEdits, "Final photos", "/assets/bg-edition.png", finalsUploadedByName?.trim(), finalsUploadedAt, "retouch_studio", resolveUploaderDisplay("retouch_studio"))
                             )
                           } else if (hasHighRes) {
                             openLinkDialog(
                               "Final selection",
                               "Download and review the final selection, including lab comments",
-                              buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "lab", resolveUploaderDisplay("lab"))
+                              buildLinkAccordionItems(highResSelectionUrl, stepNotesHighRes, "High-res photos", "/assets/bg-highres.png", highResUploadedByName?.trim(), highResUploadedAt, "photo_lab", resolveUploaderDisplay("photo_lab"))
                             )
                           } else {
                             const url = finalsSelectionUrlLatest || highResSelectionUrlLatest

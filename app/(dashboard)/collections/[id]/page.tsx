@@ -64,9 +64,9 @@ function toDbCollectionRole(role: UserForPermission["role"]): CollectionMemberRo
       return "photographer"
     case "agency":
       return "agency"
-    case "lab":
+    case "photo_lab":
       return "photo_lab"
-    case "edition_studio":
+    case "retouch_studio":
       return "retouch_studio"
     case "handprint_lab":
       return "handprint_lab"
@@ -383,7 +383,7 @@ export default function CollectionViewPage({
         const updated = await patchCollection(body)
         // Use the collection returned by PATCH (source of truth) to avoid stale closure.
         if (updated?.substatus === "low_res_scanning") {
-          await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
+          await fireEvent("lab_shared_additional_materials", { lowResUrl: url, notes: payload.notes })
           await refetchCollection()
         }
       } catch (err) {
@@ -403,6 +403,7 @@ export default function CollectionViewPage({
       try {
         const url = payload.url.trim()
         if (!url) throw new Error("URL is required")
+        const hadExistingSelection = (collection?.photographerSelectionUrl?.length ?? 0) > 0
         const body: Record<string, unknown> = {
           photographer_selection_url: url,
         }
@@ -410,15 +411,18 @@ export default function CollectionViewPage({
           body.step_note_photographer_selection = { from: "photographer", text: payload.notes.trim() }
         }
         await patchCollection(body)
-        await fireEvent("photographer_selection_uploaded", { url, notes: payload.notes })
-        await fireEvent("photographer_selection_shared")
+        if (hadExistingSelection) {
+          await fireEvent("photographer_selection_shared", { url, notes: payload.notes })
+        } else {
+          await fireEvent("photographer_selection_uploaded", { url, notes: payload.notes })
+        }
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload photographer selection error:", err)
         toast.error("Failed to upload selection")
       }
     },
-    [id, patchCollection, fireEvent, refetchCollection]
+    [id, collection?.photographerSelectionUrl, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -615,21 +619,26 @@ export default function CollectionViewPage({
       try {
         const url = payload.url.trim()
         if (!url) throw new Error("URL is required")
+        const hadExistingFinals = (collection?.finalsSelectionUrl?.length ?? 0) > 0
         const body: Record<string, unknown> = {
           finals_selection_url: url,
         }
         if (payload.notes?.trim()) {
-          body.step_note_final_edits = { from: "edition_studio", text: payload.notes.trim() }
+          body.step_note_final_edits = { from: "retouch_studio", text: payload.notes.trim() }
         }
         await patchCollection(body)
-        await fireEvent("final_edits_completed", { url, notes: payload.notes })
+        if (hadExistingFinals) {
+          await fireEvent("retouch_studio_shared_additional_materials", { url, notes: payload.notes })
+        } else {
+          await fireEvent("final_edits_completed", { url, notes: payload.notes })
+        }
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload finals error:", err)
         toast.error("Failed to upload finals")
       }
     },
-    [id, patchCollection, fireEvent, refetchCollection]
+    [id, collection?.finalsSelectionUrl, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -773,9 +782,9 @@ export default function CollectionViewPage({
       client: "Client",
       photographer: "Photographer",
       agency: "Agency",
-      lab: "Photo Lab",
+      photo_lab: "Photo Lab",
       handprint_lab: "Hand Print Lab",
-      edition_studio: "Retouch Studio",
+      retouch_studio: "Retouch Studio",
     }
     const map: Record<string, string[]> = {}
     for (const stepId of STEP_IDS) {

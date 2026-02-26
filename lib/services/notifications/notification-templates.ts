@@ -10,7 +10,7 @@ import type { Database } from "@/lib/supabase/database.types"
 
 // Type aliases for the enums
 export type TriggerType = "before" | "after" | "on" | "if" | "first_time"
-export type RecipientType = "producer" | "lab" | "photographer" | "client" | "hand_print_lab" | "edition_studio"
+export type RecipientType = "producer" | "photo_lab" | "photographer" | "client" | "handprint_lab" | "retouch_studio"
 
 export interface NotificationTemplateConfig {
   code: string
@@ -48,7 +48,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerOffsetMinutes: -30, // 30 minutes before
     triggerCondition: null,
     emailRecipients: ["producer"],
-    inappRecipients: ["producer"],
+    inappRecipients: [], // email-only
   },
 
   // ==========================================================================
@@ -66,8 +66,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "negatives_pickup_marked",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["lab"],
-    inappRecipients: ["lab"],
+    emailRecipients: ["photo_lab"],
+    inappRecipients: ["photo_lab"],
   },
   {
     code: "dropoff_confirmation_reminder",
@@ -79,10 +79,10 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     ctaUrlTemplate: "/collections/{collectionId}?step=negatives_dropoff",
     triggerType: "if",
     triggerEvent: "dropoff_deadline",
-    triggerOffsetMinutes: 120, // 2 hours after
+    triggerOffsetMinutes: 60, // 1 hour after
     triggerCondition: "negatives_not_confirmed",
-    emailRecipients: ["lab", "producer"],
-    inappRecipients: ["lab", "producer"],
+    emailRecipients: ["photo_lab"],
+    inappRecipients: ["photo_lab"],
   },
   {
     code: "dropoff_delayed",
@@ -97,7 +97,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerOffsetMinutes: 0,
     triggerCondition: null,
     emailRecipients: ["producer"],
-    inappRecipients: ["producer"],
+    inappRecipients: ["producer","photo_lab"],
   },
   {
     code: "dropoff_confirmed_status",
@@ -130,8 +130,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "scanning_deadline",
     triggerOffsetMinutes: -60, // 1 hour before
     triggerCondition: null,
-    emailRecipients: ["lab"],
-    inappRecipients: ["producer"],
+    emailRecipients: ["photo_lab"],
+    inappRecipients: ["photo_lab"],
   },
   {
     code: "scanning_completed",
@@ -145,7 +145,22 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "scanning_completed",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["photographer", "producer"],
+    emailRecipients: ["photographer"],
+    inappRecipients: ["photographer", "producer"],
+  },
+  {
+    code: "lab_shared_additional_materials",
+    step: 3,
+    stepName: "Low-res scanning",
+    title: "Photo lab has shared additional materials",
+    description: "Photo lab has shared an additional link. Review them and prepare the selection for the client.",
+    ctaText: "Review low-res",
+    ctaUrlTemplate: "/collections/{collectionId}?step=low_res_scanning",
+    triggerType: "on",
+    triggerEvent: "lab_shared_additional_materials",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["photographer"],
     inappRecipients: ["photographer", "producer"],
   },
   {
@@ -175,8 +190,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "photographer_request_missing_photos",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["lab"],
-    inappRecipients: ["producer", "lab"],
+    emailRecipients: ["photo_lab"],
+    inappRecipients: ["producer", "photo_lab"],
   },
 
   // ==========================================================================
@@ -194,7 +209,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "photographer_selection_deadline",
     triggerOffsetMinutes: -60, // 1 hour before
     triggerCondition: null,
-    emailRecipients: ["photographer", "producer"],
+    emailRecipients: ["photographer"],
     inappRecipients: ["photographer", "producer"],
   },
   {
@@ -202,7 +217,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     step: 4,
     stepName: "Photographer selection",
     title: "Selection uploaded and ready",
-    description: "The lab has uploaded the photographer selection. It is now ready for the client to review.",
+    description: "The photographer selection is ready. It is now available for the client to review.",
     ctaText: "Review selection",
     ctaUrlTemplate: "/collections/{collectionId}?step=photographer_selection",
     triggerType: "on",
@@ -211,21 +226,6 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerCondition: null,
     emailRecipients: ["producer", "client"],
     inappRecipients: ["producer", "client"],
-  },
-  {
-    code: "photographer_selection_shared",
-    step: 4,
-    stepName: "Photographer selection",
-    title: "Selection shared with client",
-    description: "The photographer has shared a first image selection with the client for review.",
-    ctaText: "Review selection",
-    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_selection",
-    triggerType: "on",
-    triggerEvent: "photographer_selection_shared",
-    triggerOffsetMinutes: 0,
-    triggerCondition: null,
-    emailRecipients: ["client"],
-    inappRecipients: ["client"],
   },
   {
     code: "photographer_selection_delayed",
@@ -254,13 +254,43 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "client_request_missing_photos",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["lab", "photographer"],
+    emailRecipients: ["photographer"],
     inappRecipients: ["producer", "photographer"],
   },
 
   // ==========================================================================
   // Step 5: Client Selection
   // ==========================================================================
+  {
+    code: "photographer_shared_additional_materials",
+    step: 5,
+    stepName: "Client selection",
+    title: "Photographer has shared additional materials",
+    description: "Photographer has shared an additional link. Review the photos and create a selection to move LR to HR and prepare finals",
+    ctaText: "Review photos",
+    ctaUrlTemplate: "/collections/{collectionId}?step=client_selection",
+    triggerType: "on",
+    triggerEvent: "photographer_selection_shared",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["client"],
+    inappRecipients: ["client","producer"],
+  },
+  {
+    code: "client_selection_delayed",
+    step: 5,
+    stepName: "Client selection",
+    title: "🚨 Client selection delayed for [collectionName]",
+    description: "Coordinate with the client, photographer and rest of players to update timeline and avoid possible rush-fees.",
+    ctaText: "Check progress",
+    ctaUrlTemplate: "/collections/{collectionId}?step=client_selection",
+    triggerType: "on",
+    triggerEvent: "photographer_selection_deadline_missed",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["producer"],
+    inappRecipients: ["producer"],
+  },
   {
     code: "client_selection_morning_reminder",
     step: 5,
@@ -288,7 +318,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "client_selection_deadline",
     triggerOffsetMinutes: -60, // 1 hour before
     triggerCondition: "selection_not_completed",
-    emailRecipients: ["client", "producer"],
+    emailRecipients: ["client"],
     inappRecipients: ["client", "producer"],
   },
   {
@@ -303,8 +333,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "client_selection_confirmed",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["hand_print_lab", "photographer"],
-    inappRecipients: ["hand_print_lab", "photographer", "producer"],
+    emailRecipients: ["photographer"],
+    inappRecipients: ["photographer", "producer"],
   },
 
   // ==========================================================================
@@ -322,8 +352,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "photographer_check_deadline",
     triggerOffsetMinutes: -60,
     triggerCondition: null,
-    emailRecipients: ["photographer", "producer"],
-    inappRecipients: ["photographer"],
+    emailRecipients: ["photographer"],
+    inappRecipients: ["photographer","producer"],
   },
   {
     code: "photographer_check_delayed",
@@ -352,17 +382,17 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "photographer_check_approved",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["hand_print_lab"],
-    inappRecipients: ["hand_print_lab", "producer"],
+    emailRecipients: ["handprint_lab"],
+    inappRecipients: ["handprint_lab", "producer"],
   },
 
   // ==========================================================================
-  // Step 6: Hand Print High-res
+  // Step 7: Low-res to high-res (Hand print high-res)
   // ==========================================================================
   {
     code: "highres_deadline_risk",
-    step: 6,
-    stepName: "Hand print high-res",
+    step: 7,
+    stepName: "Low-res to high-res",
     title: "High-resolution delivery at risk",
     description: "The deadline for high-resolution images is approaching. Please confirm progress with the lab.",
     ctaText: "Check HR",
@@ -371,13 +401,13 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "highres_deadline",
     triggerOffsetMinutes: -60, // 1 hour before
     triggerCondition: null,
-    emailRecipients: ["hand_print_lab", "producer"],
-    inappRecipients: ["hand_print_lab", "producer"],
+    emailRecipients: ["handprint_lab"],
+    inappRecipients: ["handprint_lab", "producer"],
   },
   {
     code: "highres_delayed",
-    step: 6,
-    stepName: "Hand print high-res",
+    step: 7,
+    stepName: "Low-res to high-res",
     title: "High-res delayed for collection [ID]",
     description: "High-resolution delivery is delayed. Please coordinate with the lab to adjust timings.",
     ctaText: null,
@@ -391,8 +421,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
   },
   {
     code: "highres_ready",
-    step: 6,
-    stepName: "Hand print high-res",
+    step: 7,
+    stepName: "Low-res to high-res",
     title: "High-res ready for review",
     description: "High-resolution images are ready. Please review them and leave any comments if needed.",
     ctaText: "Check HR",
@@ -401,17 +431,17 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "highres_ready",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["photographer", "producer", "client"],
-    inappRecipients: ["photographer", "producer", "client"],
+    emailRecipients: ["photographer"],
+    inappRecipients: ["photographer", "producer"],
   },
 
   // ==========================================================================
-  // Step 7: Edition Request
+  // Step 8: Retouch request (Edition request)
   // ==========================================================================
   {
     code: "edition_request_ready",
-    step: 7,
-    stepName: "Edition request",
+    step: 8,
+    stepName: "Retouch request",
     title: "Edition request ready – start edits",
     description: "All comments and instructions are ready. Please proceed with the requested edits.",
     ctaText: "Start edits",
@@ -420,13 +450,13 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "edition_request_submitted",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["edition_studio"],
-    inappRecipients: ["edition_studio"],
+    emailRecipients: ["retouch_studio"],
+    inappRecipients: ["retouch_studio","producer"],
   },
   {
     code: "edition_request_delayed",
-    step: 7,
-    stepName: "Edition request",
+    step: 8,
+    stepName: "Retouch request",
     title: "Edition request delayed for collection [ID]",
     description: "The collection is delayed. Please coordinate with the edition studio to update timelines.",
     ctaText: null,
@@ -440,8 +470,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
   },
   {
     code: "edition_completion_check",
-    step: 7,
-    stepName: "Edition request",
+    step: 8,
+    stepName: "Retouch request",
     title: "Edits completion check",
     description: "Only 1 hour remains before moving to the final review. Please confirm whether edits are completed.",
     ctaText: null,
@@ -450,16 +480,16 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "final_edits_deadline",
     triggerOffsetMinutes: -60, // 1 hour before
     triggerCondition: null,
-    emailRecipients: ["edition_studio"],
-    inappRecipients: ["edition_studio"],
+    emailRecipients: ["photographer"],
+    inappRecipients: ["photographer","producer"],
   },
 
   // ==========================================================================
-  // Step 8: Final Edits
+  // Step 9: Final Edits
   // ==========================================================================
   {
     code: "final_edits_completed",
-    step: 8,
+    step: 9,
     stepName: "Final edits",
     title: "Edits completed",
     description: "Edits are complete. Please review them and prepare to share the final images with the client.",
@@ -469,20 +499,35 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "final_edits_completed",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["photographer", "producer"],
+    emailRecipients: ["photographer"],
     inappRecipients: ["photographer", "producer"],
   },
   {
+    code: "final_edits_at_risk",
+    step: 9,
+    stepName: "Final edits",
+    title: "Final edits at risk",
+    description: "Deadline for final edits is approaching. Make sure all photos are attached to the final upload.",
+    ctaText: "Give comments",
+    ctaUrlTemplate: "/collections/{collectionId}?step=final_edits",
+    triggerType: "before",
+    triggerEvent: "final_edits_deadline",
+    triggerOffsetMinutes: -60, // 1 hour before
+    triggerCondition: null,
+    emailRecipients: ["retouch_studio"],
+    inappRecipients: ["retouch_studio", "producer"],
+  },
+  {
     code: "final_edits_delayed",
-    step: 8,
+    step: 9,
     stepName: "Final edits",
     title: "Final edits delayed for collection [ID]",
     description: "Final edits are delayed. Please review the situation and update the timeline accordingly.",
     ctaText: null,
     ctaUrlTemplate: "/collections/{collectionId}?step=final_edits",
-    triggerType: "after",
+    triggerType: "on",
     triggerEvent: "final_edits_deadline",
-    triggerOffsetMinutes: 60, // 1 hour after
+    triggerOffsetMinutes: 0, // 
     triggerCondition: null,
     emailRecipients: ["producer"],
     inappRecipients: ["producer"],
@@ -499,16 +544,31 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerEvent: "client_request_missing_photos",
     triggerOffsetMinutes: 0,
     triggerCondition: null,
-    emailRecipients: ["lab", "photographer"],
+    emailRecipients: ["photographer"],
     inappRecipients: ["producer", "photographer"],
   },
 
   // ==========================================================================
-  // Step 9: Photographer Last Check
+  // Step 10: Photographer Last Check
   // ==========================================================================
   {
+    code: "retouch_studio_shared_additional_materials",
+    step: 10,
+    stepName: "Photographer last check",
+    title: "Retouch studio has shared additional materials",
+    description: "Retouch studio has shared an additional link. Review the photos and validate finals are ready",
+    ctaText: "Review new link",
+    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_last_check",
+    triggerType: "on",
+    triggerEvent: "retouch_studio_shared_additional_materials",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: ["photographer"],
+    inappRecipients: ["photographer", "producer"],
+  },
+  {
     code: "photographer_review_reminder",
-    step: 9,
+    step: 10,
     stepName: "Photographer last check",
     title: "Photographer review reminder",
     description: "Please review and approve the edited images before the deadline.",
@@ -519,11 +579,11 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerOffsetMinutes: -60, // 1 hour before
     triggerCondition: null,
     emailRecipients: ["photographer"],
-    inappRecipients: ["photographer"],
+    inappRecipients: ["photographer", "producer"],
   },
   {
     code: "photographer_edits_approved",
-    step: 9,
+    step: 10,
     stepName: "Photographer last check",
     title: "Edits approved by photographer",
     description: "The photographer has approved the final edits. Finals are ready, check now!",
@@ -538,7 +598,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
   },
   {
     code: "photographer_review_delayed",
-    step: 9,
+    step: 10,
     stepName: "Photographer last check",
     title: "Photographer review delayed for collection [ID]",
     description: "The final review is delayed. Please align on next steps and update the timeline.",
@@ -568,7 +628,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerOffsetMinutes: 60,
     triggerCondition: "client_not_confirmed_completion",
     emailRecipients: ["producer"],
-    inappRecipients: ["producer"],
+    inappRecipients: ["producer","client"],
   },
 ]
 

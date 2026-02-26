@@ -249,8 +249,8 @@ export function DropoffPlanStepContent({
     c.dropoff_shipping_origin_address?.trim() || formatShootingAddress(c)
 
   React.useEffect(() => {
-    const lab = draft.participants.find((p) => p.role === "lab")
-    const eid = lab?.entityId
+    const photoLab = draft.participants.find((p) => p.role === "photo_lab")
+    const eid = photoLab?.entityId
     if (savedDestinationAddress) {
       setLabAddress(savedDestinationAddress)
       return

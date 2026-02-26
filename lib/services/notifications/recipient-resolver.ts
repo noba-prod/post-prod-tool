@@ -20,9 +20,9 @@ interface CollectionWithAssignments {
   id: string
   client_id: string
   photographer_id: string | null
-  lab_low_res_id: string | null
-  edition_studio_id: string | null
-  hand_print_lab_id: string | null
+  photo_lab_id: string | null
+  retouch_studio_id: string | null
+  handprint_lab_id: string | null
   noba_user_ids: string[] | null
 }
 
@@ -31,11 +31,11 @@ interface CollectionWithAssignments {
  * 
  * Recipient mapping:
  * - producer: collection_members with role='noba'
- * - lab: collection_members with role='photo_lab' + all users from lab_low_res_id org
+ * - photo_lab: collection_members with role='photo_lab' + all users from photo_lab_id org
  * - photographer: collection_members with role='photographer'
  * - client: collection_members with role='client' + all users from client_id org
- * - hand_print_lab: all users from hand_print_lab_id org
- * - edition_studio: all users from edition_studio_id org
+ * - handprint_lab: all users from handprint_lab_id org
+ * - retouch_studio: all users from retouch_studio_id org
  */
 export async function resolveRecipients(
   supabase: SupabaseClient<Database>,
@@ -52,7 +52,7 @@ export async function resolveRecipients(
   let collectionData: CollectionWithAssignments | null = null
   const { data: collectionWithNobaUsers, error: collectionWithNobaUsersError } = await supabase
     .from("collections")
-    .select("id, client_id, photographer_id, lab_low_res_id, edition_studio_id, hand_print_lab_id, noba_user_ids")
+    .select("id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id, noba_user_ids")
     .eq("id", collectionId)
     .single()
 
@@ -63,7 +63,7 @@ export async function resolveRecipients(
   if (missingNobaUserIdsColumn) {
     const { data: collectionWithoutNobaUsers, error: collectionWithoutNobaUsersError } = await supabase
       .from("collections")
-      .select("id, client_id, photographer_id, lab_low_res_id, edition_studio_id, hand_print_lab_id")
+      .select("id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id")
       .eq("id", collectionId)
       .single()
 
@@ -102,10 +102,10 @@ export async function resolveRecipients(
         }
         break
       
-      case "lab":
+      case "photo_lab":
         memberRoles.push("photo_lab")
-        if (collectionData.lab_low_res_id) {
-          orgIds.add(collectionData.lab_low_res_id)
+        if (collectionData.photo_lab_id) {
+          orgIds.add(collectionData.photo_lab_id)
         }
         break
       
@@ -120,15 +120,15 @@ export async function resolveRecipients(
         }
         break
       
-      case "hand_print_lab":
-        if (collectionData.hand_print_lab_id) {
-          orgIds.add(collectionData.hand_print_lab_id)
+      case "handprint_lab":
+        if (collectionData.handprint_lab_id) {
+          orgIds.add(collectionData.handprint_lab_id)
         }
         break
       
-      case "edition_studio":
-        if (collectionData.edition_studio_id) {
-          orgIds.add(collectionData.edition_studio_id)
+      case "retouch_studio":
+        if (collectionData.retouch_studio_id) {
+          orgIds.add(collectionData.retouch_studio_id)
         }
         break
     }
@@ -225,7 +225,9 @@ export function buildCtaUrl(template: string | null, collectionId: string): stri
 }
 
 /**
- * Replace [ID] placeholder in notification title with collection reference or name
+ * Replace placeholders in notification title:
+ * - [ID]: collection reference or name
+ * - [collectionName]: collection name
  */
 export function formatNotificationTitle(
   title: string,
@@ -233,5 +235,5 @@ export function formatNotificationTitle(
   collectionReference: string | null
 ): string {
   const identifier = collectionReference || collectionName
-  return title.replace("[ID]", identifier)
+  return title.replace("[ID]", identifier).replace("[collectionName]", collectionName)
 }

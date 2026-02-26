@@ -100,9 +100,9 @@ export async function GET(
     const clientId = config.clientEntityId?.trim() ? config.clientEntityId : undefined
     const agencyId =
       config.hasAgency && agencyParticipant?.entityId ? agencyParticipant.entityId : undefined
-    const labParticipant = participants.find((p) => p.role === "lab")
+    const labParticipant = participants.find((p) => p.role === "photo_lab")
     const handprintLabParticipant = participants.find((p) => p.role === "handprint_lab")
-    const editionStudioParticipant = participants.find((p) => p.role === "edition_studio")
+    const retouchStudioParticipant = participants.find((p) => p.role === "retouch_studio")
 
     const entityIds: string[] = []
     const entityTypeLabels: string[] = []
@@ -122,8 +122,8 @@ export async function GET(
       entityIds.push(handprintLabParticipant.entityId)
       entityTypeLabels.push("Hand Print Lab")
     }
-    if (editionStudioParticipant?.entityId) {
-      entityIds.push(editionStudioParticipant.entityId)
+    if (retouchStudioParticipant?.entityId) {
+      entityIds.push(retouchStudioParticipant.entityId)
       entityTypeLabels.push("Retouch studio")
     }
 
@@ -175,7 +175,7 @@ export async function GET(
     if (agencyId) entityIdToRole[agencyId] = "agency"
     if (labParticipant?.entityId) entityIdToRole[labParticipant.entityId] = "photo_lab"
     if (handprintLabParticipant?.entityId) entityIdToRole[handprintLabParticipant.entityId] = "handprint_lab"
-    if (editionStudioParticipant?.entityId) entityIdToRole[editionStudioParticipant.entityId] = "retouch_studio"
+    if (retouchStudioParticipant?.entityId) entityIdToRole[retouchStudioParticipant.entityId] = "retouch_studio"
 
     // Resolve entities (client, agency, lab, handprint, retouch)
     const entities: ParticipantsModalEntity[] = []

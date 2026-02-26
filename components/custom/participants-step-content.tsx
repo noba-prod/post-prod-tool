@@ -56,8 +56,8 @@ function entityTypeToOrgTypes(entityType: EntityType): OrganizationType[] {
     client: ["client"],
     "self-photographer": ["self_photographer"],
     agency: ["photography_agency"],
-    "photo-lab": ["lab_low_res_scan"],
-    "hand-print-lab": ["hand_print_lab"],
+    "photo-lab": ["photo_lab"],
+    "hand-print-lab": ["handprint_lab"],
     "edition-studio": ["retouch_studio"],
   }
   return mapping[entityType] ?? []
@@ -70,8 +70,8 @@ function orgTypeToEntityType(orgType: OrganizationType): EntityType {
     client: "client",
     self_photographer: "self-photographer",
     photography_agency: "agency",
-    lab_low_res_scan: "photo-lab",
-    hand_print_lab: "hand-print-lab",
+    photo_lab: "photo-lab",
+    handprint_lab: "hand-print-lab",
     retouch_studio: "edition-studio",
   }
   return mapping[orgType] ?? "client"
@@ -166,18 +166,18 @@ const ROLE_LABELS: Record<ParticipantRole, string> = {
   client: "Client",
   photographer: "Photographer",
   agency: "Agency",
-  lab: "Photo Lab",
+  photo_lab: "Photo Lab",
   handprint_lab: "Hand Print Lab",
-  edition_studio: "Retouch/Post Studio",
+  retouch_studio: "Retouch/Post Studio",
 }
 
 const ROLE_ENTITY_TYPES: Record<Exclude<ParticipantRole, "producer">, EntityType> = {
   client: "client",
   photographer: "self-photographer",
   agency: "agency",
-  lab: "photo-lab",
+  photo_lab: "photo-lab",
   handprint_lab: "hand-print-lab",
-  edition_studio: "edition-studio",
+  retouch_studio: "edition-studio",
 }
 
 export interface ParticipantsStepContentProps {
@@ -235,10 +235,10 @@ export function ParticipantsStepContent({
     // When hasAgency: separate Agency section (Select agency + Add agency users). Photographer section = self-photographer only.
     if (config.hasAgency) out.push({ role: "agency", prefilled: false })
     // Lab only in handprint workflow; digital-only has no lab (collections-logic)
-    if (config.hasHandprint) out.push({ role: "lab", prefilled: false })
+    if (config.hasHandprint) out.push({ role: "photo_lab", prefilled: false })
     // Hand print lab only when it is a different lab than low-res (collections-logic)
     if (config.hasHandprint && config.handprintIsDifferentLab) out.push({ role: "handprint_lab", prefilled: false })
-    if (config.hasEditionStudio) out.push({ role: "edition_studio", prefilled: false })
+    if (config.hasEditionStudio) out.push({ role: "retouch_studio", prefilled: false })
     return out
   }, [config.hasAgency, config.hasHandprint, config.handprintIsDifferentLab, config.hasEditionStudio])
 

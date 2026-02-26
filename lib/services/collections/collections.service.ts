@@ -74,9 +74,9 @@ function mapParticipantRoleToCurrentOwnerRole(
       return "photographer"
     case "agency":
       return "agency"
-    case "lab":
+    case "photo_lab":
       return "photo_lab"
-    case "edition_studio":
+    case "retouch_studio":
       return "retouch_studio"
     case "handprint_lab":
       return "handprint_lab"

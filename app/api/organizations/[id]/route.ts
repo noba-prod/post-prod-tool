@@ -117,7 +117,7 @@ export async function GET(
     .from("collections")
     .select("id, name, status, client_id, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
     .or(
-      `client_id.eq.${organizationId},photographer_id.eq.${organizationId},lab_low_res_id.eq.${organizationId},edition_studio_id.eq.${organizationId},hand_print_lab_id.eq.${organizationId}`
+      `client_id.eq.${organizationId},photographer_id.eq.${organizationId},photo_lab_id.eq.${organizationId},retouch_studio_id.eq.${organizationId},handprint_lab_id.eq.${organizationId}`
     )
     .order("updated_at", { ascending: false })
 

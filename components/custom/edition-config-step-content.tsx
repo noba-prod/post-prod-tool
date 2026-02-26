@@ -80,7 +80,7 @@ export function EditionConfigStepContent({
     : undefined
 
   const photographerParticipant = draft.participants.find((p) => p.role === "photographer")
-  const editionStudioParticipant = draft.participants.find((p) => p.role === "edition_studio")
+  const retouchStudioParticipant = draft.participants.find((p) => p.role === "retouch_studio")
 
   React.useEffect(() => {
     const eid = photographerParticipant?.entityId
@@ -113,7 +113,7 @@ export function EditionConfigStepContent({
   }, [photographerParticipant?.entityId])
 
   React.useEffect(() => {
-    const eid = editionStudioParticipant?.entityId
+    const eid = retouchStudioParticipant?.entityId
     if (!eid) {
       setEditionStudioName("—")
       return
@@ -140,7 +140,7 @@ export function EditionConfigStepContent({
     return () => {
       cancelled = true
     }
-  }, [editionStudioParticipant?.entityId])
+  }, [retouchStudioParticipant?.entityId])
 
   React.useEffect(() => {
     if (!studioConstraint?.defaultDate || c.editionStudioDueDate) return

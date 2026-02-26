@@ -1,14 +1,113 @@
 "use server"
 
-import type { Collection, CollectionMember, CollectionMemberRole, Profile, UserRole } from "@/lib/supabase/database.types"
+import type { CollectionMember, CollectionMemberRole, Profile, UserRole } from "@/lib/supabase/database.types"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { sendInvitationEmail } from "@/lib/email/send-invitation"
+import {
+  sendInvitationEmail,
+  type CollectionInvitationContext,
+} from "@/lib/email/send-invitation"
 
 /** Delay in ms to stay under Resend rate limit (2 requests per second). */
 const RESEND_RATE_LIMIT_DELAY_MS = 550
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Format ISO date for email display (e.g. "15 Jan 2025"). */
+function formatDateForEmail(isoDate: string | null | undefined): string | undefined {
+  if (!isoDate?.trim()) return undefined
+  try {
+    const d = new Date(isoDate)
+    if (Number.isNaN(d.getTime())) return undefined
+    return d.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    })
+  } catch {
+    return undefined
+  }
+}
+
+type CollectionRowForContext = {
+  id: string
+  client_id: string
+  name?: string | null
+  status?: string
+  shooting_start_date?: string | null
+  shooting_end_date?: string | null
+  publishing_date?: string | null
+  shooting_city?: string | null
+  shooting_country?: string | null
+}
+
+/** Build invitation email context from collection data. */
+async function buildInvitationContext(
+  supabase: ReturnType<typeof createAdminClient>,
+  collection: CollectionRowForContext
+): Promise<CollectionInvitationContext> {
+  const collectionName = collection.name?.trim() ?? "a collection"
+  const status = collection.status
+  const statusDisplay =
+    status === "upcoming"
+      ? "Upcoming"
+      : status === "in_progress"
+        ? "In progress"
+        : undefined
+
+  const shootingStartDate = formatDateForEmail(collection.shooting_start_date)
+  const shootingEndDate = formatDateForEmail(collection.shooting_end_date)
+  const publishingDate = formatDateForEmail(collection.publishing_date)
+
+  const city = collection.shooting_city?.trim()
+  const country = collection.shooting_country?.trim()
+  const location =
+    city || country ? [city, country].filter(Boolean).join(", ") : undefined
+
+  let clientName: string | undefined
+  if (collection.client_id) {
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", collection.client_id)
+      .maybeSingle()
+    clientName = (org as { name?: string | null } | null)?.name?.trim()
+  }
+
+  let creatorName: string | undefined
+  const { data: ownerMember } = await supabase
+    .from("collection_members")
+    .select("user_id")
+    .eq("collection_id", collection.id)
+    .eq("role", "noba")
+    .eq("is_owner", true)
+    .maybeSingle()
+
+  if (ownerMember) {
+    const ownerUserId = (ownerMember as { user_id?: string }).user_id
+    if (ownerUserId) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", ownerUserId)
+        .maybeSingle()
+      const fn = (profile as { first_name?: string | null } | null)?.first_name?.trim()
+      const ln = (profile as { last_name?: string | null } | null)?.last_name?.trim()
+      creatorName = [fn, ln].filter(Boolean).join(" ") || undefined
+    }
+  }
+
+  return {
+    collectionName,
+    creatorName,
+    clientName,
+    statusDisplay,
+    shootingStartDate,
+    shootingEndDate,
+    publishingDate,
+    location,
+  }
 }
 
 export interface CreateInvitationParams {
@@ -98,10 +197,12 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
   try {
     const { data: collectionData, error: collError } = await supabase
       .from("collections")
-      .select("id, client_id, name")
+      .select(
+        "id, client_id, name, status, shooting_start_date, shooting_end_date, publishing_date, shooting_city, shooting_country"
+      )
       .eq("id", collectionId)
       .single()
-    const collection = collectionData as Pick<Collection, "id" | "client_id" | "name"> | null
+    const collection = collectionData as CollectionRowForContext | null
     if (collError || !collection?.client_id) {
       return {
         success: false,
@@ -111,6 +212,7 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
     }
 
     const organizationId = collection.client_id
+    const invitationContext = await buildInvitationContext(supabase, collection)
 
     const { data: membersData, error: membersError } = await supabase
       .from("collection_members")
@@ -141,7 +243,6 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
     }
 
     const emailByUserId = new Map(profiles.map((p) => [p.id, p.email]))
-    const collectionName = (collection as { name?: string | null }).name ?? "a collection"
     let created = 0
     let sent = 0
 
@@ -168,11 +269,10 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
       })
       if (result.success && result.activationUrl) {
         created++
-        const emailResult = await sendInvitationEmail(
-          email,
-          result.activationUrl,
-          collectionName
-        )
+        const emailResult = await sendInvitationEmail(email, result.activationUrl, {
+          kind: "collection",
+          context: invitationContext,
+        })
         if (emailResult.sent) sent++
         await sleep(RESEND_RATE_LIMIT_DELAY_MS)
       }
@@ -208,10 +308,12 @@ export async function createInvitationsForNewMembers(
   try {
     const { data: collectionData, error: collError } = await supabase
       .from("collections")
-      .select("id, client_id, name")
+      .select(
+        "id, client_id, name, status, shooting_start_date, shooting_end_date, publishing_date, shooting_city, shooting_country"
+      )
       .eq("id", collectionId)
       .single()
-    const collection = collectionData as Pick<Collection, "id" | "client_id" | "name"> | null
+    const collection = collectionData as CollectionRowForContext | null
     if (collError || !collection?.client_id) {
       return {
         success: false,
@@ -224,6 +326,8 @@ export async function createInvitationsForNewMembers(
     if (members.length === 0) {
       return { success: true, created: 0, sent: 0 }
     }
+
+    const invitationContext = await buildInvitationContext(supabase, collection)
 
     const userIds = [...new Set(members.map((m) => m.user_id))]
     const { data: profilesData, error: profilesError } = await supabase
@@ -241,7 +345,6 @@ export async function createInvitationsForNewMembers(
     }
 
     const emailByUserId = new Map(profiles.map((p) => [p.id, p.email]))
-    const collectionName = (collection as { name?: string | null }).name ?? "a collection"
     let created = 0
     let sent = 0
 
@@ -268,11 +371,10 @@ export async function createInvitationsForNewMembers(
       })
       if (result.success && result.activationUrl) {
         created++
-        const emailResult = await sendInvitationEmail(
-          email,
-          result.activationUrl,
-          collectionName
-        )
+        const emailResult = await sendInvitationEmail(email, result.activationUrl, {
+          kind: "collection",
+          context: invitationContext,
+        })
         if (emailResult.sent) sent++
         await sleep(RESEND_RATE_LIMIT_DELAY_MS)
       }

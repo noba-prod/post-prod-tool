@@ -12,9 +12,9 @@ export type OrganizationType =
   | 'client'
   | 'photography_agency'
   | 'self_photographer'
-  | 'lab_low_res_scan'
+  | 'photo_lab'
   | 'retouch_studio'
-  | 'hand_print_lab'
+  | 'handprint_lab'
 
 export type UserRole = 'admin' | 'editor' | 'viewer'
 
@@ -25,9 +25,9 @@ export type CollectionMemberRole =
   | 'noba'             // Noba* internal users who own or collaborate on the collection
   | 'photographer'     // Users from photography_agency or self_photographer
   | 'agency'           // Users from photography_agency
-  | 'photo_lab'        // Users from lab_low_res_scan
-  | 'retouch_studio'   // Users from edition_studio
-  | 'handprint_lab'    // Users from hand_print_lab
+  | 'photo_lab'        // Users from photo_lab org
+  | 'retouch_studio'   // Users from retouch_studio org
+  | 'handprint_lab'    // Users from handprint_lab org
 
 // Notifications (migration 016)
 export type NotificationTriggerType = 'before' | 'after' | 'on' | 'if' | 'first_time'
@@ -35,11 +35,11 @@ export type NotificationStatus = 'pending' | 'sent' | 'read' | 'failed'
 export type NotificationChannel = 'email' | 'in_app'
 export type NotificationRecipientType =
   | 'producer'
-  | 'lab'
+  | 'photo_lab'
   | 'photographer'
   | 'client'
-  | 'hand_print_lab'
-  | 'edition_studio'
+  | 'handprint_lab'
+  | 'retouch_studio'
 export type CollectionEventType =
   | 'shooting_started'
   | 'shooting_ended'
@@ -49,6 +49,7 @@ export type CollectionEventType =
   | 'scanning_started'
   | 'scanning_completed'
   | 'scanning_deadline_missed'
+  | 'lab_shared_additional_materials'
   | 'photographer_selection_uploaded'
   | 'photographer_selection_shared'
   | 'photographer_selection_deadline_missed'
@@ -66,6 +67,7 @@ export type CollectionEventType =
   | 'final_edits_started'
   | 'final_edits_completed'
   | 'final_edits_deadline_missed'
+  | 'retouch_studio_shared_additional_materials'
   | 'photographer_check_approved'
   | 'photographer_check_deadline_missed'
   | 'photographer_review_started'
@@ -190,9 +192,9 @@ export interface Collection {
   handprint_different_from_original_lab: boolean
   // Entity Assignments
   photographer_id: string | null
-  lab_low_res_id: string | null
-  edition_studio_id: string | null
-  hand_print_lab_id: string | null
+  photo_lab_id: string | null
+  retouch_studio_id: string | null
+  handprint_lab_id: string | null
   // Shooting Schedule
   shooting_start_date: string | null
   shooting_start_time: string | null
@@ -301,9 +303,9 @@ export interface CollectionInsert {
   photographer_collaborates_with_agency?: boolean
   handprint_different_from_original_lab?: boolean
   photographer_id?: string | null
-  lab_low_res_id?: string | null
-  edition_studio_id?: string | null
-  hand_print_lab_id?: string | null
+  photo_lab_id?: string | null
+  retouch_studio_id?: string | null
+  handprint_lab_id?: string | null
   shooting_start_date?: string | null
   shooting_start_time?: string | null
   shooting_end_date?: string | null
@@ -394,9 +396,9 @@ export interface CollectionUpdate {
   photographer_collaborates_with_agency?: boolean
   handprint_different_from_original_lab?: boolean
   photographer_id?: string | null
-  lab_low_res_id?: string | null
-  edition_studio_id?: string | null
-  hand_print_lab_id?: string | null
+  photo_lab_id?: string | null
+  retouch_studio_id?: string | null
+  handprint_lab_id?: string | null
   shooting_start_date?: string | null
   shooting_start_time?: string | null
   shooting_end_date?: string | null
@@ -821,9 +823,9 @@ export interface OrganizationWithProfiles extends Organization {
 export interface CollectionWithRelations extends Collection {
   client: Organization
   photographer: Organization | null
-  lab_low_res: Organization | null
-  edition_studio: Organization | null
-  hand_print_lab: Organization | null
+  photo_lab: Organization | null
+  retouch_studio: Organization | null
+  handprint_lab: Organization | null
   members: (CollectionMember & { profile: Profile })[]
 }
 

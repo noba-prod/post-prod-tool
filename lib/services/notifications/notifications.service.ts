@@ -207,7 +207,7 @@ export class NotificationsService implements INotificationsService {
     if (eventType === "photographer_requested_additional_photos") {
       const context = await getCollectionContext(this.supabase, collectionId)
       if (context) {
-        const recipients = await resolveRecipients(this.supabase, collectionId, ["producer", "lab"])
+        const recipients = await resolveRecipients(this.supabase, collectionId, ["producer", "photo_lab"])
         const title = formatNotificationTitle("Missing photos requested", context.name, context.reference)
         const body = "The photographer has requested additional footage. Please upload a new selection in step 3."
         const ctaUrl = buildCtaUrl("/collections/{collectionId}", collectionId)

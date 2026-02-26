@@ -117,9 +117,9 @@ const ROLE_DISPLAY: Record<string, string> = {
   client: "Client",
   photographer: "Photographer",
   agency: "Agency",
-  lab: "Photo Lab",
+  photo_lab: "Photo Lab",
   handprint_lab: "Hand Print Lab",
-  edition_studio: "Retouch/Post Studio",
+  retouch_studio: "Retouch/Post Studio",
 }
 
 function toDbRoleFromDomainRole(role: CollectionParticipant["role"]):
@@ -131,8 +131,8 @@ function toDbRoleFromDomainRole(role: CollectionParticipant["role"]):
   | "retouch_studio"
   | "handprint_lab" {
   if (role === "producer") return "noba"
-  if (role === "lab") return "photo_lab"
-  if (role === "edition_studio") return "retouch_studio"
+  if (role === "photo_lab") return "photo_lab"
+  if (role === "retouch_studio") return "retouch_studio"
   return role
 }
 

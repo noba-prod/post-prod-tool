@@ -98,7 +98,7 @@ export function LrToHrSetupStepContent({
     ? draft.participants.find((p) => p.role === "photographer")
     : c.handprintIsDifferentLab
       ? draft.participants.find((p) => p.role === "handprint_lab")
-      : draft.participants.find((p) => p.role === "lab")
+      : draft.participants.find((p) => p.role === "photo_lab")
   const entityId = !isDigital ? ownerParticipant?.entityId : undefined
   const photographerUserIds = (isDigital ? ownerParticipant?.userIds : undefined) ?? []
 

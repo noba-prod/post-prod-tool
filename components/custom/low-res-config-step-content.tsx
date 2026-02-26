@@ -172,7 +172,7 @@ export function LowResConfigStepContent({
     ? new Date(c.lowResShippingDeliveryDate + "T12:00:00")
     : undefined
 
-  const labParticipant = draft.participants.find((p) => p.role === "lab")
+  const photoLabParticipant = draft.participants.find((p) => p.role === "photo_lab")
   const handprintParticipant = draft.participants.find((p) => p.role === "handprint_lab")
 
   // Shipping details (lab → hand print lab) only when handprint lab is different from original
@@ -240,7 +240,7 @@ export function LowResConfigStepContent({
   }, [c.lowResShippingTracking, trackingFocused])
 
   React.useEffect(() => {
-    const eid = labParticipant?.entityId
+    const eid = photoLabParticipant?.entityId
     if (!eid) {
       setLabName("—")
       setLabAddress(savedOriginAddress ?? "—")
@@ -285,7 +285,7 @@ export function LowResConfigStepContent({
     return () => {
       cancelled = true
     }
-  }, [labParticipant?.entityId, savedOriginAddress, onLowResConfigChange])
+  }, [photoLabParticipant?.entityId, savedOriginAddress, onLowResConfigChange])
 
   React.useEffect(() => {
     const eid = handprintParticipant?.entityId

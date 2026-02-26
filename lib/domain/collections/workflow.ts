@@ -217,7 +217,7 @@ export function computeCreationTemplate(
     steps.push({
       stepId: "low_res_config",
       requiredBlocks: ["low_res_config"],
-      ownerRoles: ["lab", producer],
+      ownerRoles: ["photo_lab", producer],
       mandatory: true,
     })
   }
@@ -240,7 +240,7 @@ export function computeCreationTemplate(
       requiredBlocks: ["handprint_high_res_config"],
       ownerRoles: config.handprintIsDifferentLab
         ? (["handprint_lab", producer] as ParticipantRole[])
-        : (["lab", producer] as ParticipantRole[]),
+        : (["photo_lab", producer] as ParticipantRole[]),
       mandatory: true,
     })
   } else {
@@ -258,7 +258,7 @@ export function computeCreationTemplate(
     steps.push({
       stepId: "edition_config",
       requiredBlocks: ["edition_config"],
-      ownerRoles: ["edition_studio", producer],
+      ownerRoles: ["retouch_studio", producer],
       mandatory: true,
     })
   }
@@ -338,10 +338,10 @@ function getRequiredParticipantRoles(config: CollectionConfig): ParticipantRole[
   const roles: ParticipantRole[] = ["producer", "client", "photographer"]
   if (config.hasAgency) roles.push("agency")
   // Lab only in handprint workflow; digital-only has no lab (collections-logic)
-  if (config.hasHandprint) roles.push("lab")
+  if (config.hasHandprint) roles.push("photo_lab")
   // Handprint lab required only when it is a different lab than low-res (collections-logic)
   if (config.hasHandprint && config.handprintIsDifferentLab) roles.push("handprint_lab")
-  if (config.hasEditionStudio) roles.push("edition_studio")
+  if (config.hasEditionStudio) roles.push("retouch_studio")
   return roles
 }
 
@@ -376,8 +376,8 @@ export function isParticipantsStepComplete(draft: CollectionDraft): boolean {
       return ((p?.entityId ?? config.clientEntityId) ?? "").trim().length > 0
     }
 
-    // Lab, handprint_lab, edition_studio: entityId required + at least one user
-    if (role === "lab" || role === "handprint_lab" || role === "edition_studio") {
+    // photo_lab, handprint_lab, retouch_studio: entityId required + at least one user
+    if (role === "photo_lab" || role === "handprint_lab" || role === "retouch_studio") {
       if (!(p?.entityId ?? "").trim()) return false
       return (p?.userIds?.length ?? 0) > 0
     }
@@ -502,9 +502,9 @@ export function getStepOwner(
     case "shooting":
       return [producer]
     case "negatives_dropoff":
-      return ["lab", producer]
+      return ["photo_lab", producer]
     case "low_res_scanning":
-      return ["lab", producer]
+      return ["photo_lab", producer]
     case "photographer_selection":
       return config.hasAgency
         ? (["photographer", "agency", producer] as ParticipantRole[])
@@ -518,13 +518,13 @@ export function getStepOwner(
     case "handprint_high_res":
       return config.handprintIsDifferentLab
         ? (["handprint_lab", producer] as ParticipantRole[])
-        : (["lab", producer] as ParticipantRole[])
+        : (["photo_lab", producer] as ParticipantRole[])
     case "edition_request":
       return config.hasAgency
         ? (["photographer", "agency", producer] as ParticipantRole[])
         : (["photographer", producer] as ParticipantRole[])
     case "final_edits":
-      return ["edition_studio", producer]
+      return ["retouch_studio", producer]
     case "photographer_last_check":
       return config.hasAgency
         ? (["photographer", "agency", producer] as ParticipantRole[])

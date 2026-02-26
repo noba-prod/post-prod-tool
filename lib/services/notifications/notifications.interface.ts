@@ -18,6 +18,7 @@ export type CollectionEventType =
   | "scanning_started"
   | "scanning_completed"
   | "scanning_deadline_missed"
+  | "lab_shared_additional_materials"
   // Photographer selection events
   | "photographer_selection_uploaded"
   | "photographer_selection_shared"
@@ -39,6 +40,7 @@ export type CollectionEventType =
   | "final_edits_started"
   | "final_edits_completed"
   | "final_edits_deadline_missed"
+  | "retouch_studio_shared_additional_materials"
   // Photographer review (validates client selection — step 6)
   | "photographer_check_approved"
   | "photographer_check_deadline_missed"

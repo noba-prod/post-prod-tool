@@ -31,9 +31,9 @@ export const NOBA_ORGANIZATION_ID = "7abddcb4-52d3-4f96-b399-ff094c01ec53"
  * - client → client
  * - photography_agency → agency
  * - self_photographer → self-photographer
- * - lab_low_res_scan → photo-lab
+ * - photo_lab → photo-lab
  * - edition_studio → edition-studio
- * - hand_print_lab → hand-print-lab
+ * - handprint_lab → hand-print-lab
  */
 export function mapOrganizationTypeToEntityType(orgType: OrganizationType): EntityType {
   const mapping: Record<OrganizationType, EntityType> = {
@@ -41,9 +41,9 @@ export function mapOrganizationTypeToEntityType(orgType: OrganizationType): Enti
     "client": "client",
     "photography_agency": "agency",
     "self_photographer": "self-photographer",
-    "lab_low_res_scan": "photo-lab",
+    "photo_lab": "photo-lab",
     "retouch_studio": "edition-studio",
-    "hand_print_lab": "hand-print-lab",
+    "handprint_lab": "hand-print-lab",
   }
   return mapping[orgType]
 }

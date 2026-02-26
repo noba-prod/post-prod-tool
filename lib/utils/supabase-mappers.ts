@@ -6,9 +6,9 @@ const organizationTypeToEntityType: Record<OrganizationType, EntityType> = {
   client: "client",
   photography_agency: "agency",
   self_photographer: "self-photographer",
-  lab_low_res_scan: "photo-lab",
+  photo_lab: "photo-lab",
   retouch_studio: "edition-studio",
-  hand_print_lab: "hand-print-lab",
+  handprint_lab: "hand-print-lab",
 }
 
 function combinePhone(prefix: string | null, phone: string | null): string | undefined {

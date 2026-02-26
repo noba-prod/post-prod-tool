@@ -194,8 +194,8 @@ const DB_ROLE_TO_DOMAIN: Record<CollectionMemberRole, ParticipantRole | null> = 
   noba: "producer",
   photographer: "photographer",
   agency: "agency",
-  photo_lab: "lab",
-  retouch_studio: "edition_studio",
+  photo_lab: "photo_lab",
+  retouch_studio: "retouch_studio",
   handprint_lab: "handprint_lab",
 }
 
@@ -283,32 +283,32 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       })
     }
   }
-  if (row.lab_low_res_id) {
+  if (row.photo_lab_id) {
     const labMembers = byRole.get("photo_lab") ?? []
     const userIds = labMembers.map((m) => m.user_id)
     participants.push({
-      role: "lab",
-      entityId: row.lab_low_res_id,
+      role: "photo_lab",
+      entityId: row.photo_lab_id,
       userIds,
-      editPermissionByUserId: editPermissionFromMembers(labMembers, "lab", storedLegacy),
+      editPermissionByUserId: editPermissionFromMembers(labMembers, "photo_lab", storedLegacy),
     })
   }
-  if (row.edition_studio_id) {
+  if (row.retouch_studio_id) {
     const editorMembers = byRole.get("retouch_studio") ?? []
     const userIds = editorMembers.map((m) => m.user_id)
     participants.push({
-      role: "edition_studio",
-      entityId: row.edition_studio_id,
+      role: "retouch_studio",
+      entityId: row.retouch_studio_id,
       userIds,
-      editPermissionByUserId: editPermissionFromMembers(editorMembers, "edition_studio", storedLegacy),
+      editPermissionByUserId: editPermissionFromMembers(editorMembers, "retouch_studio", storedLegacy),
     })
   }
-  if (row.hand_print_lab_id) {
+  if (row.handprint_lab_id) {
     const printMembers = byRole.get("handprint_lab") ?? []
     const userIds = printMembers.map((m) => m.user_id)
     participants.push({
       role: "handprint_lab",
-      entityId: row.hand_print_lab_id,
+      entityId: row.handprint_lab_id,
       userIds,
       editPermissionByUserId: editPermissionFromMembers(printMembers, "handprint_lab", storedLegacy),
     })
@@ -343,16 +343,16 @@ export function deriveCompletedBlockIds(
       }
     }
     if (config.hasHandprint) {
-      const lab = participants.find(p => p.role === "lab")
-      if (!(lab?.entityId?.trim()) || (lab?.userIds?.length ?? 0) === 0) participantsComplete = false
+      const photoLab = participants.find(p => p.role === "photo_lab")
+      if (!(photoLab?.entityId?.trim()) || (photoLab?.userIds?.length ?? 0) === 0) participantsComplete = false
     }
     if (config.hasHandprint && config.handprintIsDifferentLab) {
       const handprintLab = participants.find(p => p.role === "handprint_lab")
       if (!(handprintLab?.entityId?.trim()) || (handprintLab?.userIds?.length ?? 0) === 0) participantsComplete = false
     }
     if (config.hasEditionStudio) {
-      const editionStudio = participants.find(p => p.role === "edition_studio")
-      if (!(editionStudio?.entityId?.trim()) || (editionStudio?.userIds?.length ?? 0) === 0) participantsComplete = false
+      const retouchStudio = participants.find(p => p.role === "retouch_studio")
+      if (!(retouchStudio?.entityId?.trim()) || (retouchStudio?.userIds?.length ?? 0) === 0) participantsComplete = false
     }
     if (participantsComplete) {
       completed.push("participants")
@@ -513,9 +513,9 @@ const DOMAIN_ROLE_TO_DB: Record<ParticipantRole, CollectionMemberRole> = {
   client: "client",
   photographer: "photographer",
   agency: "agency",
-  lab: "photo_lab",
+  photo_lab: "photo_lab",
   handprint_lab: "handprint_lab",
-  edition_studio: "retouch_studio",
+  retouch_studio: "retouch_studio",
 }
 
 /** Domain → DB insert */
@@ -526,8 +526,8 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
   const photographerId = conf.hasAgency
     ? agencyParticipant?.entityId
     : photographerParticipant?.entityId
-  const labId = c.participants.find((p) => p.role === "lab")?.entityId
-  const editionStudioId = c.participants.find((p) => p.role === "edition_studio")?.entityId
+  const labId = c.participants.find((p) => p.role === "photo_lab")?.entityId
+  const retouchStudioId = c.participants.find((p) => p.role === "retouch_studio")?.entityId
   const handprintLabId = c.participants.find((p) => p.role === "handprint_lab")?.entityId
   return {
     id: c.id,
@@ -544,9 +544,9 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     photographer_collaborates_with_agency: conf.hasAgency,
     handprint_different_from_original_lab: conf.handprintIsDifferentLab,
     photographer_id: photographerId ?? null,
-    lab_low_res_id: labId ?? null,
-    edition_studio_id: editionStudioId ?? null,
-    hand_print_lab_id: handprintLabId ?? null,
+    photo_lab_id: labId ?? null,
+    retouch_studio_id: retouchStudioId ?? null,
+    handprint_lab_id: handprintLabId ?? null,
     shooting_start_date: isoToDbDate(conf.shootingStartDate),
     shooting_start_time: conf.shootingStartTime ?? null,
     shooting_end_date: isoToDbDate(conf.shootingEndDate),
@@ -740,13 +740,13 @@ export function mapDomainPatchToDbUpdate(
     const photographerId = useAgencyRole
       ? agencyParticipant?.entityId
       : photographerParticipant?.entityId
-    const labId = patch.participants.find((p) => p.role === "lab")?.entityId
-    const editionStudioId = patch.participants.find((p) => p.role === "edition_studio")?.entityId
+    const labId = patch.participants.find((p) => p.role === "photo_lab")?.entityId
+    const retouchStudioId = patch.participants.find((p) => p.role === "retouch_studio")?.entityId
     const handprintLabId = patch.participants.find((p) => p.role === "handprint_lab")?.entityId
     u.photographer_id = photographerId ?? null
-    u.lab_low_res_id = labId ?? null
-    u.edition_studio_id = editionStudioId ?? null
-    u.hand_print_lab_id = handprintLabId ?? null
+    u.photo_lab_id = labId ?? null
+    u.retouch_studio_id = retouchStudioId ?? null
+    u.handprint_lab_id = handprintLabId ?? null
     // Edit permissions are persisted via can_edit on collection_members (migration 028).
     // The legacy participant_edit_permissions JSON column (migration 012) is NOT used
     // because migration 012 may not be applied on the remote DB.

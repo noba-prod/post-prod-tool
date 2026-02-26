@@ -13,9 +13,9 @@ export const PARTICIPANT_ROLES = [
   "client",
   "photographer",
   "agency",
-  "lab",
+  "photo_lab",
   "handprint_lab",
-  "edition_studio",
+  "retouch_studio",
 ] as const
 
 export type ParticipantRole = (typeof PARTICIPANT_ROLES)[number]
@@ -266,7 +266,7 @@ export interface Collection {
 
 /** A single entry in a step notes conversation. */
 export interface StepNoteEntry {
-  /** Role of the note author (e.g. "lab", "photographer", "client", "edition_studio"). */
+  /** Role of the note author (e.g. "photo_lab", "photographer", "client", "retouch_studio"). */
   from: string
   /** The note text. */
   text: string

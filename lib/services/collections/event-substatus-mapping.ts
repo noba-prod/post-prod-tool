@@ -39,6 +39,7 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   scanning_started: { action: "none" },
   scanning_completed: { action: "advance", substatus: "photographer_selection" },
   scanning_deadline_missed: { action: "none" },
+  lab_shared_additional_materials: { action: "none" },
 
   // Photographer selection: uploaded completes the step → advance to client_selection
   photographer_selection_uploaded: { action: "advance", substatus: "client_selection" },
@@ -71,6 +72,7 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   final_edits_started: { action: "none" },
   final_edits_completed: { action: "advance", substatus: "photographer_last_check" },
   final_edits_deadline_missed: { action: "none" },
+  retouch_studio_shared_additional_materials: { action: "none" },
 
   // Photographer last check
   photographer_review_started: { action: "none" },

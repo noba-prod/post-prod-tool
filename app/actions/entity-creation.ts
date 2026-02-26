@@ -32,11 +32,11 @@ function mapEntityTypeToOrganizationType(type: EntityType): OrganizationType {
     case "agency":
       return "photography_agency"
     case "photo-lab":
-      return "lab_low_res_scan"
+      return "photo_lab"
     case "edition-studio":
       return "retouch_studio"
     case "hand-print-lab":
-      return "hand_print_lab"
+      return "handprint_lab"
     case "self-photographer":
       return "self_photographer"
     default:
@@ -52,11 +52,11 @@ function mapOrganizationTypeToEntityType(type: OrganizationType): EntityType {
       return "client"
     case "photography_agency":
       return "agency"
-    case "lab_low_res_scan":
+    case "photo_lab":
       return "photo-lab"
     case "retouch_studio":
       return "edition-studio"
-    case "hand_print_lab":
+    case "handprint_lab":
       return "hand-print-lab"
     case "self_photographer":
       return "self-photographer"

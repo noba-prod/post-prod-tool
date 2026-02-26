@@ -33,12 +33,10 @@ export async function createTeamMemberInvitation(
       }
     }
 
-    const emailResult = await sendInvitationEmail(
-      email.trim(),
-      result.activationUrl,
-      "noba*",
-      "platform"
-    )
+    const emailResult = await sendInvitationEmail(email.trim(), result.activationUrl, {
+      kind: "platform",
+      collectionName: "noba*",
+    })
 
     if (!emailResult.sent) {
       return {

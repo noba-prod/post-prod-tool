@@ -100,10 +100,6 @@ export const CollectionEvents = {
   scanningCompleted: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "scanning_completed", options),
 
-  // Photographer selection events
-  photographerSelectionShared: (collectionId: string, options?: TriggerEventOptions) =>
-    triggerCollectionEvent(collectionId, "photographer_selection_shared", options),
-
   // Missing photos requests
   photographerRequestMissingPhotos: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "photographer_request_missing_photos", options),
