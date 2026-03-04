@@ -33,29 +33,38 @@ export interface StepDetailsProps {
   truncateSubtitle?: boolean
   /** Gap between title and subtitle block (primary/secondary). Use "compact" (6px) e.g. in LinkAccordion; default is 12px. */
   contentGap?: "default" | "compact"
-  /** Entity name shown below notes content (notes variant only). Avatar fallback = first initial of this name. */
+  /** Entity name (notes variant only) — shown as secondary muted text after '·'. */
   authorName?: string
   /** Entity avatar image URL (notes variant only) — typically organizations.profile_picture_url. */
   authorImageUrl?: string
-  /** User name who wrote the comment (notes variant only) — from profiles.first_name + last_name. Shown after '·' separator. */
+  /** User name who wrote the comment (notes variant only) — shown as the primary bold name. */
   authorUserName?: string
+  /** User's profile image URL (notes variant only) — from profiles.image. Used for the avatar. */
+  authorUserImageUrl?: string
+  /** Relative time label for when the note was written (e.g. "2 hours ago"). */
+  noteTimestamp?: string
   /** When true (additionalRequest variant), shows a "Completed" chip indicating the request has been addressed. */
   isCompleted?: boolean
   className?: string
 }
 
-/** Shared quote-style border: #0A0A0A at 40% opacity, 2px left. */
+/** Shared quote-style border: #0A0A0A at 40% opacity, 2px left (used by additionalRequest variant). */
 const quoteBorderClasses = "border-l-2 border-[#0A0A0A]/40 pl-4 min-w-0"
+
+/** No border, indented to align under author name (used by notes variant). */
+const noteQuoteClasses = "pl-7 min-w-0"
 
 /** Quote block with "see more/less" shown only when text is actually truncated (overflow). */
 function QuoteWithSeeMore({
   text,
   expanded,
   onToggle,
+  wrapperClassName,
 }: {
   text: string
   expanded: boolean
   onToggle: () => void
+  wrapperClassName?: string
 }) {
   const ref = React.useRef<HTMLSpanElement>(null)
   const [isTruncated, setIsTruncated] = React.useState(false)
@@ -71,7 +80,7 @@ function QuoteWithSeeMore({
   }, [text])
 
   return (
-    <div className={quoteBorderClasses}>
+    <div className={wrapperClassName ?? quoteBorderClasses}>
       <div className="flex flex-wrap items-baseline gap-x-1 min-w-0">
         <span
           ref={ref}
@@ -123,6 +132,8 @@ export function StepDetails({
   authorName,
   authorImageUrl,
   authorUserName,
+  authorUserImageUrl,
+  noteTimestamp,
   isCompleted = false,
   className,
 }: StepDetailsProps) {
@@ -158,7 +169,7 @@ export function StepDetails({
           ? resolvedSubtitle
           : null
 
-    const authorFirstInitial = authorName?.trim().charAt(0).toUpperCase() ?? ""
+    const userInitial = authorUserName?.trim().charAt(0).toUpperCase() ?? authorName?.trim().charAt(0).toUpperCase() ?? ""
 
     return (
       <div
@@ -167,38 +178,46 @@ export function StepDetails({
           className
         )}
       >
-        {/* Quote block: see more/less only when text is truncated */}
+        {/* Author row: Avatar (user picture) + userName (bold) + · + entityName (muted) + timestamp (right) */}
+        {(authorUserName || authorName) && (
+          <div className="flex items-center gap-2 min-w-0">
+            <Avatar size="xs" className="size-5 shrink-0">
+              {authorUserImageUrl && <AvatarImage src={authorUserImageUrl} alt="" />}
+              <AvatarFallback className="text-[10px]">
+                {userInitial}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex items-center gap-1 min-w-0 truncate flex-1">
+              {authorUserName && (
+                <span className="text-xs font-semibold text-sidebar-foreground truncate">
+                  {authorUserName}
+                </span>
+              )}
+              {authorUserName && authorName && (
+                <span className="text-xs text-muted-foreground shrink-0">·</span>
+              )}
+              {authorName && (
+                <span className="text-xs font-medium text-muted-foreground truncate">
+                  {authorName}
+                </span>
+              )}
+            </div>
+            {noteTimestamp && (
+              <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
+                {noteTimestamp}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Quote block: no border, indented under author name */}
         {noteText && (
           <QuoteWithSeeMore
             text={noteText}
             expanded={notesExpanded}
             onToggle={() => setNotesExpanded((p) => !p)}
+            wrapperClassName={noteQuoteClasses}
           />
-        )}
-
-        {/* Author row: Avatar (entity picture) + entityName + · + userName */}
-        {authorName && (
-          <div className="flex items-center gap-2 min-w-0">
-            <Avatar size="xs" className="size-5 shrink-0">
-              {authorImageUrl && <AvatarImage src={authorImageUrl} alt="" />}
-              <AvatarFallback className="text-[10px]">
-                {authorFirstInitial}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex items-center gap-1 min-w-0 truncate">
-              <span className="text-xs font-semibold text-sidebar-foreground truncate">
-                {authorName}
-              </span>
-              {authorUserName && (
-                <>
-                  <span className="text-xs text-muted-foreground shrink-0">·</span>
-                  <span className="text-xs font-medium text-muted-foreground truncate">
-                    {authorUserName}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
         )}
       </div>
     )

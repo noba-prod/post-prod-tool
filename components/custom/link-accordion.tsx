@@ -23,8 +23,12 @@ export interface LinkAccordionItem {
   noteText?: string
   noteAuthorName?: string
   noteAuthorImageUrl?: string
-  /** User name who wrote the note (profiles.first_name + last_name). Shown after '·' separator in the author row. */
+  /** User name who wrote the note (profiles.first_name + last_name). Shown as bold primary name in the author row. */
   noteAuthorUserName?: string
+  /** User's profile image URL (profiles.image). Used for the avatar in the author row. */
+  noteAuthorUserImageUrl?: string
+  /** Relative time label for when the note was written (e.g. "2 hours ago"). */
+  noteTimestamp?: string
   /** Whether this item is initially expanded */
   defaultOpen?: boolean
 }
@@ -93,6 +97,8 @@ function LinkAccordionSection({
                 authorName={item.noteAuthorName}
                 authorImageUrl={item.noteAuthorImageUrl}
                 authorUserName={item.noteAuthorUserName}
+                authorUserImageUrl={item.noteAuthorUserImageUrl}
+                noteTimestamp={item.noteTimestamp}
               />
             )}
           </div>

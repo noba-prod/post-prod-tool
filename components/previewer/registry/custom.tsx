@@ -52,6 +52,7 @@ import { SwitchList } from "@/components/custom/switch-list"
 import { InformativeToast } from "@/components/custom/informative-toast"
 import { RowVariants, SlotPlaceholder } from "@/components/custom/row-variants"
 import { LinkAccordion } from "@/components/custom/link-accordion"
+import { UrlHistory } from "@/components/custom/url-history"
 
 export interface ComponentEntry {
   id: string
@@ -611,6 +612,7 @@ Gap: 16px | Padding: 40px`,
             authorName="Zara"
             authorImageUrl=""
             authorUserName="Erika Goldner"
+            noteTimestamp="2 hours ago"
           />
         </div>
         <div className="w-[365px] shrink-0 space-y-2">
@@ -652,6 +654,7 @@ Gap: 16px | Padding: 40px`,
               noteText: "There was some problems when scanning latest negatives. If you notice any missing photos from the shoot, get in touch with us to solve problems.",
               noteAuthorName: "Carmencita Lab",
               noteAuthorUserName: "Erika Goldner",
+              noteTimestamp: "1 day ago",
               defaultOpen: true,
             },
             {
@@ -663,6 +666,7 @@ Gap: 16px | Padding: 40px`,
               noteText: "New photos are ready! Check them out and let us know if something is missing",
               noteAuthorName: "Carmencita Lab",
               noteAuthorUserName: "Erika Goldner",
+              noteTimestamp: "2 minutes ago",
               defaultOpen: true,
             },
             {
@@ -674,6 +678,7 @@ Gap: 16px | Padding: 40px`,
               noteText: "New photos are ready! Check them out and let us know if something is missing",
               noteAuthorName: "Carmencita Lab",
               noteAuthorUserName: "Erika Goldner",
+              noteTimestamp: "1 minute ago",
               defaultOpen: true,
             },
           ]}
@@ -898,6 +903,81 @@ Gap: 16px | Padding: 40px`,
     title: "Page Templates",
     description: "Reusable page templates for consistent layout and structure. Includes Main Template (for Collections, Entities, Team pages), Creation Template (for creation flows with sidebar stepper), and View Template (for view flows with sidebar menu). Each template has Basic and Contextual views.",
     demo: <TemplatesDemo />,
+  },
+  {
+    id: "url-history",
+    name: "url-history",
+    title: "URL History",
+    description: "Card component (Figma node 1125-1254329) displaying a URL entry with its associated comment thread. Features a title (text-lg semibold), threaded comments using StepDetails notes variant, and action buttons (Open link + Add comment). Nested replies are indented 50px per level and connected by straight 1px L-shaped connector lines (border color) originating at the parent avatar center (30px from card edge). Card: bg-background, border-border, rounded-xl, p-5, gap-5.",
+    demo: (
+      <div className="flex flex-col gap-8 w-full max-w-[500px]">
+        {/* Single comment */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Single comment</p>
+          <UrlHistory
+            title="Low-res scans"
+            comments={[
+              {
+                authorUserName: "Jorge Muniz",
+                authorEntityName: "Aulaga Lab",
+                text: "Low-res are ready! Check them out and let us know if something is missing or if there are any issues with the scans.",
+                timestamp: "32 minutes ago",
+              },
+            ]}
+            onOpenLink={() => {}}
+            onAddComment={() => {}}
+          />
+        </div>
+
+        {/* With nested replies */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">With nested replies</p>
+          <UrlHistory
+            title="Low-res scans"
+            comments={[
+              {
+                authorUserName: "Jorge Muniz",
+                authorEntityName: "Aulaga Lab",
+                text: "Low-res are ready! Check them out and let us know if something is missing or if there are any issues with the scans.",
+                timestamp: "32 minutes ago",
+                replies: [
+                  {
+                    authorUserName: "Phill Romer",
+                    authorEntityName: "Photographer",
+                    text: "I'm missing the last negatives sent in the second drop-off!",
+                    timestamp: "2 minutes ago",
+                  },
+                  {
+                    authorUserName: "Phill Romer",
+                    authorEntityName: "Photographer",
+                    text: "Sorry, my wrong. Everything is okay 😊",
+                    timestamp: "1 minute ago",
+                  },
+                ],
+              },
+            ]}
+            onOpenLink={() => {}}
+            onAddComment={() => {}}
+          />
+        </div>
+
+        {/* Without action buttons */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Without action buttons</p>
+          <UrlHistory
+            title="Client selection"
+            comments={[
+              {
+                authorUserName: "Erika Goldner",
+                authorEntityName: "Zara",
+                text: "Selection complete. We've chosen 42 photos for the final edit.",
+                timestamp: "3 days ago",
+              },
+            ]}
+          />
+        </div>
+      </div>
+    ),
   },
 ]
 

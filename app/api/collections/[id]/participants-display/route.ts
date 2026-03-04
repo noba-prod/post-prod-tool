@@ -259,12 +259,12 @@ export async function GET(
     for (const p of participants) {
       for (const uid of p.userIds ?? []) allMemberUserIds.add(uid)
     }
-    const noteAuthorsByUserId: Record<string, { name: string; entityName?: string; entityImageUrl?: string }> = {}
+    const noteAuthorsByUserId: Record<string, { name: string; userImageUrl?: string; entityName?: string; entityImageUrl?: string }> = {}
     const allIds = Array.from(allMemberUserIds).filter(Boolean)
     if (allIds.length > 0) {
       const { data: allProfiles } = await admin
         .from("profiles")
-        .select("id, first_name, last_name, organization_id")
+        .select("id, first_name, last_name, organization_id, image")
         .in("id", allIds)
       const orgIds = new Set<string>()
       for (const p of (allProfiles ?? []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; organization_id?: string | null }>) {
@@ -281,12 +281,13 @@ export async function GET(
           orgMap[o.id] = { name: o.name, imageUrl: o.profile_picture_url?.trim() || undefined }
         }
       }
-      for (const p of (allProfiles ?? []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; organization_id?: string | null }>) {
+      for (const p of (allProfiles ?? []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; organization_id?: string | null; image?: string | null }>) {
         const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim()
         if (!name) continue
         const org = p.organization_id ? orgMap[p.organization_id] : undefined
         noteAuthorsByUserId[p.id] = {
           name,
+          userImageUrl: p.image?.trim() || undefined,
           entityName: org?.name,
           entityImageUrl: org?.imageUrl,
         }

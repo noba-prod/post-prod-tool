@@ -342,7 +342,7 @@ export interface CollectionTemplateProps {
   /** Step notes conversation for client confirmation step (step 11). */
   stepNotesClientConfirmation?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Map of userId → { name, entityName, entityImageUrl } for all collection members. Used to resolve step note author identity. */
-  noteAuthorsByUserId?: Record<string, { name: string; entityName?: string; entityImageUrl?: string }>
+  noteAuthorsByUserId?: Record<string, { name: string; userImageUrl?: string; entityName?: string; entityImageUrl?: string }>
   /** Additional footage request: entity name + notes per step. Shown as "additionalRequest" variant when someone requested more photos via the "missing photos" flow. */
   additionalFootageRequest?: {
     /** Entity name requesting additional photos (e.g. "Photographer", "Client"). */
@@ -626,6 +626,7 @@ export function CollectionTemplate({
         const entityName = noteAuthor?.entityName?.trim() || fallbackEntityName
         const entityImageUrl = noteAuthor?.entityImageUrl || fallbackEntityImageUrl
         const userName = noteAuthor?.name?.trim() || undefined
+        const userImageUrl = noteAuthor?.userImageUrl || undefined
         const label: React.ReactNode =
           idx === 0 ? (
             "Original link"
@@ -645,6 +646,8 @@ export function CollectionTemplate({
           noteAuthorName: hasNote ? entityName : undefined,
           noteAuthorImageUrl: hasNote ? entityImageUrl : undefined,
           noteAuthorUserName: hasNote ? userName : undefined,
+          noteAuthorUserImageUrl: hasNote ? userImageUrl : undefined,
+          noteTimestamp: hasNote && note?.at ? formatRelativeTime(note.at) : undefined,
           defaultOpen: idx === urls.length - 1,
         } satisfies LinkAccordionItem
       })

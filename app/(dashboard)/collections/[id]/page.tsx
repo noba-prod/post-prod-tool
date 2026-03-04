@@ -151,7 +151,7 @@ export default function CollectionViewPage({
   const [participantsNobaTeam, setParticipantsNobaTeam] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersIndividuals, setParticipantsMainPlayersIndividuals] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersEntities, setParticipantsMainPlayersEntities] = React.useState<ParticipantsModalEntity[]>([])
-  const [noteAuthorsByUserId, setNoteAuthorsByUserId] = React.useState<Record<string, { name: string; entityName?: string; entityImageUrl?: string }>>({})
+  const [noteAuthorsByUserId, setNoteAuthorsByUserId] = React.useState<Record<string, { name: string; userImageUrl?: string; entityName?: string; entityImageUrl?: string }>>({})
 
   const service = React.useMemo(() => createCollectionsService(), [])
 
@@ -726,7 +726,7 @@ export default function CollectionViewPage({
         mainPlayersEntities?: ParticipantsModalEntity[]
         photographerName?: string
         clientDisplayName?: string
-        noteAuthorsByUserId?: Record<string, { name: string; entityName?: string; entityImageUrl?: string }>
+        noteAuthorsByUserId?: Record<string, { name: string; userImageUrl?: string; entityName?: string; entityImageUrl?: string }>
       } | null) => {
         if (cancelled || !data) return
         setParticipantsNobaTeam(data.nobaTeam ?? [])
