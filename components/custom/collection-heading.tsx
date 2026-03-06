@@ -34,8 +34,8 @@ interface CollectionHeadingMainProps {
   stageStatus?: StageStatus
   /** Show stage status tag */
   showStageStatus?: boolean
-  /** Shooting type: Digital or Handprint (tag to the left of photographer tag) */
-  shootingType?: "digital" | "handprint"
+  /** Shooting type: Digital or Analog HP/HR (tag to the left of photographer tag) */
+  shootingType?: "digital" | "handprint_hp" | "handprint_hr"
   /** Photographer name (shown in photographer tag) */
   photographerName?: string
   /** Show photographer name tag */

@@ -55,8 +55,8 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   client_selection_confirmed: { action: "advance", substatus: "low_res_to_high_res" },
   client_selection_deadline_missed: { action: "none" },
 
-  // Photographer review (validates client selection — step 6; informational, does not advance substatus)
-  photographer_check_approved: { action: "none" },
+  // Photographer review (validates client selection — step 6): advances to low-res to high-res
+  photographer_check_approved: { action: "advance", substatus: "low_res_to_high_res" },
   photographer_check_deadline_missed: { action: "none" },
 
   // High-res

@@ -103,14 +103,18 @@ const STEP_LABELS: Record<CreationBlockId, string> = {
   client_selection_config: "Client selection",
   photo_selection: "Photo selection",
   photographer_check_client_selection: "Photographer check client selection",
-  lr_to_hr_setup: "LR to HR setup",
-  handprint_high_res_config: "LR to HR setup",
+  lr_to_hr_setup: "Low-res to high-res",
+  handprint_high_res_config: "Low-res to high-res",
   edition_config: "Pre-check & Edition",
   check_finals: "Check Finals",
 }
 
-function stepLabel(stepId: CreationBlockId): string {
-  return STEP_LABELS[stepId] ?? stepId
+function stepLabel(stepId: CreationBlockId, config?: { handprintVariant?: "hp" | "hr" }): string {
+  const base = STEP_LABELS[stepId] ?? stepId
+  if ((stepId === "lr_to_hr_setup" || stepId === "handprint_high_res_config") && config?.handprintVariant === "hp") {
+    return "Handprint to high-res"
+  }
+  return base
 }
 
 const ROLE_DISPLAY: Record<string, string> = {
@@ -326,8 +330,8 @@ export default function CollectionCreatePage({
   }, [draft, id, service])
 
   const sidebarItems = React.useMemo(
-    () => steps.map((s) => ({ id: s.stepId, label: stepLabel(s.stepId) })),
-    [steps]
+    () => steps.map((s) => ({ id: s.stepId, label: stepLabel(s.stepId, draft?.config) })),
+    [steps, draft?.config]
   )
 
   const setActiveStepHandler = React.useCallback((stepId: CreationBlockId) => {
@@ -814,9 +818,11 @@ export default function CollectionCreatePage({
                     ["Client", "Photographer"].includes(p.role)
                   )
                 : isLrToHrStep
-                  ? participantSummaries.filter((p) =>
-                      ["Client", "Photo Lab", "Hand Print Lab"].includes(p.role)
-                    )
+                  ? participantSummaries.filter((p) => {
+                      const base = ["Client", "Photo Lab"]
+                      if (draft.config.handprintVariant === "hr") return base.includes(p.role)
+                      return [...base, "Hand Print Lab"].includes(p.role)
+                    })
                   : isEditionConfig
                     ? participantSummaries.filter((p) =>
                         ["Client", "Photographer", "Retouch/Post Studio"].includes(p.role)
@@ -829,7 +835,7 @@ export default function CollectionCreatePage({
 
       return {
         id: stepId,
-        title: stepLabel(stepId),
+        title: stepLabel(stepId, draft.config),
         subtitle,
         variant,
         showParticipants: showParticipantsForBlock,

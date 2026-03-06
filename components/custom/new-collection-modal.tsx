@@ -111,8 +111,8 @@ export function NewCollectionModal({
   const [publishingDate, setPublishingDate] = React.useState("")
   const [publishingTime, setPublishingTime] = React.useState("")
   const [hasAgency, setHasAgency] = React.useState(false)
-  const [digitalOrHandprint, setDigitalOrHandprint] = React.useState<
-    "digital" | "handprint" | null
+  const [shootType, setShootType] = React.useState<
+    "digital" | "handprint_hp" | "handprint_hr" | null
   >(null)
   const [handprintIsDifferentLab, setHandprintIsDifferentLab] = React.useState(false)
   const [hasEditionStudio, setHasEditionStudio] = React.useState(false)
@@ -129,9 +129,9 @@ export function NewCollectionModal({
       setPublishingDate(initialConfig.publishingDate ?? "")
       setPublishingTime(initialConfig.publishingTime ?? "")
       setHasAgency(initialConfig.hasAgency ?? false)
-      setDigitalOrHandprint(
+      setShootType(
         initialConfig.hasHandprint === true
-          ? "handprint"
+          ? (initialConfig.handprintVariant === "hr" ? "handprint_hr" : "handprint_hp")
           : initialConfig.hasLowResLab === true
             ? "digital"
             : null
@@ -146,7 +146,7 @@ export function NewCollectionModal({
       setPublishingDate("")
       setPublishingTime("")
       setHasAgency(false)
-      setDigitalOrHandprint(null)
+      setShootType(null)
       setHandprintIsDifferentLab(false)
       setHasEditionStudio(false)
       setSelectedManagerUserId("")
@@ -239,11 +239,12 @@ export function NewCollectionModal({
   }, [open, clientEntityId, managerUserId])
 
   React.useEffect(() => {
-    if (digitalOrHandprint !== "handprint") setHandprintIsDifferentLab(false)
-  }, [digitalOrHandprint])
+    if (shootType !== "handprint_hp") setHandprintIsDifferentLab(false)
+  }, [shootType])
 
-  const hasLowResLab = digitalOrHandprint === "digital"
-  const hasHandprint = digitalOrHandprint === "handprint"
+  const hasLowResLab = shootType === "digital"
+  const hasHandprint = shootType === "handprint_hp" || shootType === "handprint_hr"
+  const handprintVariant = shootType === "handprint_hr" ? "hr" : shootType === "handprint_hp" ? "hp" : undefined
 
   const handleSubmit = React.useCallback(() => {
     const cid = clientEntityId.trim() || clientOptions[0]?.id || ""
@@ -259,7 +260,8 @@ export function NewCollectionModal({
       hasAgency,
       hasLowResLab,
       hasHandprint,
-      handprintIsDifferentLab: hasHandprint ? handprintIsDifferentLab : false,
+      handprintIsDifferentLab: handprintVariant === "hp" ? handprintIsDifferentLab : false,
+      handprintVariant,
       hasEditionStudio,
       publishingDate: publishingDate.trim() || undefined,
       publishingTime: publishingTime.trim() || undefined,
@@ -275,6 +277,7 @@ export function NewCollectionModal({
     hasAgency,
     hasLowResLab,
     hasHandprint,
+    handprintVariant,
     handprintIsDifferentLab,
     hasEditionStudio,
     publishingDate,
@@ -293,7 +296,7 @@ export function NewCollectionModal({
     const items: { id: string; label: string; checked: boolean; disabled?: boolean }[] = [
       { id: "agency", label: "Photographer collaborates with photo agency", checked: hasAgency, disabled: isEditMode },
     ]
-    if (hasHandprint) {
+    if (hasHandprint && handprintVariant === "hp") {
       items.push({
         id: "handprint-lab",
         label: "Handprint different from original lab",
@@ -303,7 +306,7 @@ export function NewCollectionModal({
     }
     items.push({ id: "edition", label: "Photographer requests edition", checked: hasEditionStudio, disabled: isEditMode })
     return items
-  }, [hasEditionStudio, hasAgency, hasHandprint, handprintIsDifferentLab, isEditMode])
+  }, [hasEditionStudio, hasAgency, hasHandprint, handprintVariant, handprintIsDifferentLab, isEditMode])
 
   const handleSwitchChange = React.useCallback(
     (id: string, checked: boolean) => {
@@ -408,24 +411,34 @@ export function NewCollectionModal({
             )}
           >
             <Titles type="form" title="Type of shoot" showSubtitle={false} />
-            <RowVariants variant="2">
+            <RowVariants variant="3">
               <CheckSelection
                 label="Digital"
-                selected={digitalOrHandprint === "digital"}
+                selected={shootType === "digital"}
                 status={isEditMode ? "disabled" : "default"}
                 onClick={() =>
-                  setDigitalOrHandprint((prev) =>
+                  setShootType((prev) =>
                     prev === "digital" ? null : "digital"
                   )
                 }
               />
               <CheckSelection
-                label="Analog"
-                selected={digitalOrHandprint === "handprint"}
+                label="Analog (HP)"
+                selected={shootType === "handprint_hp"}
                 status={isEditMode ? "disabled" : "default"}
                 onClick={() =>
-                  setDigitalOrHandprint((prev) =>
-                    prev === "handprint" ? null : "handprint"
+                  setShootType((prev) =>
+                    prev === "handprint_hp" ? null : "handprint_hp"
+                  )
+                }
+              />
+              <CheckSelection
+                label="Analog (HR)"
+                selected={shootType === "handprint_hr"}
+                status={isEditMode ? "disabled" : "default"}
+                onClick={() =>
+                  setShootType((prev) =>
+                    prev === "handprint_hr" ? null : "handprint_hr"
                   )
                 }
               />

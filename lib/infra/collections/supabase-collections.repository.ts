@@ -86,6 +86,8 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
       photographerSelectionUploadedAt: patch.photographerSelectionUploadedAt,
       clientSelectionUrl: patch.clientSelectionUrl,
       clientSelectionUploadedAt: patch.clientSelectionUploadedAt,
+      photographerReviewUrl: patch.photographerReviewUrl,
+      photographerReviewUploadedAt: patch.photographerReviewUploadedAt,
       highResSelectionUrl: patch.highResSelectionUrl,
       highResSelectionUploadedAt: patch.highResSelectionUploadedAt,
       editionInstructionsUrl: patch.editionInstructionsUrl,

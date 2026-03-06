@@ -62,6 +62,8 @@ export interface ViewStepsConfigInput {
   hasEditionStudio: boolean
   /** When hasHandprint and true: Low-res to high-res step shows "by different HP lab". */
   handprintIsDifferentLab: boolean
+  /** When hasHandprint: "hp" = Analog (HP), step title "Handprint to high-res"; "hr" = Analog (HR), "Low-res to high-res". */
+  handprintVariant?: "hp" | "hr"
   /** Optional: show "No shipping details" on Low-res scanning (e.g. when shipping not filled). */
   lowResNoShippingDetails?: boolean
 }
@@ -73,11 +75,14 @@ export interface ViewStepsConfigInput {
 export function getViewStepDefinitions(
   input: ViewStepsConfigInput
 ): ViewStepDefinition[] {
-  const { hasHandprint, hasEditionStudio, handprintIsDifferentLab, lowResNoShippingDetails } =
+  const { hasHandprint, hasEditionStudio, handprintIsDifferentLab, handprintVariant, lowResNoShippingDetails } =
     input
 
   const steps: ViewStepDefinition[] = VIEW_STEP_IDS.map((id) => {
-    const title = VIEW_STEP_TITLES[id]
+    let title = VIEW_STEP_TITLES[id]
+    if (id === "handprint_high_res" && hasHandprint && handprintVariant === "hp") {
+      title = "Handprint to high-res"
+    }
     let inactive = false
     let annotation: string | undefined
     let attention = false
@@ -130,6 +135,7 @@ export function configToViewStepsInput(config: CollectionConfig): ViewStepsConfi
     hasHandprint: config.hasHandprint,
     hasEditionStudio: config.hasEditionStudio,
     handprintIsDifferentLab: config.handprintIsDifferentLab,
+    handprintVariant: config.handprintVariant,
     lowResNoShippingDetails: false,
   }
 }

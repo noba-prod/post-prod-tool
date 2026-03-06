@@ -17,19 +17,22 @@ interface PatchBody {
   lowres_selection_url?: string
   photographer_selection_url?: string
   client_selection_url?: string
+  photographer_review_url?: string
+  /** When true, replace photographer_review_url with client_selection_url (direct approval). */
+  photographer_review_copy_from_client_selection?: boolean
   highres_selection_url?: string
   edition_instructions_url?: string
   finals_selection_url?: string
-  // Step note appends (single entry → appended to conversation)
-  step_note_low_res?: { from: string; text: string }
-  step_note_photographer_selection?: { from: string; text: string }
-  step_note_client_selection?: { from: string; text: string }
-  step_note_photographer_review?: { from: string; text: string }
-  step_note_high_res?: { from: string; text: string }
-  step_note_edition_request?: { from: string; text: string }
-  step_note_final_edits?: { from: string; text: string }
-  step_note_photographer_last_check?: { from: string; text: string }
-  step_note_client_confirmation?: { from: string; text: string }
+  // Step note appends (single entry → appended to conversation). url links comment to a specific link.
+  step_note_low_res?: { from: string; text: string; url?: string }
+  step_note_photographer_selection?: { from: string; text: string; url?: string }
+  step_note_client_selection?: { from: string; text: string; url?: string }
+  step_note_photographer_review?: { from: string; text: string; url?: string }
+  step_note_high_res?: { from: string; text: string; url?: string }
+  step_note_edition_request?: { from: string; text: string; url?: string }
+  step_note_final_edits?: { from: string; text: string; url?: string }
+  step_note_photographer_last_check?: { from: string; text: string; url?: string }
+  step_note_client_confirmation?: { from: string; text: string; url?: string }
 }
 
 function parseStoredStringArray(raw: unknown): string[] {
@@ -118,6 +121,7 @@ export async function PATCH(
         lowres_selection_url,
         photographer_selection_url,
         client_selection_url,
+        photographer_review_url,
         highres_selection_url,
         edition_instructions_url,
         finals_selection_url,
@@ -166,6 +170,18 @@ export async function PATCH(
       dbUpdate.client_selection_url = toColumnCompatibleArrayValue(raw.client_selection_url, next)
       dbUpdate.client_selection_uploaded_at = now
     }
+    if (body.photographer_review_copy_from_client_selection) {
+      const clientUrls = parseStoredStringArray(raw.client_selection_url)
+      dbUpdate.photographer_review_url = toColumnCompatibleArrayValue(raw.photographer_review_url, clientUrls)
+      dbUpdate.photographer_review_uploaded_at = now
+    } else if (body.photographer_review_url !== undefined) {
+      const next = appendToUrlArray(
+        parseStoredStringArray(raw.photographer_review_url),
+        body.photographer_review_url.trim()
+      )
+      dbUpdate.photographer_review_url = toColumnCompatibleArrayValue(raw.photographer_review_url, next)
+      dbUpdate.photographer_review_uploaded_at = now
+    }
     if (body.highres_selection_url !== undefined) {
       const next = appendToUrlArray(
         parseStoredStringArray(raw.highres_selection_url),
@@ -212,13 +228,14 @@ export async function PATCH(
     ]
 
     for (const { bodyKey, rawKey, patchKey } of noteFields) {
-      const noteInput = body[bodyKey] as { from: string; text: string } | undefined
+      const noteInput = body[bodyKey] as { from: string; text: string; url?: string } | undefined
       if (noteInput && noteInput.text?.trim()) {
         const entry: StepNoteEntry = {
           from: noteInput.from,
           text: noteInput.text.trim(),
           at: now,
           userId: user.id,
+          ...(noteInput.url?.trim() ? { url: noteInput.url.trim() } : {}),
         }
         const existing = parseStoredNotes(raw[rawKey])
         const next = appendNote(existing, entry)

@@ -97,8 +97,10 @@ export interface CollectionConfig {
   hasLowResLab: boolean
   /** Handprint lab (high-res) involved */
   hasHandprint: boolean
-  /** Handprint lab is a different lab than low-res (collections-logic §10.6) */
+  /** Handprint lab is a different lab than low-res (collections-logic §10.6). Only applies when handprintVariant is "hp". */
   handprintIsDifferentLab: boolean
+  /** When hasHandprint: "hp" = Analog (HP), handprint lab can differ; "hr" = Analog (HR), photo_lab does conversions. */
+  handprintVariant?: "hp" | "hr"
   /** Edition / Retouch studio involved */
   hasEditionStudio: boolean
   /** Shooting date (key date) */
@@ -240,6 +242,10 @@ export interface Collection {
   clientSelectionUrl?: string[]
   /** When the client selection URL was last set (ISO timestamp). */
   clientSelectionUploadedAt?: string
+  /** URLs uploaded by photographer during review/validation of client selection (step 6). JSONB array. */
+  photographerReviewUrl?: string[]
+  /** When the photographer review URL was last set (ISO timestamp). */
+  photographerReviewUploadedAt?: string
   /** URLs for high-res selection (step 7). JSONB array. */
   highResSelectionUrl?: string[]
   /** When the high-res URL was last set (ISO timestamp). */
@@ -274,6 +280,8 @@ export interface StepNoteEntry {
   at: string
   /** Profile ID (auth user) who wrote this note. Added in migration 040+; absent in legacy notes. */
   userId?: string
+  /** URL this note is associated with (from the step's URL array). Links comment to a specific link block. */
+  url?: string
 }
 
 /** Alias for backward compatibility; workflow and UI use same shape. */

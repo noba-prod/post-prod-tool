@@ -126,7 +126,7 @@ export default function CollectionTemplatePage() {
         clientName="@zara"
         progress={42}
         stageStatus="in-progress"
-        shootingType={scenario.config.hasHandprint ? "handprint" : "digital"}
+        shootingType={scenario.config.hasHandprint ? (scenario.config.handprintVariant === "hr" ? "handprint_hr" : "handprint_hp") : "digital"}
         photographerName="Tom Haser"
         showPhotographerName
         showParticipantsButton

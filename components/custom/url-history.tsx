@@ -12,7 +12,9 @@ import { StepDetails } from "./step-details"
 
 export interface UrlHistoryComment {
   authorUserName: string
+  /** User profile image (profiles.image) only. Never use entity logo. If undefined, avatar shows initials. */
   authorUserImageUrl?: string
+  /** Secondary label after "·". For photographer: use "Photographer" (type), not entity name (they are their own entity). */
   authorEntityName?: string
   text: string
   timestamp: string

@@ -187,6 +187,7 @@ export interface Collection {
   // Configuration Options
   low_res_to_high_res_digital: boolean
   low_res_to_high_res_hand_print: boolean
+  handprint_variant?: "hp" | "hr" | null
   photographer_request_edition: boolean
   photographer_collaborates_with_agency: boolean
   handprint_different_from_original_lab: boolean
@@ -233,6 +234,8 @@ export interface Collection {
   photographer_selection_uploaded_at: string | null
   client_selection_url: string[] | null
   client_selection_uploaded_at: string | null
+  photographer_review_url: string[] | null
+  photographer_review_uploaded_at: string | null
   // Step notes conversation columns (JSONB arrays — migration 034)
   step_notes_low_res: Array<{ from: string; text: string; at: string }>
   step_notes_photographer_selection: Array<{ from: string; text: string; at: string }>
@@ -299,6 +302,7 @@ export interface CollectionInsert {
   publishing_time?: string | null
   low_res_to_high_res_digital?: boolean
   low_res_to_high_res_hand_print?: boolean
+  handprint_variant?: "hp" | "hr" | null
   photographer_request_edition?: boolean
   photographer_collaborates_with_agency?: boolean
   handprint_different_from_original_lab?: boolean
@@ -340,6 +344,8 @@ export interface CollectionInsert {
   photographer_selection_uploaded_at?: string | null
   client_selection_url?: string[] | null
   client_selection_uploaded_at?: string | null
+  photographer_review_url?: string[] | null
+  photographer_review_uploaded_at?: string | null
   step_notes_low_res?: Array<{ from: string; text: string; at: string }>
   step_notes_photographer_selection?: Array<{ from: string; text: string; at: string }>
   step_notes_client_selection?: Array<{ from: string; text: string; at: string }>
@@ -392,6 +398,7 @@ export interface CollectionUpdate {
   publishing_time?: string | null
   low_res_to_high_res_digital?: boolean
   low_res_to_high_res_hand_print?: boolean
+  handprint_variant?: "hp" | "hr" | null
   photographer_request_edition?: boolean
   photographer_collaborates_with_agency?: boolean
   handprint_different_from_original_lab?: boolean
@@ -433,6 +440,8 @@ export interface CollectionUpdate {
   photographer_selection_uploaded_at?: string | null
   client_selection_url?: string[] | null
   client_selection_uploaded_at?: string | null
+  photographer_review_url?: string[] | null
+  photographer_review_uploaded_at?: string | null
   step_notes_low_res?: Array<{ from: string; text: string; at: string }>
   step_notes_photographer_selection?: Array<{ from: string; text: string; at: string }>
   step_notes_client_selection?: Array<{ from: string; text: string; at: string }>

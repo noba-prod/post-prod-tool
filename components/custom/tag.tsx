@@ -261,7 +261,7 @@ export function CollectionProgressTag({
 
 interface ShootingTypeTagProps {
   /** Tipo de shooting */
-  type?: "digital" | "handprint"
+  type?: "digital" | "handprint_hp" | "handprint_hr"
   className?: string
 }
 
@@ -269,7 +269,12 @@ export function ShootingTypeTag({
   type = "digital",
   className,
 }: ShootingTypeTagProps) {
-  const label = type === "handprint" ? "Analog" : "Digital"
+  const label =
+    type === "handprint_hp"
+      ? "Analog (HP)"
+      : type === "handprint_hr"
+        ? "Analog (HR)"
+        : "Digital"
   return (
     <span
       className={cn(

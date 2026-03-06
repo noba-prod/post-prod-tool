@@ -349,15 +349,14 @@ export default function CollectionViewPage({
           lowres_selection_url: url,
         }
         if (payload.notes?.trim()) {
-          body.step_note_low_res = { from: "lab", text: payload.notes.trim() }
+          body.step_note_low_res = { from: "lab", text: payload.notes.trim(), url }
         }
-        const updated = await patchCollection(body)
-        // Use the collection returned by PATCH (source of truth) to avoid stale closure;
-        // only advance when low-res scanning is the current active substatus.
-        if (updated?.substatus === "low_res_scanning") {
-          await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
-          await refetchCollection()
-        }
+        await patchCollection(body)
+        // Always fire scanning_completed when uploading low-res for the first time.
+        // The events API validates the substatus transition; recomputeAndPersistProgress
+        // will correctly update step_statuses and substatus from events.
+        await fireEvent("scanning_completed", { lowResUrl: url, notes: payload.notes })
+        await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload low-res error:", err)
         toast.error(err instanceof Error ? err.message : "Failed to save low-res")
@@ -378,14 +377,13 @@ export default function CollectionViewPage({
           lowres_selection_url: url,
         }
         if (payload.notes?.trim()) {
-          body.step_note_low_res = { from: "lab", text: payload.notes.trim() }
+          body.step_note_low_res = { from: "lab", text: payload.notes.trim(), url }
         }
-        const updated = await patchCollection(body)
-        // Use the collection returned by PATCH (source of truth) to avoid stale closure.
-        if (updated?.substatus === "low_res_scanning") {
-          await fireEvent("lab_shared_additional_materials", { lowResUrl: url, notes: payload.notes })
-          await refetchCollection()
-        }
+        await patchCollection(body)
+        // Always fire lab_shared_additional_materials when uploading more low-res.
+        // This event has action: "none" (no substatus change) but records the upload in history.
+        await fireEvent("lab_shared_additional_materials", { lowResUrl: url, notes: payload.notes })
+        await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload more low-res error:", err)
         toast.error(err instanceof Error ? err.message : "Failed to upload more photos")
@@ -408,7 +406,7 @@ export default function CollectionViewPage({
           photographer_selection_url: url,
         }
         if (payload.notes?.trim()) {
-          body.step_note_photographer_selection = { from: "photographer", text: payload.notes.trim() }
+          body.step_note_photographer_selection = { from: "photographer", text: payload.notes.trim(), url }
         }
         await patchCollection(body)
         if (hadExistingSelection) {
@@ -462,7 +460,7 @@ export default function CollectionViewPage({
           client_selection_url: url,
         }
         if (payload.notes?.trim()) {
-          body.step_note_client_selection = { from: "client", text: payload.notes.trim() }
+          body.step_note_client_selection = { from: "client", text: payload.notes.trim(), url }
         }
         await patchCollection(body)
         await fireEvent("client_selection_confirmed", { url, notes: payload.notes })
@@ -509,19 +507,44 @@ export default function CollectionViewPage({
   // =============================================================================
   // STEP 6: Validate client selection (photographer review)
   // =============================================================================
+  /** Step 6: Photographer adds comments/link for lab. Does NOT advance — stays in step 6 until they click "Validate client selection". */
   const handleValidateClientSelection = React.useCallback(
-    async (comments?: string) => {
+    async (comments?: string, url?: string) => {
       if (!id) return
       try {
+        const body: Record<string, unknown> = {}
         if (comments?.trim()) {
-          await patchCollection({
-            step_note_photographer_review: { from: "photographer", text: comments.trim() },
-          })
+          body.step_note_photographer_review = {
+            from: "photographer",
+            text: comments.trim(),
+            ...(url?.trim() && { url: url.trim() }),
+          }
         }
-        await fireEvent("photographer_check_approved", { comments })
+        if (url?.trim()) {
+          body.photographer_review_url = url.trim()
+        }
+        if (Object.keys(body).length > 0) {
+          await patchCollection(body)
+        }
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Validate client selection error:", err)
+        toast.error("Failed to validate selection")
+      }
+    },
+    [id, patchCollection, refetchCollection]
+  )
+
+  /** Step 6: Photographer approves client selection directly — copy client URLs to photographer_review, advance to step 7. */
+  const handleValidateClientSelectionDirect = React.useCallback(
+    async () => {
+      if (!id) return
+      try {
+        await patchCollection({ photographer_review_copy_from_client_selection: true })
+        await fireEvent("photographer_check_approved", {})
+        await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Validate client selection (direct) error:", err)
         toast.error("Failed to validate selection")
       }
     },
@@ -572,7 +595,7 @@ export default function CollectionViewPage({
           highres_selection_url: url,
         }
         if (payload.notes?.trim()) {
-          body.step_note_high_res = { from: "lab", text: payload.notes.trim() }
+          body.step_note_high_res = { from: "lab", text: payload.notes.trim(), url }
         }
         await patchCollection(body)
         await fireEvent("highres_ready", { url, notes: payload.notes })
@@ -597,7 +620,11 @@ export default function CollectionViewPage({
           body.edition_instructions_url = payload.url.trim()
         }
         if (payload.details?.trim()) {
-          body.step_note_edition_request = { from: "photographer", text: payload.details.trim() }
+          body.step_note_edition_request = {
+            from: "photographer",
+            text: payload.details.trim(),
+            ...(payload.url?.trim() && { url: payload.url.trim() }),
+          }
         }
         await patchCollection(body)
         await fireEvent("edition_request_submitted", { url: payload.url, details: payload.details })
@@ -624,7 +651,7 @@ export default function CollectionViewPage({
           finals_selection_url: url,
         }
         if (payload.notes?.trim()) {
-          body.step_note_final_edits = { from: "retouch_studio", text: payload.notes.trim() }
+          body.step_note_final_edits = { from: "retouch_studio", text: payload.notes.trim(), url }
         }
         await patchCollection(body)
         if (hadExistingFinals) {
@@ -679,6 +706,26 @@ export default function CollectionViewPage({
       }
     },
     [id, fireEvent, refetchCollection]
+  )
+
+  // =============================================================================
+  // Add step note (UrlHistory "Add comment" — appends to step notes column)
+  // =============================================================================
+  const handleAddStepNote = React.useCallback(
+    async (payload: { stepNoteKey: string; from: string; text: string; url?: string }) => {
+      if (!id) return
+      try {
+        await patchCollection({
+          [payload.stepNoteKey]: { from: payload.from, text: payload.text, ...(payload.url ? { url: payload.url } : {}) },
+        })
+        await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Add step note error:", err)
+        toast.error("Failed to add comment")
+        throw err
+      }
+    },
+    [id, patchCollection, refetchCollection]
   )
 
   // =============================================================================
@@ -864,7 +911,9 @@ export default function CollectionViewPage({
           },
           collection.status === "in_progress" ? "in-progress" : "upcoming"
         )
-  const shootingType = collection.config.hasHandprint ? "handprint" : "digital"
+  const shootingType = collection.config.hasHandprint
+    ? (collection.config.handprintVariant === "hr" ? "handprint_hr" : "handprint_hp")
+    : "digital"
 
   return (
     <CollectionTemplate
@@ -923,12 +972,16 @@ export default function CollectionViewPage({
       stepNotesLowRes={collection.stepNotesLowRes}
       stepNotesPhotographerSelection={collection.stepNotesPhotographerSelection}
       onRequestAdditionalPhotos={handleRequestAdditionalPhotos}
+      onAddStepNote={handleAddStepNote}
       onUploadClientSelection={handleUploadClientSelection}
       onRequestMorePhotosFromPhotographer={handleRequestMorePhotosFromPhotographer}
       clientSelectionUrl={collection.clientSelectionUrl ?? undefined}
       clientSelectionUploadedAt={collection.clientSelectionUploadedAt ?? undefined}
+      photographerReviewUrl={collection.photographerReviewUrl ?? undefined}
+      photographerReviewUploadedAt={collection.photographerReviewUploadedAt ?? undefined}
       stepNotesClientSelection={collection.stepNotesClientSelection}
       onValidateClientSelection={handleValidateClientSelection}
+      onValidateClientSelectionDirect={handleValidateClientSelectionDirect}
       onRequestMorePhotosFromClient={handleRequestMorePhotosFromClient}
       stepNotesPhotographerReview={collection.stepNotesPhotographerReview}
       onUploadHighRes={handleUploadHighRes}

@@ -236,11 +236,11 @@ export function ParticipantsStepContent({
     if (config.hasAgency) out.push({ role: "agency", prefilled: false })
     // Lab only in handprint workflow; digital-only has no lab (collections-logic)
     if (config.hasHandprint) out.push({ role: "photo_lab", prefilled: false })
-    // Hand print lab only when it is a different lab than low-res (collections-logic)
-    if (config.hasHandprint && config.handprintIsDifferentLab) out.push({ role: "handprint_lab", prefilled: false })
+    // Hand print lab only for Analog (HP) when it is a different lab than low-res. Analog (HR) uses photo_lab for conversions.
+    if (config.hasHandprint && config.handprintVariant === "hp" && config.handprintIsDifferentLab) out.push({ role: "handprint_lab", prefilled: false })
     if (config.hasEditionStudio) out.push({ role: "retouch_studio", prefilled: false })
     return out
-  }, [config.hasAgency, config.hasHandprint, config.handprintIsDifferentLab, config.hasEditionStudio])
+  }, [config.hasAgency, config.hasHandprint, config.handprintVariant, config.handprintIsDifferentLab, config.hasEditionStudio])
 
   const setParticipant = React.useCallback(
     (role: ParticipantRole, update: Partial<CollectionParticipant> | null) => {

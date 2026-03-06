@@ -139,6 +139,7 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     hasLowResLab: row.low_res_to_high_res_digital,
     hasHandprint: row.low_res_to_high_res_hand_print,
     handprintIsDifferentLab: row.handprint_different_from_original_lab,
+    handprintVariant: (row as { handprint_variant?: "hp" | "hr" }).handprint_variant ?? (row.low_res_to_high_res_hand_print ? "hp" : undefined),
     hasEditionStudio: row.photographer_request_edition,
     clientFinalsDeadline: dbDateToIso(row.project_deadline),
     clientFinalsDeadlineTime: row.project_deadline_time ?? undefined,
@@ -451,6 +452,8 @@ export function mapDbCollectionToDomain(
   const photographerSelectionUploadedAt = (r.photographer_selection_uploaded_at as string | null) ?? null
   const clientSelectionUrl = parseJsonbStringArray(r.client_selection_url)
   const clientSelectionUploadedAt = (r.client_selection_uploaded_at as string | null) ?? null
+  const photographerReviewUrl = parseJsonbStringArray(r.photographer_review_url)
+  const photographerReviewUploadedAt = (r.photographer_review_uploaded_at as string | null) ?? null
   const highresSelectionUrl = parseJsonbStringArray(r.highres_selection_url)
   const highresSelectionUploadedAt = (r.highres_selection_uploaded_at as string | null) ?? null
   const editionInstructionsUrl = parseJsonbStringArray(r.edition_instructions_url)
@@ -490,6 +493,8 @@ export function mapDbCollectionToDomain(
     photographerSelectionUploadedAt: photographerSelectionUploadedAt ?? undefined,
     clientSelectionUrl: clientSelectionUrl.length > 0 ? clientSelectionUrl : undefined,
     clientSelectionUploadedAt: clientSelectionUploadedAt ?? undefined,
+    photographerReviewUrl: photographerReviewUrl.length > 0 ? photographerReviewUrl : undefined,
+    photographerReviewUploadedAt: photographerReviewUploadedAt ?? undefined,
     highResSelectionUrl: highresSelectionUrl.length > 0 ? highresSelectionUrl : undefined,
     highResSelectionUploadedAt: highresSelectionUploadedAt ?? undefined,
     editionInstructionsUrl: editionInstructionsUrl.length > 0 ? editionInstructionsUrl : undefined,
@@ -540,6 +545,7 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     publishing_time: conf.publishingTime ?? null,
     low_res_to_high_res_digital: conf.hasLowResLab,
     low_res_to_high_res_hand_print: conf.hasHandprint,
+    handprint_variant: conf.handprintVariant ?? (conf.hasHandprint ? "hp" : null),
     photographer_request_edition: conf.hasEditionStudio,
     photographer_collaborates_with_agency: conf.hasAgency,
     handprint_different_from_original_lab: conf.handprintIsDifferentLab,
@@ -618,6 +624,8 @@ export function mapDomainPatchToDbUpdate(
     photographerSelectionUploadedAt?: string
     clientSelectionUrl?: string[]
     clientSelectionUploadedAt?: string
+    photographerReviewUrl?: string[]
+    photographerReviewUploadedAt?: string
     highResSelectionUrl?: string[]
     highResSelectionUploadedAt?: string
     editionInstructionsUrl?: string[]
@@ -654,6 +662,8 @@ export function mapDomainPatchToDbUpdate(
   if (patch.photographerSelectionUploadedAt !== undefined) u.photographer_selection_uploaded_at = patch.photographerSelectionUploadedAt ?? null
   if (patch.clientSelectionUrl !== undefined) u.client_selection_url = patch.clientSelectionUrl
   if (patch.clientSelectionUploadedAt !== undefined) u.client_selection_uploaded_at = patch.clientSelectionUploadedAt ?? null
+  if (patch.photographerReviewUrl !== undefined) u.photographer_review_url = patch.photographerReviewUrl
+  if (patch.photographerReviewUploadedAt !== undefined) u.photographer_review_uploaded_at = patch.photographerReviewUploadedAt ?? null
   if (patch.highResSelectionUrl !== undefined) u.highres_selection_url = patch.highResSelectionUrl
   if (patch.highResSelectionUploadedAt !== undefined) u.highres_selection_uploaded_at = patch.highResSelectionUploadedAt ?? null
   if (patch.editionInstructionsUrl !== undefined) u.edition_instructions_url = patch.editionInstructionsUrl
@@ -681,6 +691,7 @@ export function mapDomainPatchToDbUpdate(
     if (conf.publishingTime !== undefined) u.publishing_time = conf.publishingTime ?? null
     if (conf.hasLowResLab !== undefined) u.low_res_to_high_res_digital = conf.hasLowResLab
     if (conf.hasHandprint !== undefined) u.low_res_to_high_res_hand_print = conf.hasHandprint
+    if (conf.handprintVariant !== undefined) u.handprint_variant = conf.handprintVariant ?? (conf.hasHandprint ? "hp" : null)
     if (conf.hasEditionStudio !== undefined) u.photographer_request_edition = conf.hasEditionStudio
     if (conf.hasAgency !== undefined) u.photographer_collaborates_with_agency = conf.hasAgency
     if (conf.handprintIsDifferentLab !== undefined) u.handprint_different_from_original_lab = conf.handprintIsDifferentLab

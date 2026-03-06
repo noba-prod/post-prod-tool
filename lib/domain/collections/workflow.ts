@@ -141,8 +141,8 @@ function parseDateTimeMs(
  * Used to sync the DB status column when dates have passed.
  * - draft: not published (no publishedAt)
  * - canceled: keep as-is (manual)
- * - completed: keep as-is (explicit user action via "Complete collection" button),
- *              OR published AND clientFinalsDeadline has passed (temporal)
+ * - completed: only when explicitly set (client or producer clicked "Complete collection"
+ *              in the last step); deadline alone does NOT mark as completed.
  * - in_progress: published AND shooting start has passed AND not completed
  * - upcoming: published AND shooting start not yet passed
  */
@@ -154,16 +154,10 @@ export function deriveCanonicalCollectionStatus(
 ): CollectionStatus {
   if (!publishedAt?.trim()) return "draft"
   if (currentStatus === "canceled") return "canceled"
-  // Explicit completion (user clicked "Complete collection") overrides temporal rules.
+  // Completed only via explicit user action (last step confirmation), not by deadline.
   if (currentStatus === "completed") return "completed"
 
   const nowMs = now.getTime()
-
-  const deadlineMs = parseDateTimeMs(
-    config.clientFinalsDeadline,
-    config.clientFinalsDeadlineTime
-  )
-  if (!Number.isNaN(deadlineMs) && nowMs >= deadlineMs) return "completed"
 
   const shootingStartMs = parseDateTimeMs(
     config.shootingStartDate ?? config.shootingDate,
