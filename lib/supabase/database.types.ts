@@ -253,6 +253,8 @@ export interface Collection {
   edition_instructions_uploaded_at: string | null
   finals_selection_url: string[] | null
   finals_selection_uploaded_at: string | null
+  photographer_last_check_url: string[] | null
+  photographer_last_check_uploaded_at: string | null
   // Photo Selection
   photo_selection_photographer_preselection_date: string | null
   photo_selection_photographer_preselection_time: string | null
@@ -361,6 +363,8 @@ export interface CollectionInsert {
   edition_instructions_uploaded_at?: string | null
   finals_selection_url?: string[] | null
   finals_selection_uploaded_at?: string | null
+  photographer_last_check_url?: string[] | null
+  photographer_last_check_uploaded_at?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
@@ -457,6 +461,8 @@ export interface CollectionUpdate {
   edition_instructions_uploaded_at?: string | null
   finals_selection_url?: string[] | null
   finals_selection_uploaded_at?: string | null
+  photographer_last_check_url?: string[] | null
+  photographer_last_check_uploaded_at?: string | null
   photo_selection_photographer_preselection_date?: string | null
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null

@@ -29,6 +29,8 @@ const STEP_FIELDS_TO_RESET: Record<string, unknown> = {
   edition_instructions_uploaded_at: null,
   finals_selection_url: [],
   finals_selection_uploaded_at: null,
+  photographer_last_check_url: [],
+  photographer_last_check_uploaded_at: null,
   step_notes_low_res: [],
   step_notes_photographer_selection: [],
   step_notes_client_selection: [],

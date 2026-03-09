@@ -23,6 +23,7 @@ interface PatchBody {
   highres_selection_url?: string
   edition_instructions_url?: string
   finals_selection_url?: string
+  photographer_last_check_url?: string
   // Step note appends (single entry → appended to conversation). url links comment to a specific link.
   step_note_low_res?: { from: string; text: string; url?: string }
   step_note_photographer_selection?: { from: string; text: string; url?: string }
@@ -125,6 +126,7 @@ export async function PATCH(
         highres_selection_url,
         edition_instructions_url,
         finals_selection_url,
+        photographer_last_check_url,
         step_notes_low_res,
         step_notes_photographer_selection,
         step_notes_client_selection,
@@ -208,6 +210,14 @@ export async function PATCH(
       )
       dbUpdate.finals_selection_url = toColumnCompatibleArrayValue(raw.finals_selection_url, next)
       dbUpdate.finals_selection_uploaded_at = now
+    }
+    if (body.photographer_last_check_url !== undefined) {
+      const next = appendToUrlArray(
+        parseStoredStringArray(raw.photographer_last_check_url),
+        body.photographer_last_check_url.trim()
+      )
+      dbUpdate.photographer_last_check_url = toColumnCompatibleArrayValue(raw.photographer_last_check_url, next)
+      dbUpdate.photographer_last_check_uploaded_at = now
     }
 
     // --- Step note appends (single entry → appended to conversation array) ---

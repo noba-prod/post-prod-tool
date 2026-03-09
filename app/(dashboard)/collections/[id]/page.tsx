@@ -669,30 +669,37 @@ export default function CollectionViewPage({
   )
 
   // =============================================================================
-  // STEP 10: Request changes (revert to final_edits, save note)
+  // STEP 10: Add new link (photographer shares additional URL and/or comments)
   // =============================================================================
-  const handleRequestChanges = React.useCallback(
-    async (notes?: string) => {
+  const handleAddPhotographerLastCheckLink = React.useCallback(
+    async (payload: { url?: string; comments?: string }) => {
       if (!id) return
       try {
-        if (notes?.trim()) {
-          await patchCollection({
-            step_note_photographer_last_check: { from: "photographer", text: notes.trim() },
-          })
+        const body: Record<string, unknown> = {}
+        if (payload.url?.trim()) {
+          body.photographer_last_check_url = payload.url.trim()
         }
-        // Revert substatus backwards to final_edits
-        await fireEvent("photographer_requested_additional_photos", { source: "photographer_last_check", notes: notes?.trim() })
-        await refetchCollection()
+        if (payload.comments?.trim()) {
+          body.step_note_photographer_last_check = {
+            from: "photographer",
+            text: payload.comments.trim(),
+            ...(payload.url?.trim() ? { url: payload.url.trim() } : {}),
+          }
+        }
+        if (Object.keys(body).length > 0) {
+          await patchCollection(body)
+          await refetchCollection()
+        }
       } catch (err) {
-        console.error("[CollectionViewPage] Request changes error:", err)
-        toast.error("Failed to save request")
+        console.error("[CollectionViewPage] Add photographer last check link error:", err)
+        toast.error("Failed to save link or comment")
       }
     },
-    [id, patchCollection, fireEvent, refetchCollection]
+    [id, patchCollection, refetchCollection]
   )
 
   // =============================================================================
-  // STEP 10: Validate finals (photographer last check approved)
+  // STEP 10: Share final edits url with client (photographer last check approved)
   // =============================================================================
   const handleValidateFinals = React.useCallback(
     async () => {
@@ -996,11 +1003,13 @@ export default function CollectionViewPage({
       stepNotesEditionRequest={collection.stepNotesEditionRequest}
       onUploadFinals={handleUploadFinals}
       finalsSelectionUrl={collection.finalsSelectionUrl ?? undefined}
+      photographerLastCheckUrl={collection.photographerLastCheckUrl ?? undefined}
+      photographerLastCheckUploadedAt={collection.photographerLastCheckUploadedAt ?? undefined}
       finalsUploadedAt={collection.finalsSelectionUploadedAt ?? undefined}
       finalsUploadedByName={undefined}
       stepNotesFinalEdits={collection.stepNotesFinalEdits}
       finalsUploadedByEntityName={undefined}
-      onRequestChanges={handleRequestChanges}
+      onAddPhotographerLastCheckLink={handleAddPhotographerLastCheckLink}
       onValidateFinals={handleValidateFinals}
       onCompleteCollection={handleCompleteCollection}
       stepNotesPhotographerLastCheck={collection.stepNotesPhotographerLastCheck}

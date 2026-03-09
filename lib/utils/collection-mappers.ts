@@ -460,6 +460,8 @@ export function mapDbCollectionToDomain(
   const editionInstructionsUploadedAt = (r.edition_instructions_uploaded_at as string | null) ?? null
   const finalsSelectionUrl = parseJsonbStringArray(r.finals_selection_url)
   const finalsSelectionUploadedAt = (r.finals_selection_uploaded_at as string | null) ?? null
+  const photographerLastCheckUrl = parseJsonbStringArray(r.photographer_last_check_url)
+  const photographerLastCheckUploadedAt = (r.photographer_last_check_uploaded_at as string | null) ?? null
   // Step notes conversations (JSONB arrays — migration 034)
   const stepNotesLowRes = parseJsonbNoteArray(r.step_notes_low_res)
   const stepNotesPhotographerSelection = parseJsonbNoteArray(r.step_notes_photographer_selection)
@@ -501,6 +503,8 @@ export function mapDbCollectionToDomain(
     editionInstructionsUploadedAt: editionInstructionsUploadedAt ?? undefined,
     finalsSelectionUrl: finalsSelectionUrl.length > 0 ? finalsSelectionUrl : undefined,
     finalsSelectionUploadedAt: finalsSelectionUploadedAt ?? undefined,
+    photographerLastCheckUrl: photographerLastCheckUrl.length > 0 ? photographerLastCheckUrl : undefined,
+    photographerLastCheckUploadedAt: photographerLastCheckUploadedAt ?? undefined,
     stepNotesLowRes: stepNotesLowRes.length > 0 ? stepNotesLowRes : undefined,
     stepNotesPhotographerSelection: stepNotesPhotographerSelection.length > 0 ? stepNotesPhotographerSelection : undefined,
     stepNotesClientSelection: stepNotesClientSelection.length > 0 ? stepNotesClientSelection : undefined,
@@ -632,6 +636,8 @@ export function mapDomainPatchToDbUpdate(
     editionInstructionsUploadedAt?: string
     finalsSelectionUrl?: string[]
     finalsSelectionUploadedAt?: string
+    photographerLastCheckUrl?: string[]
+    photographerLastCheckUploadedAt?: string
     // Step notes conversations (JSONB arrays)
     stepNotesLowRes?: StepNoteEntry[]
     stepNotesPhotographerSelection?: StepNoteEntry[]
@@ -670,6 +676,8 @@ export function mapDomainPatchToDbUpdate(
   if (patch.editionInstructionsUploadedAt !== undefined) u.edition_instructions_uploaded_at = patch.editionInstructionsUploadedAt ?? null
   if (patch.finalsSelectionUrl !== undefined) u.finals_selection_url = patch.finalsSelectionUrl
   if (patch.finalsSelectionUploadedAt !== undefined) u.finals_selection_uploaded_at = patch.finalsSelectionUploadedAt ?? null
+  if (patch.photographerLastCheckUrl !== undefined) u.photographer_last_check_url = patch.photographerLastCheckUrl
+  if (patch.photographerLastCheckUploadedAt !== undefined) u.photographer_last_check_uploaded_at = patch.photographerLastCheckUploadedAt ?? null
   // Step notes conversations
   if (patch.stepNotesLowRes !== undefined) u.step_notes_low_res = patch.stepNotesLowRes
   if (patch.stepNotesPhotographerSelection !== undefined) u.step_notes_photographer_selection = patch.stepNotesPhotographerSelection

@@ -258,6 +258,10 @@ export interface Collection {
   finalsSelectionUrl?: string[]
   /** When the finals URL was last set (ISO timestamp). */
   finalsSelectionUploadedAt?: string
+  /** URLs added by photographer in step 10 (last check) when finals need additional links. JSONB array. */
+  photographerLastCheckUrl?: string[]
+  /** When the last photographer last check URL was uploaded (ISO timestamp). */
+  photographerLastCheckUploadedAt?: string
   /** Step notes conversations (JSONB arrays per step). */
   stepNotesLowRes?: StepNoteEntry[]
   stepNotesPhotographerSelection?: StepNoteEntry[]
