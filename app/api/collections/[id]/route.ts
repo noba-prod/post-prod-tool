@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
+import { NotificationsService } from "@/lib/services/notifications/notifications.service"
 import type { StepNoteEntry } from "@/lib/domain/collections"
 import { appendToUrlArray, appendNote } from "@/lib/utils/collection-mappers"
 
@@ -221,6 +222,8 @@ export async function PATCH(
     }
 
     // --- Step note appends (single entry → appended to conversation array) ---
+    const appendedNoteKeys: string[] = []
+
     const noteFields: Array<{
       bodyKey: keyof PatchBody
       rawKey: string
@@ -263,6 +266,7 @@ export async function PATCH(
         const dbKey = dbKeyByPatchKey[patchKey]
         if (dbKey) {
           dbUpdate[dbKey] = toColumnCompatibleNotesValue(raw[rawKey], next)
+          appendedNoteKeys.push(bodyKey)
         }
       }
     }
@@ -293,6 +297,21 @@ export async function PATCH(
     const updated = await service.getCollectionById(id)
     if (!updated) {
       return NextResponse.json({ error: "Collection not found after update" }, { status: 404 })
+    }
+
+    // Fire comment notifications for each step note that was appended (non-blocking)
+    if (appendedNoteKeys.length > 0) {
+      const notifService = new NotificationsService(admin)
+      for (const noteKey of appendedNoteKeys) {
+        const noteInput = body[noteKey as keyof PatchBody] as { from: string; text: string } | undefined
+        if (noteInput) {
+          notifService
+            .handleCommentAdded(id, noteKey, user.id, noteInput.text.trim())
+            .catch((err) =>
+              console.error("[PATCH /api/collections/[id]] Comment notification error:", err)
+            )
+        }
+      }
     }
 
     return NextResponse.json({ success: true, collection: updated })

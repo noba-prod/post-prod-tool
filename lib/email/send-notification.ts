@@ -1,28 +1,24 @@
 /**
  * Sends notification emails via Resend.
- * Used for workflow notifications (deadline reminders, status updates, etc.)
  * Uses process.env only so this module is safe to bundle in the client
  * (email sending only runs in API routes / cron).
  */
 
 import { Resend } from "resend"
 
-/** Read RESEND_FROM_EMAIL from environment */
 function getResendFromEmail(): string {
   const fromEnv = process.env.RESEND_FROM_EMAIL?.trim()
   if (fromEnv) return fromEnv
   return ""
 }
 
-/** Base URL for the app (used for absolute links in emails). Same as invitations. */
 function getSiteUrl(): string {
   return (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "")
 }
 
 /**
  * Converts a CTA URL to an absolute URL for email links.
- * Relative paths (e.g. /collections/xxx?step=yyy) are resolved against SITE_URL
- * so links open correctly in the user's browser.
+ * Relative paths are resolved against SITE_URL.
  */
 function toAbsoluteCtaUrl(ctaUrl: string | undefined): string | undefined {
   if (!ctaUrl?.trim()) return undefined
@@ -41,10 +37,19 @@ export interface SendNotificationEmailParams {
   to: string
   subject: string
   body: string
+  /** Title displayed inside the email body (distinct from subject line) */
+  emailTitle?: string
   ctaText?: string
   ctaUrl?: string
   recipientName?: string
   collectionName?: string
+  clientName?: string
+  shootingStartDate?: string
+  shootingEndDate?: string
+  shootingCity?: string
+  shootingCountry?: string
+  stepStatus?: string
+  stepName?: string
 }
 
 function escapeHtml(s: string): string {
@@ -55,23 +60,107 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
 }
 
-function buildNotificationEmailHtml(params: SendNotificationEmailParams): string {
-  const greeting = params.recipientName 
-    ? `Hi ${escapeHtml(params.recipientName)},`
-    : "Hi,"
+function formatDate(dateStr: string | undefined): string {
+  if (!dateStr) return "—"
+  try {
+    const d = new Date(dateStr)
+    if (!Number.isFinite(d.getTime())) return "—"
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  } catch {
+    return "—"
+  }
+}
 
+function getStepStatusBgColor(status: string): string {
+  switch (status) {
+    case "At risk": return "#FFF3CD"
+    case "Delayed": return "#F8D7DA"
+    case "Ready": return "#D4EDDA"
+    default: return "#E2E3E5"
+  }
+}
+
+function getStepStatusTextColor(status: string): string {
+  switch (status) {
+    case "At risk": return "#856404"
+    case "Delayed": return "#721C24"
+    case "Ready": return "#155724"
+    default: return "#383D41"
+  }
+}
+
+function buildNotificationEmailHtml(params: SendNotificationEmailParams): string {
   const absoluteCtaUrl = toAbsoluteCtaUrl(params.ctaUrl)
+
   const ctaButton = params.ctaText && absoluteCtaUrl
     ? `
-    <p style="margin: 28px 0;">
-      <a href="${escapeHtml(absoluteCtaUrl)}" style="display: inline-block; background: #1a1a1a; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 600;">${escapeHtml(params.ctaText)}</a>
-    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 28px 0 0;">
+      <tr>
+        <td style="border-radius: 8px; background: #A3C540;" valign="middle">
+          <a href="${escapeHtml(absoluteCtaUrl)}" target="_blank" style="display: inline-block; color: #fff; text-decoration: none; padding: 12px 28px; font-weight: 600; font-size: 14px; font-family: system-ui, -apple-system, sans-serif;">${escapeHtml(params.ctaText)}</a>
+        </td>
+      </tr>
+    </table>
     `
     : ""
 
-  const collectionInfo = params.collectionName
-    ? `<p style="font-size: 12px; color: #999; margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee;">Collection: ${escapeHtml(params.collectionName)}</p>`
+  const startDate = formatDate(params.shootingStartDate)
+  const endDate = formatDate(params.shootingEndDate)
+  const dateRange = params.shootingStartDate
+    ? (params.shootingEndDate ? `${startDate} - ${endDate}` : startDate)
     : ""
+
+  const locationParts = [params.shootingCity, params.shootingCountry].filter(Boolean)
+  const location = locationParts.length > 0
+    ? locationParts.map(l => escapeHtml(l!)).join(", ")
+    : ""
+
+  const stepStatusBg = getStepStatusBgColor(params.stepStatus || "")
+  const stepStatusColor = getStepStatusTextColor(params.stepStatus || "")
+  const stepStatusBadge = params.stepStatus
+    ? `<span style="display: inline-block; padding: 4px 12px; border-radius: 6px; background: ${stepStatusBg}; color: ${stepStatusColor}; font-size: 12px; font-weight: 600;">${escapeHtml(params.stepStatus)}</span>`
+    : ""
+
+  const collectionCard = params.collectionName
+    ? `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border: 1px solid #E5E7EB; border-radius: 12px; margin: 24px 0;">
+      <tr>
+        <td style="padding: 20px 24px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+            <tr>
+              <td style="font-size: 16px; font-weight: 700; color: #1a1a1a; font-family: system-ui, -apple-system, sans-serif;">
+                ${escapeHtml(params.collectionName)}
+              </td>
+              <td align="right" style="vertical-align: top;">
+                ${stepStatusBadge}
+              </td>
+            </tr>
+            ${params.clientName ? `
+            <tr>
+              <td colspan="2" style="padding-top: 4px; font-size: 14px; color: #A3C540; font-family: system-ui, -apple-system, sans-serif;">
+                @${escapeHtml(params.clientName)}
+              </td>
+            </tr>
+            ` : ""}
+            ${dateRange || location ? `
+            <tr>
+              <td style="padding-top: 8px; font-size: 13px; color: #6B7280; font-family: system-ui, -apple-system, sans-serif;">
+                ${dateRange ? escapeHtml(dateRange) : ""}
+              </td>
+              <td align="right" style="padding-top: 8px; font-size: 13px; color: #6B7280; font-family: system-ui, -apple-system, sans-serif;">
+                ${location}
+              </td>
+            </tr>
+            ` : ""}
+          </table>
+        </td>
+      </tr>
+    </table>
+    `
+    : ""
+
+  const emailTitle = params.emailTitle || params.subject
+  const emailBody = params.body
 
   return `
 <!DOCTYPE html>
@@ -80,14 +169,65 @@ function buildNotificationEmailHtml(params: SendNotificationEmailParams): string
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 560px; margin: 0 auto; padding: 24px;">
-  <p>${greeting}</p>
-  <p>${escapeHtml(params.body)}</p>
-  ${ctaButton}
-  <p style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #eee;">
-    <span style="font-size: 14px; color: #666;">— The noba* team</span>
-  </p>
-  ${collectionInfo}
+<body style="font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #1a1a1a; margin: 0; padding: 0; background-color: #FFFFFF;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 600px; margin: 0 auto;">
+    <!-- Header -->
+    <tr>
+      <td style="padding: 28px 24px 20px;">
+        <img src="https://prneklhdbujxmbuswplp.supabase.co/storage/v1/object/public/email-assets/Logotype.png" alt="noba*" width="100" style="display: block; height: auto;" />
+      </td>
+    </tr>
+
+    <!-- Collection Summary Card -->
+    <tr>
+      <td style="padding: 0 24px;">
+        ${collectionCard}
+      </td>
+    </tr>
+
+    <!-- Email Title -->
+    <tr>
+      <td style="padding: 8px 24px 0;">
+        <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: #1a1a1a; line-height: 1.3;">
+          ${escapeHtml(emailTitle)}
+        </h2>
+      </td>
+    </tr>
+
+    <!-- Email Description -->
+    <tr>
+      <td style="padding: 8px 24px 0;">
+        <p style="margin: 0; font-size: 15px; color: #4B5563; line-height: 1.6;">
+          ${escapeHtml(emailBody)}
+        </p>
+      </td>
+    </tr>
+
+    <!-- CTA Button -->
+    <tr>
+      <td style="padding: 0 24px;">
+        ${ctaButton}
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="padding: 48px 24px 24px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top: 1px solid #E5E7EB;">
+          <tr>
+            <td style="padding-top: 20px;">
+              <p style="margin: 0 0 8px; font-size: 12px; color: #9CA3AF; font-family: system-ui, -apple-system, sans-serif;">
+                &copy;noba-prod2026
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #9CA3AF; line-height: 1.5; font-family: system-ui, -apple-system, sans-serif;">
+                This platform, developed by noba*, streamlines the post-production process for everyone involved, from filmmakers to photographers, labs and client.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
 `.trim()
@@ -96,7 +236,6 @@ function buildNotificationEmailHtml(params: SendNotificationEmailParams): string
 /**
  * Sends a notification email to one recipient.
  * Returns { sent: true } on success; { sent: false, error } on failure.
- * Does not throw; if RESEND_API_KEY is missing, returns without sending.
  */
 export async function sendNotificationEmail(
   params: SendNotificationEmailParams
@@ -140,7 +279,6 @@ export async function sendNotificationEmail(
 
   try {
     let result = await sendOnce()
-    // Retry once on rate limit
     if (!result.sent && "statusCode" in result && result.statusCode === 429) {
       await new Promise((r) => setTimeout(r, 1000))
       result = await sendOnce()

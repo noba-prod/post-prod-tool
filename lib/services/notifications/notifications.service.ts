@@ -19,6 +19,7 @@ import {
   buildCtaUrl,
   formatNotificationTitle,
 } from "./recipient-resolver"
+import type { CollectionContext } from "./recipient-resolver"
 import { sendNotificationEmail } from "@/lib/email/send-notification"
 
 // Database type aliases
@@ -98,6 +99,77 @@ const DEADLINE_TO_MISSED_EVENT: [string, string, string][] = [
   ["precheck_studio_final_edits_date", "precheck_studio_final_edits_time", "final_edits_deadline_missed"],
   ["check_finals_photographer_check_date", "check_finals_photographer_check_time", "photographer_review_deadline_missed"],
 ]
+
+/**
+ * Maps each step note key (from PATCH body) to the step info and all roles
+ * that participate in that step's comment thread.
+ * When a comment is added, ALL listed roles receive the notification
+ * EXCEPT the user who wrote the comment.
+ */
+const STEP_NOTE_COMMENT_CONFIG: Record<
+  string,
+  {
+    stepName: string
+    step: number
+    stepSlug: string
+    recipients: RecipientType[]
+  }
+> = {
+  step_note_low_res: {
+    stepName: "Low-res scanning",
+    step: 3,
+    stepSlug: "low_res_scanning",
+    recipients: ["photo_lab", "photographer", "producer"],
+  },
+  step_note_photographer_selection: {
+    stepName: "Photographer selection",
+    step: 4,
+    stepSlug: "photographer_selection",
+    recipients: ["photographer", "client", "producer"],
+  },
+  step_note_client_selection: {
+    stepName: "Client selection",
+    step: 5,
+    stepSlug: "client_selection",
+    recipients: ["client", "photographer", "producer"],
+  },
+  step_note_photographer_review: {
+    stepName: "Photographer review",
+    step: 6,
+    stepSlug: "photographer_check",
+    recipients: ["photographer", "handprint_lab", "producer"],
+  },
+  step_note_high_res: {
+    stepName: "Low-res to high-res",
+    step: 7,
+    stepSlug: "handprint_high_res",
+    recipients: ["handprint_lab", "photographer", "producer"],
+  },
+  step_note_edition_request: {
+    stepName: "Retouch request",
+    step: 8,
+    stepSlug: "edition_request",
+    recipients: ["photographer", "retouch_studio", "producer"],
+  },
+  step_note_final_edits: {
+    stepName: "Final edits",
+    step: 9,
+    stepSlug: "final_edits",
+    recipients: ["retouch_studio", "photographer", "producer"],
+  },
+  step_note_photographer_last_check: {
+    stepName: "Photographer last check",
+    step: 10,
+    stepSlug: "photographer_last_check",
+    recipients: ["photographer", "retouch_studio", "producer"],
+  },
+  step_note_client_confirmation: {
+    stepName: "Client confirmation",
+    step: 11,
+    stepSlug: "client_confirmation",
+    recipients: ["client", "producer"],
+  },
+}
 
 /** Substatus order for "substatus >= X" comparison. Matches workflow.ts. */
 const SUBSTATUS_ORDER = [
@@ -386,13 +458,31 @@ export class NotificationsService implements INotificationsService {
           const user = userData as { email: string; first_name: string | null } | null
 
           if (user?.email) {
+            // Email body is stored as JSON with structured fields
+            let emailPayload: Record<string, string | null> = {}
+            try {
+              emailPayload = JSON.parse(notification.body)
+            } catch {
+              // Legacy plain-text body fallback
+              emailPayload = { emailTitle: notification.title, emailDescription: notification.body }
+            }
+
             const result = await sendNotificationEmail({
               to: user.email,
               subject: notification.title,
-              body: notification.body,
+              body: emailPayload.emailDescription || notification.body,
+              emailTitle: emailPayload.emailTitle || undefined,
               ctaText: notification.cta_text || undefined,
               ctaUrl: notification.cta_url || undefined,
               recipientName: user.first_name || undefined,
+              collectionName: emailPayload.collectionName || undefined,
+              clientName: emailPayload.clientName || undefined,
+              shootingStartDate: emailPayload.shootingStartDate || undefined,
+              shootingEndDate: emailPayload.shootingEndDate || undefined,
+              shootingCity: emailPayload.shootingCity || undefined,
+              shootingCountry: emailPayload.shootingCountry || undefined,
+              stepStatus: emailPayload.stepStatus || undefined,
+              stepName: emailPayload.stepName || undefined,
             })
 
             if (result.sent) {
@@ -687,6 +777,109 @@ export class NotificationsService implements INotificationsService {
     return { fired }
   }
 
+  /**
+   * Handle a new comment being added to a step.
+   * Resolves all relevant recipients for the step, excludes the commenter,
+   * and creates both email and in-app notifications.
+   */
+  async handleCommentAdded(
+    collectionId: string,
+    stepNoteKey: string,
+    commentUserId: string,
+    commentText: string
+  ): Promise<void> {
+    const config = STEP_NOTE_COMMENT_CONFIG[stepNoteKey]
+    if (!config) {
+      console.warn("[NotificationsService] Unknown step note key for comment notification:", stepNoteKey)
+      return
+    }
+
+    const context = await getCollectionContext(this.supabase, collectionId)
+    if (!context) {
+      console.error("[NotificationsService] Collection not found for comment notification:", collectionId)
+      return
+    }
+
+    // Record the event
+    await this.supabase
+      .from("collection_events")
+      .insert({
+        collection_id: collectionId,
+        event_type: "comment_added",
+        triggered_by_user_id: commentUserId,
+        metadata: { stepNoteKey, stepName: config.stepName, commentText },
+        notifications_processed: true,
+      } as never)
+
+    const allRecipients = await resolveRecipients(
+      this.supabase,
+      collectionId,
+      config.recipients
+    )
+
+    const recipients = allRecipients.filter((r) => r.userId !== commentUserId)
+    if (recipients.length === 0) return
+
+    const title = formatNotificationTitle("New comment", context.name, context.reference)
+    const body = `You have a new comment on ${config.stepName}`
+    const ctaUrl = buildCtaUrl(
+      `/collections/{collectionId}?step=${config.stepSlug}`,
+      collectionId
+    )
+
+    const emailSubject = `💬 New comment on ${config.stepName} - ${context.name} by ${context.clientName || "—"} - ${context.photographerName || "—"}`
+
+    for (const recipient of recipients) {
+      try {
+        await this.createNotification({
+          collection_id: collectionId,
+          template_id: null,
+          user_id: recipient.userId,
+          channel: "email",
+          status: "pending",
+          title: emailSubject,
+          body: JSON.stringify({
+            emailTitle: "You receive 1 new comment",
+            emailDescription: body,
+            collectionName: context.name,
+            clientName: context.clientName,
+            photographerName: context.photographerName,
+            shootingStartDate: context.shootingStartDate,
+            shootingEndDate: context.shootingEndDate,
+            shootingCity: context.shootingCity,
+            shootingCountry: context.shootingCountry,
+            stepStatus: "In progress",
+            stepName: config.stepName,
+          }),
+          cta_text: "Check comment",
+          cta_url: ctaUrl,
+        })
+      } catch (err) {
+        console.error("[NotificationsService] Failed creating comment email notification:", err)
+      }
+    }
+
+    const inappBody = `${body}\n${context.name} · ${config.stepName}`
+    for (const recipient of recipients) {
+      try {
+        await this.createNotification({
+          collection_id: collectionId,
+          template_id: null,
+          user_id: recipient.userId,
+          channel: "in_app",
+          status: "sent",
+          title,
+          body: inappBody,
+          cta_text: "Check comment",
+          cta_url: ctaUrl,
+          sent_at: new Date().toISOString(),
+        })
+      } catch (err) {
+        console.error("[NotificationsService] Failed creating comment in-app notification:", err)
+      }
+    }
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================
@@ -765,12 +958,39 @@ export class NotificationsService implements INotificationsService {
   }
 
   /**
+   * Interpolate email subject template with collection context values.
+   * Replaces {collectionName}, {clientName}, {photographerName}, {stepName}.
+   */
+  private static interpolateEmailSubject(
+    subjectTemplate: string,
+    context: CollectionContext,
+    stepName: string
+  ): string {
+    return subjectTemplate
+      .replace(/\{collectionName\}/g, context.name)
+      .replace(/\{clientName\}/g, context.clientName || "—")
+      .replace(/\{photographerName\}/g, context.photographerName || "—")
+      .replace(/\{stepName\}/g, stepName)
+  }
+
+  /**
+   * Derive step status label from template code for the email summary card.
+   * Maps template suffixes to user-facing labels.
+   */
+  private static deriveStepStatus(code: string): string {
+    if (code.includes("_risk") || code.includes("_at_risk") || code.includes("urgent_reminder") || code.includes("completion_check") || code.includes("review_reminder")) return "At risk"
+    if (code.includes("_delayed") || code.includes("_missed")) return "Delayed"
+    if (code.includes("_ready") || code.includes("_completed") || code.includes("_confirmed") || code.includes("_uploaded") || code.includes("_approved")) return "Ready"
+    return "In progress"
+  }
+
+  /**
    * Process a single template for a collection
    */
   private async processTemplate(
     template: NotificationTemplate,
     collectionId: string,
-    context: { name: string; reference: string | null },
+    context: CollectionContext,
     metadata?: Record<string, unknown>
   ): Promise<void> {
     // Resolve email recipients
@@ -792,6 +1012,13 @@ export class NotificationsService implements INotificationsService {
     const ctaUrl = buildCtaUrl(template.cta_url_template, collectionId)
     const body = NotificationsService.interpolateText(template.description, metadata)
 
+    // Build email subject from template's email_subject column
+    const emailSubject = template.email_subject
+      ? NotificationsService.interpolateEmailSubject(template.email_subject, context, template.step_name)
+      : title
+
+    const stepStatus = NotificationsService.deriveStepStatus(template.code)
+
     // Create email notifications
     for (const recipient of emailRecipients) {
       await this.createNotification({
@@ -800,12 +1027,27 @@ export class NotificationsService implements INotificationsService {
         user_id: recipient.userId,
         channel: "email",
         status: "pending",
-        title,
-        body,
+        title: emailSubject,
+        body: JSON.stringify({
+          emailTitle: title,
+          emailDescription: body,
+          collectionName: context.name,
+          clientName: context.clientName,
+          photographerName: context.photographerName,
+          shootingStartDate: context.shootingStartDate,
+          shootingEndDate: context.shootingEndDate,
+          shootingCity: context.shootingCity,
+          shootingCountry: context.shootingCountry,
+          stepStatus,
+          stepName: template.step_name,
+        }),
         cta_text: template.cta_text,
         cta_url: ctaUrl,
       })
     }
+
+    // Build in-app body: description + collection name · step name
+    const inappBody = `${body}\n${context.name} · ${template.step_name}`
 
     // Create in-app notifications (immediately sent)
     for (const recipient of inappRecipients) {
@@ -816,7 +1058,7 @@ export class NotificationsService implements INotificationsService {
         channel: "in_app",
         status: "sent",
         title,
-        body,
+        body: inappBody,
         cta_text: template.cta_text,
         cta_url: ctaUrl,
         sent_at: new Date().toISOString(),

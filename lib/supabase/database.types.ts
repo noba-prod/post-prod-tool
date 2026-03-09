@@ -74,6 +74,7 @@ export type CollectionEventType =
   | 'photographer_edits_approved'
   | 'photographer_review_deadline_missed'
   | 'client_confirmation_confirmed'
+  | 'comment_added'
   | 'collection_completed'
   | 'collection_cancelled'
 
@@ -571,6 +572,7 @@ export interface NotificationTemplate {
   step_name: string
   title: string
   description: string
+  email_subject: string | null
   cta_text: string | null
   cta_url_template: string | null
   trigger_type: NotificationTriggerType
@@ -591,6 +593,7 @@ export interface NotificationTemplateInsert {
   step_name: string
   title: string
   description: string
+  email_subject?: string | null
   cta_text?: string | null
   cta_url_template?: string | null
   trigger_type: NotificationTriggerType
@@ -610,6 +613,7 @@ export interface NotificationTemplateUpdate {
   step_name?: string
   title?: string
   description?: string
+  email_subject?: string | null
   cta_text?: string | null
   cta_url_template?: string | null
   trigger_type?: NotificationTriggerType

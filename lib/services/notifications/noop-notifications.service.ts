@@ -58,4 +58,13 @@ export class NoopNotificationsService implements INotificationsService {
   async rescheduleForUpdatedCollections(): Promise<{ rescheduled: number }> {
     return { rescheduled: 0 }
   }
+
+  async handleCommentAdded(
+    _collectionId: string,
+    _stepNoteKey: string,
+    _commentUserId: string,
+    _commentText: string
+  ): Promise<void> {
+    // No-op
+  }
 }

@@ -50,6 +50,8 @@ export type CollectionEventType =
   | "photographer_review_deadline_missed"
   // Client confirmation (step 11)
   | "client_confirmation_confirmed"
+  // Comment events
+  | "comment_added"
   // Final events
   | "collection_completed"
   | "collection_cancelled"
@@ -146,4 +148,15 @@ export interface INotificationsService {
    * Re-schedule time-based notifications for recently updated collections.
    */
   rescheduleForUpdatedCollections(): Promise<{ rescheduled: number }>
+
+  /**
+   * Handle a new comment being added to a step.
+   * Notifies all relevant parties for the step except the commenter.
+   */
+  handleCommentAdded(
+    collectionId: string,
+    stepNoteKey: string,
+    commentUserId: string,
+    commentText: string
+  ): Promise<void>
 }

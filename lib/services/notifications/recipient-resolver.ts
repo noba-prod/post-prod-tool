@@ -195,16 +195,27 @@ export async function resolveRecipients(
     }))
 }
 
+export interface CollectionContext {
+  name: string
+  reference: string | null
+  clientName: string | null
+  photographerName: string | null
+  shootingStartDate: string | null
+  shootingEndDate: string | null
+  shootingCity: string | null
+  shootingCountry: string | null
+}
+
 /**
- * Get collection details for notification context (name, reference, etc.)
+ * Get collection details for notification context (name, reference, client, photographer, dates, location)
  */
 export async function getCollectionContext(
   supabase: SupabaseClient<Database>,
   collectionId: string
-): Promise<{ name: string; reference: string | null } | null> {
+): Promise<CollectionContext | null> {
   const { data, error } = await supabase
     .from("collections")
-    .select("name, reference")
+    .select("name, reference, client_id, photographer_id, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
     .eq("id", collectionId)
     .single()
 
@@ -213,7 +224,47 @@ export async function getCollectionContext(
     return null
   }
 
-  return data as { name: string; reference: string | null }
+  const col = data as {
+    name: string
+    reference: string | null
+    client_id: string
+    photographer_id: string | null
+    shooting_start_date: string | null
+    shooting_end_date: string | null
+    shooting_city: string | null
+    shooting_country: string | null
+  }
+
+  let clientName: string | null = null
+  if (col.client_id) {
+    const { data: clientOrg } = await supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", col.client_id)
+      .single()
+    clientName = (clientOrg as { name: string } | null)?.name ?? null
+  }
+
+  let photographerName: string | null = null
+  if (col.photographer_id) {
+    const { data: photographerOrg } = await supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", col.photographer_id)
+      .single()
+    photographerName = (photographerOrg as { name: string } | null)?.name ?? null
+  }
+
+  return {
+    name: col.name,
+    reference: col.reference,
+    clientName,
+    photographerName,
+    shootingStartDate: col.shooting_start_date,
+    shootingEndDate: col.shooting_end_date,
+    shootingCity: col.shooting_city,
+    shootingCountry: col.shooting_country,
+  }
 }
 
 /**

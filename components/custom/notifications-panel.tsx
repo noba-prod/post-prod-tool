@@ -109,16 +109,24 @@ function NotificationItem({
             </span>
           </div>
           
-          <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-            {notification.body}
-          </p>
-
-          {/* Collection name */}
-          {notification.collectionName && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Collection: {notification.collectionName}
-            </p>
-          )}
+          {(() => {
+            const lines = notification.body.split("\n")
+            const hasMetaLine = lines.length > 1 && lines[lines.length - 1].includes(" · ")
+            const description = hasMetaLine ? lines.slice(0, -1).join("\n") : notification.body
+            const metaLine = hasMetaLine ? lines[lines.length - 1] : null
+            return (
+              <>
+                <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                  {description}
+                </p>
+                {metaLine && (
+                  <p className="mt-1.5 text-xs text-muted-foreground/70">
+                    {metaLine}
+                  </p>
+                )}
+              </>
+            )
+          })()}
 
           {/* CTA Button */}
           {notification.ctaText && notification.ctaUrl && (
