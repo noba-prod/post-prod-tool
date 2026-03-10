@@ -24,8 +24,6 @@ export type CollectionEventType =
   | "photographer_selection_shared"
   | "photographer_selection_deadline_missed"
   | "photographer_requested_additional_photos"
-  | "photographer_request_missing_photos"
-  | "client_request_missing_photos"
   // Client selection events
   | "client_selection_started"
   | "client_selection_confirmed"

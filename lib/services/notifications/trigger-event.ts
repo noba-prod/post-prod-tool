@@ -100,13 +100,6 @@ export const CollectionEvents = {
   scanningCompleted: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "scanning_completed", options),
 
-  // Missing photos requests
-  photographerRequestMissingPhotos: (collectionId: string, options?: TriggerEventOptions) =>
-    triggerCollectionEvent(collectionId, "photographer_request_missing_photos", options),
-
-  clientRequestMissingPhotos: (collectionId: string, options?: TriggerEventOptions) =>
-    triggerCollectionEvent(collectionId, "client_request_missing_photos", options),
-
   // Photographer check (validates client selection — step 6)
   photographerCheckApproved: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "photographer_check_approved", options),

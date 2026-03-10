@@ -101,6 +101,22 @@ const DEADLINE_TO_MISSED_EVENT: [string, string, string][] = [
 ]
 
 /**
+ * Maps missed-deadline event types to the minimum substatus that indicates
+ * the associated step is already done. Used in detectAndFireMissedDeadlines
+ * to avoid firing missed events for steps that have already been completed.
+ */
+const MISSED_EVENT_MIN_SUBSTATUS: Record<string, (typeof SUBSTATUS_ORDER)[number]> = {
+  dropoff_deadline_missed: "low_res_scanning",
+  scanning_deadline_missed: "photographer_selection",
+  photographer_selection_deadline_missed: "client_selection",
+  client_selection_deadline_missed: "low_res_to_high_res",
+  photographer_check_deadline_missed: "low_res_to_high_res",
+  highres_deadline_missed: "edition_request",
+  final_edits_deadline_missed: "photographer_last_check",
+  photographer_review_deadline_missed: "client_confirmation",
+}
+
+/**
  * Maps each step note key (from PATCH body) to the step info and all roles
  * that participate in that step's comment thread.
  * When a comment is added, ALL listed roles receive the notification
@@ -214,6 +230,25 @@ const TRIGGER_EVENT_TO_COMPLETION: Record<
   project_deadline: { completionEvent: "collection_completed" },
 }
 
+/**
+ * Maps template step number to the minimum substatus that indicates the step is done.
+ * If the collection's current substatus index >= this index, the step is already completed
+ * and notifications for it should be suppressed.
+ * Step 11 (client_confirmation) is only completed when collection status === "completed".
+ */
+const STEP_TO_COMPLETED_MIN_SUBSTATUS: Record<number, (typeof SUBSTATUS_ORDER)[number]> = {
+  1: "negatives_drop_off",
+  2: "low_res_scanning",
+  3: "photographer_selection",
+  4: "client_selection",
+  5: "low_res_to_high_res",
+  6: "low_res_to_high_res",
+  7: "edition_request",
+  8: "final_edits",
+  9: "photographer_last_check",
+  10: "client_confirmation",
+}
+
 export class NotificationsService implements INotificationsService {
   constructor(private readonly supabase: SupabaseClient<Database>) {}
 
@@ -239,6 +274,22 @@ export class NotificationsService implements INotificationsService {
     triggeredByUserId?: string,
     metadata?: Record<string, unknown>
   ): Promise<void> {
+    // Resolve triggered-by user name so templates can use {commentorName}
+    if (triggeredByUserId && !metadata?.commentorName) {
+      const { data: profile } = await this.supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", triggeredByUserId)
+        .single()
+      if (profile) {
+        const p = profile as { first_name: string | null; last_name: string | null }
+        const fullName = [p.first_name, p.last_name].filter(Boolean).join(" ")
+        if (fullName) {
+          metadata = { ...metadata, commentorName: fullName }
+        }
+      }
+    }
+
     let eventId: string | null = null
     // Idempotent: at most one shooting_started per collection (multiple code paths can call this)
     if (eventType === "shooting_started") {
@@ -320,15 +371,22 @@ export class NotificationsService implements INotificationsService {
     if (!templates || templates.length === 0) {
       console.log(`[NotificationsService] No templates for event: ${eventType}`)
     } else {
-      // 3. Get collection context
+      // 3. Get collection context + status for step-completion guard
       const context = await getCollectionContext(this.supabase, collectionId)
       if (!context) {
         console.error("[NotificationsService] Collection not found:", collectionId)
       } else {
+        const { data: colStatusData } = await this.supabase
+          .from("collections")
+          .select("status, substatus")
+          .eq("id", collectionId)
+          .single()
+        const collectionStatus = colStatusData as { status: string; substatus: string | null } | null
+
         // 4. Process each template (pass metadata for dynamic description interpolation)
         for (const template of templates as NotificationTemplate[]) {
           try {
-            await this.processTemplate(template, collectionId, context, metadata)
+            await this.processTemplate(template, collectionId, context, metadata, collectionStatus ?? undefined)
           } catch (err) {
             // Keep processing remaining templates for this event
             console.error(
@@ -385,6 +443,14 @@ export class NotificationsService implements INotificationsService {
         const template = scheduled.notification_templates
         if (!template) continue
 
+        // Fetch collection status once per scheduled entry
+        const { data: colStatusData } = await this.supabase
+          .from("collections")
+          .select("status, substatus")
+          .eq("id", scheduled.collection_id)
+          .single()
+        const collectionStatus = colStatusData as { status: string; substatus: string | null } | null
+
         // Check if condition is met (for 'if' triggers)
         if (template.trigger_condition) {
           const conditionMet = await this.checkCondition(
@@ -404,7 +470,8 @@ export class NotificationsService implements INotificationsService {
         // Skip if milestone already completed (e.g. client confirmed before deadline)
         const milestoneCompleted = await this.isMilestoneAlreadyCompleted(
           scheduled.collection_id,
-          template
+          template,
+          collectionStatus
         )
         if (milestoneCompleted) {
           await this.supabase
@@ -417,7 +484,19 @@ export class NotificationsService implements INotificationsService {
         const context = await getCollectionContext(this.supabase, scheduled.collection_id)
         if (!context) continue
 
-        await this.processTemplate(template, scheduled.collection_id, context)
+        const scheduledMetadata: Record<string, unknown> = {}
+        if (scheduled.deadline_value) {
+          const dl = new Date(scheduled.deadline_value)
+          if (Number.isFinite(dl.getTime())) {
+            scheduledMetadata.slotDeadlineTime = dl.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })
+          }
+        }
+
+        await this.processTemplate(template, scheduled.collection_id, context, scheduledMetadata, collectionStatus ?? undefined)
 
         // Mark as sent
         await this.supabase
@@ -752,6 +831,8 @@ export class NotificationsService implements INotificationsService {
     for (const collection of collections as Array<Record<string, unknown> & { id: string }>) {
       const col = collection as Record<string, unknown>
 
+      const collSubstatus = col.substatus as string | null
+
       for (const [dateField, timeField, eventType] of DEADLINE_TO_MISSED_EVENT) {
         const dateVal = col[dateField] as string | null
         if (!dateVal) continue
@@ -759,6 +840,14 @@ export class NotificationsService implements INotificationsService {
         const timeVal = col[timeField] as string | null
         const deadline = this.parseDeadline(dateVal, timeVal)
         if (!deadline || deadline > now) continue
+
+        // Skip if the step is already completed — no need to fire a "missed" event
+        const minSubstatus = MISSED_EVENT_MIN_SUBSTATUS[eventType]
+        if (minSubstatus && collSubstatus) {
+          const currentIdx = SUBSTATUS_ORDER.indexOf(collSubstatus as (typeof SUBSTATUS_ORDER)[number])
+          const minIdx = SUBSTATUS_ORDER.indexOf(minSubstatus)
+          if (currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx) continue
+        }
 
         const { data: existing } = await this.supabase
           .from("collection_events")
@@ -884,19 +973,41 @@ export class NotificationsService implements INotificationsService {
   // Private Methods
   // ============================================================================
 
+  /**
+   * Determine whether a template's step has already been completed based on
+   * the collection's current status and substatus. When true the notification
+   * should be silently skipped.
+   */
+  private static isStepCompleted(
+    status: string,
+    substatus: string | null,
+    templateStep: number
+  ): boolean {
+    if (status === "completed" || status === "cancelled") return true
+    if (templateStep === 11) return false
+
+    const minSubstatus = STEP_TO_COMPLETED_MIN_SUBSTATUS[templateStep]
+    if (!minSubstatus || !substatus) return false
+
+    const currentIdx = SUBSTATUS_ORDER.indexOf(substatus as (typeof SUBSTATUS_ORDER)[number])
+    const minIdx = SUBSTATUS_ORDER.indexOf(minSubstatus)
+
+    return currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx
+  }
+
   private static readonly NOTE_TEXT_FALLBACK = "A request has been made. Please check the collection for details."
   private static readonly DROPOFF_MEETS_DEADLINE_TITLE =
-    "Lab received negatives - low-res scanning can stay on schedule"
+    "Lab received negatives for {collectionName} - low-res scanning can stay on schedule"
   private static readonly DROPOFF_MEETS_DEADLINE_SUBTITLE =
-    "The lab has confirmed receipt of the negatives and can meet the low-res scanning deadline."
+    "The lab has confirmed receipt of the negatives for {collectionName} and can meet the low-res scanning deadline."
   private static readonly DROPOFF_MISSES_DEADLINE_TITLE =
-    "Lab received negatives - low-res scanning deadline at risk"
+    "Lab received negatives for {collectionName} - low-res scanning deadline at risk"
   private static readonly DROPOFF_MISSES_DEADLINE_SUBTITLE =
-    "The lab has confirmed receipt of the negatives but cannot meet the low-res scanning deadline."
+    "The lab has confirmed receipt of the negatives for {collectionName} but cannot meet the low-res scanning deadline."
   private static readonly DROPOFF_STATUS_UNKNOWN_TITLE =
-    "Lab received negatives"
+    "Lab received negatives for {collectionName}"
   private static readonly DROPOFF_STATUS_UNKNOWN_SUBTITLE =
-    "The lab has confirmed receipt of the negatives. Check if the low-res scanning deadline is still feasible."
+    "The lab has confirmed receipt of the negatives for {collectionName}. Check if the low-res scanning deadline is still feasible."
 
   private static getDropoffStatusCopy(
     metadata?: Record<string, unknown>
@@ -925,10 +1036,12 @@ export class NotificationsService implements INotificationsService {
    * Supports:
    * - {noteText} from metadata.noteText
    * - {dropoffConfirmationTitle}/{dropoffConfirmationSubtitle} from metadata.canMeetDeadline
+   * - {collectionName} from context.name (when context is provided)
    */
   private static interpolateText(
     text: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    context?: CollectionContext
   ): string {
     let result = text
 
@@ -954,6 +1067,33 @@ export class NotificationsService implements INotificationsService {
       result = result.replace(/\{dropoffConfirmationSubtitle\}/g, dropoffCopy.subtitle)
     }
 
+    if (context) {
+      if (result.includes("{collectionName}")) {
+        result = result.replace(/\{collectionName\}/g, context.name)
+      }
+      if (result.includes("{photographerName}")) {
+        result = result.replace(/\{photographerName\}/g, context.photographerName || "Photographer")
+      }
+      if (result.includes("{photoLabName}")) {
+        result = result.replace(/\{photoLabName\}/g, context.photoLabName || "Photo lab")
+      }
+      if (result.includes("{retouchStudioName}")) {
+        result = result.replace(/\{retouchStudioName\}/g, context.retouchStudioName || "Retouch studio")
+      }
+    }
+
+    if (result.includes("{commentorName}")) {
+      const name =
+        (typeof metadata?.commentorName === "string" && metadata.commentorName.trim()) || "Someone"
+      result = result.replace(/\{commentorName\}/g, name)
+    }
+
+    if (result.includes("{slotDeadlineTime}")) {
+      const time =
+        (typeof metadata?.slotDeadlineTime === "string" && metadata.slotDeadlineTime.trim()) || "the deadline"
+      result = result.replace(/\{slotDeadlineTime\}/g, time)
+    }
+
     return result
   }
 
@@ -970,6 +1110,8 @@ export class NotificationsService implements INotificationsService {
       .replace(/\{collectionName\}/g, context.name)
       .replace(/\{clientName\}/g, context.clientName || "—")
       .replace(/\{photographerName\}/g, context.photographerName || "—")
+      .replace(/\{photoLabName\}/g, context.photoLabName || "Photo lab")
+      .replace(/\{retouchStudioName\}/g, context.retouchStudioName || "Retouch studio")
       .replace(/\{stepName\}/g, stepName)
   }
 
@@ -985,14 +1127,37 @@ export class NotificationsService implements INotificationsService {
   }
 
   /**
-   * Process a single template for a collection
+   * Process a single template for a collection.
+   * Accepts optional pre-fetched collection status to avoid redundant DB lookups.
+   * Silently skips if the template's step has already been completed.
    */
   private async processTemplate(
     template: NotificationTemplate,
     collectionId: string,
     context: CollectionContext,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    collectionStatus?: { status: string; substatus: string | null }
   ): Promise<void> {
+    let statusInfo = collectionStatus
+    if (!statusInfo) {
+      const { data } = await this.supabase
+        .from("collections")
+        .select("status, substatus")
+        .eq("id", collectionId)
+        .single()
+      if (data) statusInfo = data as { status: string; substatus: string | null }
+    }
+    if (
+      statusInfo &&
+      NotificationsService.isStepCompleted(statusInfo.status, statusInfo.substatus, template.step)
+    ) {
+      console.log(
+        `[NotificationsService] Skipping ${template.code} — step ${template.step} already completed ` +
+        `(status=${statusInfo.status}, substatus=${statusInfo.substatus})`
+      )
+      return
+    }
+
     // Resolve email recipients
     const emailRecipients = await resolveRecipients(
       this.supabase,
@@ -1007,10 +1172,10 @@ export class NotificationsService implements INotificationsService {
       (template.inapp_recipients || []) as RecipientType[]
     )
 
-    const interpolatedTitle = NotificationsService.interpolateText(template.title, metadata)
+    const interpolatedTitle = NotificationsService.interpolateText(template.title, metadata, context)
     const title = formatNotificationTitle(interpolatedTitle, context.name, context.reference)
     const ctaUrl = buildCtaUrl(template.cta_url_template, collectionId)
-    const body = NotificationsService.interpolateText(template.description, metadata)
+    const body = NotificationsService.interpolateText(template.description, metadata, context)
 
     // Build email subject from template's email_subject column
     const emailSubject = template.email_subject
@@ -1132,27 +1297,37 @@ export class NotificationsService implements INotificationsService {
 
   /**
    * Check if the milestone for a scheduled notification has already been completed.
-   * If true, the notification should be skipped (marked as sent without sending).
+   * Uses two complementary strategies:
+   *   1. Step-based check via STEP_TO_COMPLETED_MIN_SUBSTATUS (covers all templates).
+   *   2. Event-based check via TRIGGER_EVENT_TO_COMPLETION (extra safety for deadline templates).
+   * Accepts optional pre-fetched status to avoid redundant DB lookups.
    */
   private async isMilestoneAlreadyCompleted(
     collectionId: string,
-    template: NotificationTemplate
+    template: NotificationTemplate,
+    preloadedStatus?: { status: string; substatus: string | null } | null
   ): Promise<boolean> {
+    let statusInfo = preloadedStatus ?? null
+    if (!statusInfo) {
+      const { data, error } = await this.supabase
+        .from("collections")
+        .select("status, substatus")
+        .eq("id", collectionId)
+        .single()
+      if (error || !data) return false
+      statusInfo = data as { status: string; substatus: string | null }
+    }
+
+    if (statusInfo.status === "completed" || statusInfo.status === "cancelled") return true
+
+    // Step-based check (works for every template regardless of trigger_event)
+    if (NotificationsService.isStepCompleted(statusInfo.status, statusInfo.substatus, template.step)) {
+      return true
+    }
+
+    // Event-based check for deadline templates
     const criteria = TRIGGER_EVENT_TO_COMPLETION[template.trigger_event]
     if (!criteria) return false
-
-    const { data: collection, error: colError } = await this.supabase
-      .from("collections")
-      .select("status, substatus")
-      .eq("id", collectionId)
-      .single()
-
-    if (colError || !collection) return false
-
-    const status = (collection as { status: string }).status
-    const substatus = (collection as { substatus: string | null }).substatus
-
-    if (status === "completed") return true
 
     const { data: events } = await this.supabase
       .from("collection_events")
@@ -1169,8 +1344,8 @@ export class NotificationsService implements INotificationsService {
       return true
     }
 
-    if (criteria.minSubstatus && substatus) {
-      const currentIdx = SUBSTATUS_ORDER.indexOf(substatus as (typeof SUBSTATUS_ORDER)[number])
+    if (criteria.minSubstatus && statusInfo.substatus) {
+      const currentIdx = SUBSTATUS_ORDER.indexOf(statusInfo.substatus as (typeof SUBSTATUS_ORDER)[number])
       const minIdx = SUBSTATUS_ORDER.indexOf(criteria.minSubstatus)
       if (currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx) {
         return true

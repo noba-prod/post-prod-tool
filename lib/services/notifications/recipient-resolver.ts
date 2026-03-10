@@ -200,6 +200,9 @@ export interface CollectionContext {
   reference: string | null
   clientName: string | null
   photographerName: string | null
+  photoLabName: string | null
+  retouchStudioName: string | null
+  handprintLabName: string | null
   shootingStartDate: string | null
   shootingEndDate: string | null
   shootingCity: string | null
@@ -215,7 +218,7 @@ export async function getCollectionContext(
 ): Promise<CollectionContext | null> {
   const { data, error } = await supabase
     .from("collections")
-    .select("name, reference, client_id, photographer_id, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
+    .select("name, reference, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
     .eq("id", collectionId)
     .single()
 
@@ -229,37 +232,35 @@ export async function getCollectionContext(
     reference: string | null
     client_id: string
     photographer_id: string | null
+    photo_lab_id: string | null
+    retouch_studio_id: string | null
+    handprint_lab_id: string | null
     shooting_start_date: string | null
     shooting_end_date: string | null
     shooting_city: string | null
     shooting_country: string | null
   }
 
-  let clientName: string | null = null
-  if (col.client_id) {
-    const { data: clientOrg } = await supabase
+  const orgIds = [col.client_id, col.photographer_id, col.photo_lab_id, col.retouch_studio_id, col.handprint_lab_id].filter(Boolean) as string[]
+  const orgMap = new Map<string, string>()
+  if (orgIds.length > 0) {
+    const { data: orgs } = await supabase
       .from("organizations")
-      .select("name")
-      .eq("id", col.client_id)
-      .single()
-    clientName = (clientOrg as { name: string } | null)?.name ?? null
-  }
-
-  let photographerName: string | null = null
-  if (col.photographer_id) {
-    const { data: photographerOrg } = await supabase
-      .from("organizations")
-      .select("name")
-      .eq("id", col.photographer_id)
-      .single()
-    photographerName = (photographerOrg as { name: string } | null)?.name ?? null
+      .select("id, name")
+      .in("id", orgIds)
+    for (const org of (orgs || []) as { id: string; name: string }[]) {
+      orgMap.set(org.id, org.name)
+    }
   }
 
   return {
     name: col.name,
     reference: col.reference,
-    clientName,
-    photographerName,
+    clientName: col.client_id ? (orgMap.get(col.client_id) ?? null) : null,
+    photographerName: col.photographer_id ? (orgMap.get(col.photographer_id) ?? null) : null,
+    photoLabName: col.photo_lab_id ? (orgMap.get(col.photo_lab_id) ?? null) : null,
+    retouchStudioName: col.retouch_studio_id ? (orgMap.get(col.retouch_studio_id) ?? null) : null,
+    handprintLabName: col.handprint_lab_id ? (orgMap.get(col.handprint_lab_id) ?? null) : null,
     shootingStartDate: col.shooting_start_date,
     shootingEndDate: col.shooting_end_date,
     shootingCity: col.shooting_city,
