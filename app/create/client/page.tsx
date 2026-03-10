@@ -127,6 +127,7 @@ export default function ClientCreationPage() {
                 entityType={creation.entityType}
                 showLocation={entityRequiresLocation(creation.entityType)}
                 initialData={creation.basicFormData ?? undefined}
+                existingProfilePictureUrl={creation.entity?.profilePictureUrl}
                 onDataChange={creation.handleFormDataChange}
                 onValidationChange={creation.handleValidationChange}
               />
@@ -187,6 +188,7 @@ export default function ClientCreationPage() {
               phoneNumber: userData.phoneNumber,
               countryCode: userData.countryCode,
               role: userData.role,
+              profilePicture: userData.profilePicture,
             })
           }}
           onCancel={creation.closeNewMemberModal}

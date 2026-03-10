@@ -62,7 +62,6 @@ const COLLECTION_STATUSES = [
 const USER_ROLES = [
   { value: "admin", label: "Admin" },
   { value: "editor", label: "Editor" },
-  { value: "viewer", label: "Viewer" },
 ]
 
 const ENTITY_TYPES = [

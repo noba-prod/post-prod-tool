@@ -156,21 +156,25 @@ export function ParticipantsModal({
             Main players
           </h3>
           <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(237px,1fr))]">
-            {mainPlayersIndividuals.map((user, i) => (
-              <div key={`main-ind-${i}-${user.name}`} className="flex flex-col gap-3">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {toTitleCase(user.roleLabel ?? "Photographer")}
-                </span>
-                <ParticipantsCard
-                  variant="individual"
-                  title={user.name}
-                  initials={user.initials}
-                  imageUrl={user.imageUrl}
-                  email={user.email}
-                  phone={user.phone}
-                />
-              </div>
-            ))}
+            {mainPlayersIndividuals.map((user, i) => {
+              const isPhotographer = (user.roleLabel ?? "").toLowerCase() === "photographer"
+              return (
+                <div key={`main-ind-${i}-${user.name}`} className="flex flex-col gap-3">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {toTitleCase(user.roleLabel ?? "Photographer")}
+                  </span>
+                  <ParticipantsCard
+                    variant="individual"
+                    title={user.name}
+                    initials={user.initials}
+                    imageUrl={user.imageUrl}
+                    email={user.email}
+                    phone={user.phone}
+                    hideContactInfo={isPhotographer}
+                  />
+                </div>
+              )
+            })}
             {mainPlayersEntities.map((entity, i) => (
               <div key={`main-ent-${i}-${entity.entityName}`} className="flex flex-col gap-3">
                 <span className="text-xs font-medium text-muted-foreground">

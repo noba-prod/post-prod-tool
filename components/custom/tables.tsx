@@ -53,6 +53,7 @@ interface Collection {
   name: string
   status: CollectionStatus
   client: string
+  jobReference: string
   starting: string
   location: string
   participants: number
@@ -118,11 +119,11 @@ const sampleEntities: Entity[] = [
 ]
 
 const sampleCollections: Collection[] = [
-  { id: "1", name: "Kids summer'25", status: "draft", client: "Zara", starting: "Dec 4, 2025", location: "A Coruña, Spain", participants: 0 },
-  { id: "2", name: "Sakura: Cherry blossom", status: "upcoming", client: "Loewe", starting: "Dec 14, 2025", location: "Paris, France", participants: 6 },
-  { id: "3", name: "Beach resort 2025", status: "in-progress", client: "Dior", starting: "Dec 8, 2025", location: "Madrid, Spain", participants: 8 },
-  { id: "4", name: "Streetwear collection 2025", status: "completed", client: "Mango", starting: "Jan 14, 2026", location: "Lanzarote, Spain", participants: 4 },
-  { id: "5", name: "Speed run 2025", status: "canceled", client: "zaraathleticz", starting: "Mar 4, 2026", location: "Azores, Portugal", participants: 1 },
+  { id: "1", name: "Kids summer'25", status: "draft", client: "Zara", jobReference: "—", starting: "Dec 4, 2025", location: "A Coruña, Spain", participants: 0 },
+  { id: "2", name: "Sakura: Cherry blossom", status: "upcoming", client: "Loewe", jobReference: "—", starting: "Dec 14, 2025", location: "Paris, France", participants: 6 },
+  { id: "3", name: "Beach resort 2025", status: "in-progress", client: "Dior", jobReference: "—", starting: "Dec 8, 2025", location: "Madrid, Spain", participants: 8 },
+  { id: "4", name: "Streetwear collection 2025", status: "completed", client: "Mango", jobReference: "—", starting: "Jan 14, 2026", location: "Lanzarote, Spain", participants: 4 },
+  { id: "5", name: "Speed run 2025", status: "canceled", client: "zaraathleticz", jobReference: "—", starting: "Mar 4, 2026", location: "Azores, Portugal", participants: 1 },
 ]
 
 const sampleParticipants: Participant[] = [
@@ -282,7 +283,7 @@ function EntitiesTable({
             <ArrowDownUp className="size-4 shrink-0" aria-label="Descending" />
           )
         ) : (
-          <ArrowDownUp className="size-4 shrink-0 text-muted-foreground" aria-label="Sort" />
+          <ArrowUpDown className="size-4 shrink-0 text-muted-foreground" aria-label="Sort" />
         )}
       </button>
     </TableHead>
@@ -354,6 +355,27 @@ function EntitiesTable({
 // COLLECTIONS TABLE
 // ============================================================================
 
+const COLLECTION_STATUS_ORDER: Record<CollectionStatus, number> = {
+  draft: 0,
+  upcoming: 1,
+  "in-progress": 2,
+  completed: 3,
+  canceled: 4,
+}
+
+/** Parse "24 Feb 2026" or "TBD" for sorting. TBD sorts last. */
+function parseStartingDate(s: string): number {
+  if (!s || s === "TBD") return Number.MAX_SAFE_INTEGER
+  try {
+    const d = new Date(s)
+    return Number.isNaN(d.getTime()) ? Number.MAX_SAFE_INTEGER : d.getTime()
+  } catch {
+    return Number.MAX_SAFE_INTEGER
+  }
+}
+
+type CollectionSortColumn = "name" | "status" | "client" | "jobReference" | "starting"
+
 function CollectionsTable({
   data = sampleCollections,
   onSettings,
@@ -364,22 +386,84 @@ function CollectionsTable({
   /** Callback when row is clicked (id, status). If provided, row becomes clickable. */
   onRowClick?: (id: string, status: CollectionStatus) => void
 }) {
+  const [sortColumn, setSortColumn] = React.useState<CollectionSortColumn | null>(null)
+  const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc")
+
+  const handleSort = (column: CollectionSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+    } else {
+      setSortColumn(column)
+      setSortDirection("asc")
+    }
+  }
+
+  const sortedData = React.useMemo(() => {
+    const list = data ?? []
+    if (!sortColumn) return list
+    return [...list].sort((a, b) => {
+      let cmp = 0
+      switch (sortColumn) {
+        case "name":
+          cmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+          break
+        case "status":
+          cmp = COLLECTION_STATUS_ORDER[a.status] - COLLECTION_STATUS_ORDER[b.status]
+          break
+        case "client":
+          cmp = a.client.localeCompare(b.client, undefined, { sensitivity: "base" })
+          break
+        case "jobReference":
+          cmp = (a.jobReference || "—").localeCompare(b.jobReference || "—", undefined, {
+            sensitivity: "base",
+          })
+          break
+        case "starting":
+          cmp = parseStartingDate(a.starting) - parseStartingDate(b.starting)
+          break
+      }
+      return sortDirection === "asc" ? cmp : -cmp
+    })
+  }, [data, sortColumn, sortDirection])
+
+  const SortableHead = ({ column, label }: { column: CollectionSortColumn; label: string }) => (
+    <TableHead className="bg-sidebar h-12">
+      <button
+        type="button"
+        onClick={() => handleSort(column)}
+        className="inline-flex items-center gap-1.5 text-left font-medium hover:opacity-80 transition-opacity w-full"
+      >
+        {label}
+        {sortColumn === column ? (
+          sortDirection === "asc" ? (
+            <ArrowUpDown className="size-4 shrink-0" aria-label="Ascending" />
+          ) : (
+            <ArrowDownUp className="size-4 shrink-0" aria-label="Descending" />
+          )
+        ) : (
+          <ArrowUpDown className="size-4 shrink-0 text-muted-foreground" aria-label="Sort" />
+        )}
+      </button>
+    </TableHead>
+  )
+
   return (
     <TableWrapper>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="bg-sidebar h-12">Name</TableHead>
-            <TableHead className="bg-sidebar h-12">Status</TableHead>
-            <TableHead className="bg-sidebar h-12">Client</TableHead>
-            <TableHead className="bg-sidebar h-12">Starting</TableHead>
+            <SortableHead column="name" label="Name" />
+            <SortableHead column="status" label="Status" />
+            <SortableHead column="client" label="Client" />
+            <SortableHead column="jobReference" label="Job reference" />
+            <SortableHead column="starting" label="Starting" />
             <TableHead className="bg-sidebar h-12">Location</TableHead>
             <TableHead className="bg-sidebar h-12">Participants</TableHead>
             <TableHead className="bg-sidebar h-12 w-[85px]"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((collection) => (
+          {sortedData.map((collection) => (
             <TableRow
               key={collection.id}
               className={cn(
@@ -405,6 +489,7 @@ function CollectionsTable({
                 <CollectionStatusTag status={collection.status} />
               </TableCell>
               <TableCell>{collection.client}</TableCell>
+              <TableCell>{collection.jobReference}</TableCell>
               <TableCell>{collection.starting}</TableCell>
               <TableCell>{collection.location}</TableCell>
               <TableCell>{collection.participants}</TableCell>

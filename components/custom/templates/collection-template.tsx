@@ -1945,21 +1945,25 @@ export function CollectionTemplate({
                     />
                   </div>
                 )
-                const renderIndividual = (user: (typeof mainIndividuals)[number], i: number) => (
-                  <div key={`step-main-ind-${i}-${user.name}`} className="flex flex-col gap-3">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {(user.roleLabel ?? "Photographer").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
-                    </span>
-                    <ParticipantsCard
-                      variant="individual"
-                      title={user.name}
-                      initials={user.initials}
-                      imageUrl={user.imageUrl}
-                      email={user.email}
-                      phone={user.phone}
-                    />
-                  </div>
-                )
+                const renderIndividual = (user: (typeof mainIndividuals)[number], i: number) => {
+                  const isPhotographer = (user.roleLabel ?? "").toLowerCase() === "photographer"
+                  return (
+                    <div key={`step-main-ind-${i}-${user.name}`} className="flex flex-col gap-3">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {(user.roleLabel ?? "Photographer").replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())}
+                      </span>
+                      <ParticipantsCard
+                        variant="individual"
+                        title={user.name}
+                        initials={user.initials}
+                        imageUrl={user.imageUrl}
+                        email={user.email}
+                        phone={user.phone}
+                        hideContactInfo={isPhotographer}
+                      />
+                    </div>
+                  )
+                }
                 return (
                   <section className="flex flex-col gap-3">
                     <h3 className="text-lg font-semibold text-card-foreground">
@@ -2996,6 +3000,7 @@ export function CollectionTemplate({
             <EntityBasicInformationForm
               entityType={userContext.entity.type}
               initialData={companyFormData}
+              existingProfilePictureUrl={userContext.entity.profilePictureUrl}
               showLocation={entityRequiresLocation(userContext.entity.type)}
               disabled={isUpdatingCompany}
               onDataChange={handleCompanyFormDataChange}

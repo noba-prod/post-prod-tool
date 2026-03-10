@@ -7,15 +7,22 @@ import { RowVariants } from "./row-variants"
 import { Field, FieldGroup, FieldLabel, FieldContent, FieldDescription } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { PhoneInput } from "./phone-input"
 import { OptionPicker } from "./option-picker"
-import { Upload, Trash2 } from "lucide-react"
+import { ProfilePictureUpload } from "./profile-picture-upload"
 import { cn } from "@/lib/utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 // Import domain types and helpers
 import type { Role, EntityType, User } from "@/lib/types"
-import { roleToLabel, entityTypeToLabel, ALL_ROLES } from "@/lib/types"
+import { roleToLabel, entityTypeToLabel, SELECTABLE_ROLES } from "@/lib/types"
 import { parsePhoneNumber } from "@/lib/utils/form-mappers"
 
 // ============================================================================
@@ -170,7 +177,7 @@ export function UserCreationForm({
     phoneNumber: parsedInitialData?.phoneNumber || "",
     countryCode: parsedInitialData?.countryCode || "+34",
     entity: entity || parsedInitialData?.entity || null,
-    role: isAdminUser ? "admin" : (parsedInitialData?.role || "viewer"),
+    role: isAdminUser ? "admin" : (parsedInitialData?.role || "editor"),
     profilePicture: parsedInitialData?.profilePicture ?? null,
   })
 
@@ -198,17 +205,23 @@ export function UserCreationForm({
     }
   }, [mode, initialUserData, entity])
 
-  // Email uniqueness check (create mode only)
+  // Email uniqueness check (create mode, or edit mode when email changed)
   const [emailAlreadyExists, setEmailAlreadyExists] = React.useState(false)
   const emailCheckTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const initialEmail = initialUserData?.email?.trim().toLowerCase() ?? ""
 
   React.useEffect(() => {
-    if (mode === "edit" || disabled) {
+    if (disabled) {
       setEmailAlreadyExists(false)
       return
     }
-    const email = formData.email.trim()
+    const email = formData.email.trim().toLowerCase()
     if (!email) {
+      setEmailAlreadyExists(false)
+      return
+    }
+    // In edit mode: skip check if email unchanged
+    if (mode === "edit" && email === initialEmail) {
       setEmailAlreadyExists(false)
       return
     }
@@ -219,7 +232,11 @@ export function UserCreationForm({
     emailCheckTimeoutRef.current = setTimeout(async () => {
       emailCheckTimeoutRef.current = null
       try {
-        const res = await fetch(`/api/users/check-email?email=${encodeURIComponent(email)}`)
+        const params = new URLSearchParams({ email })
+        if (mode === "edit" && initialUserData?.id) {
+          params.set("excludeUserId", initialUserData.id)
+        }
+        const res = await fetch(`/api/users/check-email?${params}`)
         const data = (await res.json()) as { exists?: boolean }
         setEmailAlreadyExists(Boolean(data.exists))
       } catch {
@@ -231,7 +248,7 @@ export function UserCreationForm({
         clearTimeout(emailCheckTimeoutRef.current)
       }
     }
-  }, [formData.email, mode, disabled])
+  }, [formData.email, mode, disabled, initialEmail, initialUserData?.id])
 
   // Reset form when modal closes
   React.useEffect(() => {
@@ -256,7 +273,7 @@ export function UserCreationForm({
           phoneNumber: parsedInitialData?.phoneNumber || "",
           countryCode: parsedInitialData?.countryCode || "+34",
           entity: entity || parsedInitialData?.entity || null,
-          role: isAdminUser ? "admin" : (parsedInitialData?.role || "viewer"),
+          role: isAdminUser ? "admin" : (parsedInitialData?.role || "editor"),
           profilePicture: null,
         })
       }
@@ -274,11 +291,27 @@ export function UserCreationForm({
     )
   }, [formData, emailAlreadyExists])
 
-  // Handlers
+  // Email change detection (edit mode only)
+  const emailChanged = React.useMemo(() => {
+    if (mode !== "edit" || !initialUserData) return false
+    return formData.email.trim().toLowerCase() !== initialUserData.email.trim().toLowerCase()
+  }, [mode, initialUserData, formData.email])
+
+  // Confirmation dialog for email change (edit mode)
+  const [emailChangeConfirmOpen, setEmailChangeConfirmOpen] = React.useState(false)
+
   const handleSubmit = () => {
-    if (isFormValid && onSubmit) {
+    if (!isFormValid || !onSubmit) return
+    if (mode === "edit" && emailChanged) {
+      setEmailChangeConfirmOpen(true)
+    } else {
       onSubmit(formData)
     }
+  }
+
+  const handleEmailChangeConfirm = () => {
+    setEmailChangeConfirmOpen(false)
+    onSubmit?.(formData)
   }
 
   const handleCancel = () => {
@@ -289,39 +322,10 @@ export function UserCreationForm({
     }
   }
 
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null
-    setFormData((prev) => ({ ...prev, profilePicture: file }))
-  }
-  const handleChooseFileClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  // Preview URL for profile picture: object URL when new file selected, or existing profile URL
-  const [objectUrl, setObjectUrl] = React.useState<string | null>(null)
-  React.useEffect(() => {
-    if (formData.profilePicture instanceof File) {
-      const url = URL.createObjectURL(formData.profilePicture)
-      setObjectUrl(url)
-      return () => {
-        URL.revokeObjectURL(url)
-        setObjectUrl(null)
-      }
-    }
-    setObjectUrl(null)
-    return undefined
-  }, [formData.profilePicture])
   const [userRemovedProfilePicture, setUserRemovedProfilePicture] = React.useState(false)
   React.useEffect(() => {
     if (open) setUserRemovedProfilePicture(false)
   }, [open])
-  const profilePreviewUrl =
-    formData.profilePicture instanceof File
-      ? objectUrl
-      : !userRemovedProfilePicture && (initialUserData?.profilePictureUrl?.trim() || null)
-        ? (initialUserData?.profilePictureUrl?.trim() ?? null)
-        : null
 
   return (
     <ModalWindow
@@ -416,7 +420,7 @@ export function UserCreationForm({
                     }
                     placeholder="Write email address"
                     required
-                    disabled={disabled || mode === "edit"}
+                    disabled={disabled}
                     aria-invalid={emailAlreadyExists}
                   />
                   {emailAlreadyExists && (
@@ -478,7 +482,7 @@ export function UserCreationForm({
                       setFormData((prev) => ({ ...prev, role: value as Role }))
                     }
                     placeholder="Select a role"
-                    options={ALL_ROLES.map((r) => ({ value: r, label: roleToLabel(r) }))}
+                    options={SELECTABLE_ROLES.map((r) => ({ value: r, label: roleToLabel(r) }))}
                     searchable={false}
                     disabled={isAdminUser || disabled || isEditingSelf}
                   />
@@ -489,72 +493,45 @@ export function UserCreationForm({
             {/* Row 4: Profile Picture Upload */}
             <RowVariants variant="1">
               <Field>
-                <div className="grid w-full items-center gap-1.5">
-                  <Label htmlFor="user-profile-picture" className={cn("h-3.5 leading-snug w-fit", disabled && "opacity-50")}>
-                    Profile picture
-                  </Label>
-                </div>
                 <FieldContent>
-                  <div className={cn(
-                    "flex items-center gap-1.5 h-9 py-1 px-0.5 border border-border rounded-lg",
-                    disabled && "opacity-50 cursor-not-allowed"
-                  )}>
-                    <Input
-                      ref={fileInputRef}
-                      id="user-profile-picture"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                      disabled={disabled}
-                    />
-                    {profilePreviewUrl ? (
-                      <>
-                        <img
-                          src={profilePreviewUrl}
-                          alt=""
-                          className="size-8 shrink-0 rounded-[10px] object-cover border border-border"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormData((prev) => ({ ...prev, profilePicture: null }))
-                            setUserRemovedProfilePicture(true)
-                            if (fileInputRef.current) fileInputRef.current.value = ""
-                          }}
-                          disabled={disabled}
-                          className="shrink-0 rounded p-0.5 text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                          aria-label="Remove profile picture"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      </>
-                    ) : null}
-                    <span className="text-sm text-muted-foreground truncate flex-1 min-w-0">
-                      {formData.profilePicture
-                        ? formData.profilePicture.name
-                        : profilePreviewUrl
-                          ? ""
-                          : "No file chosen"}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="default"
-                      className="rounded-lg cursor-pointer h-8 shrink-0"
-                      onClick={handleChooseFileClick}
-                      disabled={disabled}
-                    >
-                      <Upload className="size-4 mr-2" />
-                      Choose file
-                    </Button>
-                  </div>
+                  <ProfilePictureUpload
+                    id="user-profile-picture"
+                    label="Profile picture"
+                    value={formData.profilePicture}
+                    existingUrl={initialUserData?.profilePictureUrl}
+                    hideExisting={userRemovedProfilePicture}
+                    onChange={(file) => {
+                      setFormData((prev) => ({ ...prev, profilePicture: file }))
+                      if (!file) setUserRemovedProfilePicture(true)
+                    }}
+                    disabled={disabled}
+                  />
                 </FieldContent>
               </Field>
             </RowVariants>
           </FieldGroup>
         </LayoutSection>
       </Layout>
+
+      {/* Email change confirmation dialog */}
+      <Dialog open={emailChangeConfirmOpen} onOpenChange={setEmailChangeConfirmOpen}>
+        <DialogContent showCloseButton={true}>
+          <DialogHeader>
+            <DialogTitle>Confirm email change</DialogTitle>
+            <DialogDescription>
+              Changing the email will send a confirmation email to the new address. The user will need to confirm it to access their profile with the new email.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter showCloseButton={false} className="sm:justify-end">
+            <Button variant="outline" onClick={() => setEmailChangeConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEmailChangeConfirm}>
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ModalWindow>
   )
 }

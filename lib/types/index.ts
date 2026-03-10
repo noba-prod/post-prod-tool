@@ -276,7 +276,13 @@ export const STANDARD_ENTITY_TYPES: StandardEntityType[] = [
 ]
 
 /**
- * All roles.
- * Useful for rendering role options.
+ * Roles available in role selectors (Admin and Editor only).
+ * Viewer has been removed from selectors for both noba* and entities.
+ */
+export const SELECTABLE_ROLES: Role[] = ["admin", "editor"]
+
+/**
+ * All roles (includes viewer for backward compatibility with existing data).
+ * Use SELECTABLE_ROLES for role pickers in forms.
  */
 export const ALL_ROLES: Role[] = ["admin", "editor", "viewer"]

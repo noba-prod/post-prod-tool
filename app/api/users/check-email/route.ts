@@ -3,9 +3,10 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 /**
- * GET /api/users/check-email?email=...
+ * GET /api/users/check-email?email=...&excludeUserId=...
  * Returns { exists: boolean } whether a profile with that email already exists.
- * Used to validate email uniqueness when registering a new team member.
+ * Used to validate email uniqueness when registering or editing a team member.
+ * excludeUserId: when editing, pass the user id to exclude from the check (so current user's email is not flagged).
  */
 export async function GET(request: Request) {
   const { profile, error: sessionError } = await (async () => {
@@ -28,16 +29,20 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url)
   const email = url.searchParams.get("email")?.trim()
+  const excludeUserId = url.searchParams.get("excludeUserId")?.trim()
   if (!email) {
     return NextResponse.json({ exists: false })
   }
 
   const adminClient = createAdminClient()
-  const { data: rows, error } = await adminClient
+  let query = adminClient
     .from("profiles")
     .select("id")
     .ilike("email", email)
-    .limit(1)
+  if (excludeUserId) {
+    query = query.neq("id", excludeUserId)
+  }
+  const { data: rows, error } = await query.limit(1)
 
   if (error) {
     console.error("[check-email] error:", error)

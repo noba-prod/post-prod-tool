@@ -44,14 +44,16 @@ Each entity has:
 3. ROLES (APPLY TO ALL ENTITIES)
 ----------------------------------------------------------------
 
-Each entity supports three roles:
+Each entity supports two selectable roles (Viewer has been removed from selectors):
 
 - Admin
 - Editor
-- Viewer
 
 Roles are entity-scoped.
 A user’s permissions depend on BOTH their role and their entity type.
+
+Note: Viewer is no longer available in role pickers for noba* or entities.
+Existing users with Viewer role may still exist in the database for backward compatibility.
 
 There's an exception for the self-photographer, since there's no team, entity information = admin information. No role possibilities. Main user, is user admin and entity at the same time, to registers at once.
 
@@ -82,6 +84,7 @@ NOBA Admin:
 - Edit noba company information
 - Assign roles and permissions
 - Full visibility across all collections
+- Collections: can view and edit ALL collections (no owner invitation required)
 
 NOBA Editor:
 - Same as Admin EXCEPT:
@@ -90,17 +93,8 @@ NOBA Editor:
 - Can create and manage
   - Users
   - Entities
-  - Collections (created by themselves) 
-  - Collections invited as editor/collaborator (in other team-mate collection)
-
-NOBA Viewer:
-- Read-only access to collections
-- Can view:
-  - Collections
-  - Entities
-  - Team
-- Cannot create, edit, or delete anything
-- Could edit Collections only if collection owner invite the with "editing permissions"
+  - Collections (created by themselves)
+- Collections: can view all collections; can edit only if the collection owner has invited them as collaborator (configured by owner)
 
 IMPORTANT:
 Even noba users only see NOBA USERS inside the “Team” tab.
@@ -166,13 +160,6 @@ Entity Editor:
 - Cannot edit entity-level information
 - Cannot down-grade/modify admin role to admin users
 
-Entity Viewer:
-- Read-only access
-- Can view:
-  - Collections they are invited to
-  - Team members
-- Cannot take actions or edit anything, unless somebody give edit permission inside a collection
-
 ----------------------------------------------------------------
 8. COLLECTION ACCESS RULES
 ----------------------------------------------------------------
@@ -197,8 +184,6 @@ Examples:
   - Can upload LR / HR
 - Lab Editor:
   - Can upload files and confirm logistics
-- Viewer:
-  - Can only track progress
 
 ----------------------------------------------------------------
 9. SUMMARY (MENTAL MODEL)

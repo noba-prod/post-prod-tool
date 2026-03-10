@@ -189,7 +189,14 @@ export const customRegistry: ComponentEntry[] = [
           <div className="flex flex-wrap gap-4">
             <CollectionCard status="draft" collectionName="Summer Campaign" clientName="@zara" location="Barcelona, Spain" />
             <CollectionCard status="upcoming" collectionName="Fall Lookbook" clientName="@mango" location="Milan, Italy" />
-            <CollectionCard status="in-progress" collectionName="SS25 Collection" clientName="@hm" location="Paris, France" />
+            <CollectionCard
+              status="in-progress"
+              collectionName="SS25 Collection"
+              clientName="@hm"
+              location="Paris, France"
+              progress={27}
+              stepHealthStatus="at-risk"
+            />
           </div>
           <div className="flex flex-wrap gap-4">
             <CollectionCard status="completed" collectionName="Holiday Special" clientName="@uniqlo" location="Tokyo, Japan" />

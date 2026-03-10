@@ -10,7 +10,7 @@ This project implements a passwordless authentication system using OTP (One-Time
 - **Email Verification**: Users must verify their email before requesting OTP
 - **Invitation System**: External users can only access if invited to a Collection
 - **Internal Users**: noba* internal users can access without being part of a collection
-- **Role-Based Access**: Admin, Editor, and Viewer roles per collection
+- **Role-Based Access**: Admin and Editor roles (Viewer removed from selectors)
 
 ## Setup
 
@@ -53,6 +53,14 @@ Configure SMTP settings in Supabase:
 - Go to Settings > Auth > Email Templates
 - Customize OTP and verification emails
 - Set up SMTP provider (SendGrid, AWS SES, etc.) for production
+
+### 5. Email Change Confirmation (when editing user email)
+
+When admins or users change a team member's email via the edit user modal, a confirmation email is sent to the new address. To enable this:
+
+1. In Supabase Dashboard: **Authentication > Providers > Email** — enable **Secure email change**
+2. In **Authentication > Email Templates** — configure the **Change email address** template
+3. Ensure SMTP is configured so Supabase can send the confirmation email
 
 ## Routes
 

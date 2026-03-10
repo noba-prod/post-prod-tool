@@ -12,6 +12,7 @@ export interface EntityDetailCollectionItem {
   name: string
   status: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
   clientName: string
+  reference?: string
   location: string
   startDate: string
   endDate: string

@@ -116,6 +116,9 @@ export async function PATCH(
   }
 
   const payload = (await request.json()) as UpdateUserPayload
+  const newEmail = payload.email !== undefined ? payload.email.toLowerCase().trim() : undefined
+  const currentEmail = (targetForEdit as { email?: string | null }).email?.trim().toLowerCase()
+
   const update: {
     first_name?: string
     last_name?: string | null
@@ -132,8 +135,8 @@ export async function PATCH(
   if (payload.lastName !== undefined) {
     update.last_name = payload.lastName?.trim() || null
   }
-  if (payload.email !== undefined) {
-    update.email = payload.email.toLowerCase().trim()
+  if (newEmail !== undefined) {
+    update.email = newEmail
   }
   if (payload.role !== undefined) {
     update.role = payload.role
@@ -153,6 +156,24 @@ export async function PATCH(
     } else if (payload.countryCode) {
       update.prefix = payload.countryCode.trim()
       update.phone = null
+    }
+  }
+
+  // When email changes: update auth.users so the user can log in with the new email.
+  // To send a confirmation email: enable "Secure email change" in Supabase Dashboard
+  // (Auth > Providers > Email) and configure the "Change email address" template in
+  // Auth > Email Templates. Supabase will send the confirmation when configured.
+  if (newEmail && currentEmail && newEmail !== currentEmail) {
+    const { error: authError } = await adminClient.auth.admin.updateUserById(targetUserId, {
+      email: newEmail,
+      // Do not set email_confirm: true — allows Supabase to send confirmation when Secure email change is enabled
+    })
+    if (authError) {
+      console.error("[users PATCH] auth updateUserById error:", authError)
+      return NextResponse.json(
+        { error: authError.message || "Failed to update email" },
+        { status: 500 }
+      )
     }
   }
 

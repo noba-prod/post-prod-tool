@@ -16,7 +16,10 @@ import { CollectionCard, type CollectionCardProps } from "@/components/custom/co
 import type { Collection as TableCollection } from "@/components/custom/tables"
 import { createCollectionsService } from "@/lib/services"
 import { createClient } from "@/lib/supabase/client"
-import { deriveStageStatusFromShootingStart } from "@/lib/domain/collections"
+import {
+  deriveStageStatusFromShootingStart,
+  VIEW_STEP_IDS,
+} from "@/lib/domain/collections"
 import type { Collection } from "@/lib/domain/collections"
 import type { Organization } from "@/lib/supabase/database.types"
 
@@ -117,6 +120,36 @@ function collectionLocation(c: Collection): string {
   const city = config.shootingCity?.trim() ?? "—"
   const country = config.shootingCountry?.trim() ?? "—"
   return `${city}, ${country}`
+}
+
+/** Obtiene el health del paso activo (primer in-progress) o del último paso si completed. */
+function getActiveStepHealth(c: Collection): "on-track" | "on-time" | "delayed" | "at-risk" {
+  const statuses = c.stepStatuses
+  if (!statuses || typeof statuses !== "object") return "on-track"
+
+  for (const stepId of VIEW_STEP_IDS) {
+    const entry = statuses[stepId]
+    if (!entry) continue
+    const stage = entry.stage
+    const health = entry.health
+    if (stage === "in-progress" && health) {
+      if (health === "on-time") return "on-time"
+      if (health === "delayed") return "delayed"
+      if (health === "at-risk") return "at-risk"
+      return "on-track"
+    }
+  }
+  // Completed: last step's health
+  for (let i = VIEW_STEP_IDS.length - 1; i >= 0; i--) {
+    const entry = statuses[VIEW_STEP_IDS[i]]
+    if (entry?.health) {
+      if (entry.health === "on-time") return "on-time"
+      if (entry.health === "delayed") return "delayed"
+      if (entry.health === "at-risk") return "at-risk"
+      return "on-track"
+    }
+  }
+  return "on-track"
 }
 
 /** Comienzo de producción = shooting start (solo cuando está completado ese paso); si no, TBD. Final = deadline (modal). */
@@ -323,6 +356,7 @@ export default function CollectionsPage() {
               baseUI as "upcoming" | "in-progress"
             )
           : baseUI
+      const showProgressTag = displayStatus === "in-progress"
       return {
         id: c.id,
         status: displayStatus,
@@ -331,6 +365,10 @@ export default function CollectionsPage() {
         location: collectionLocation(c),
         startDate: start,
         endDate: end,
+        ...(showProgressTag && {
+          progress: c.completionPercentage ?? 0,
+          stepHealthStatus: getActiveStepHealth(c),
+        }),
         onClick: () => handleCollectionClick(c.id, c.status),
       }
     })
@@ -360,6 +398,7 @@ export default function CollectionsPage() {
         name: c.config.name || "—",
         status: displayStatus,
         client,
+        jobReference: c.config.reference?.trim() || "—",
         starting: start,
         location:
           loc !== "—"

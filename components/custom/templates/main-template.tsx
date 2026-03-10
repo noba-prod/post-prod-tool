@@ -307,6 +307,7 @@ export function MainTemplate({
             <EntityBasicInformationForm
               entityType={userContext.entity.type}
               initialData={companyFormData}
+              existingProfilePictureUrl={userContext.entity.profilePictureUrl}
               showLocation={entityRequiresLocation(userContext.entity.type)}
               disabled={isUpdatingCompany}
               onDataChange={handleCompanyFormDataChange}

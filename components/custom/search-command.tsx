@@ -37,15 +37,17 @@ function getInternalUserRoleLabel(user: User): string {
 interface SearchResult {
   id: string
   type: "entity" | "user" | "collection"
-  /** Left: EntityName / UserName / CollectionName */
+  /** Left: EntityName / UserName / CollectionName (or JobReference when matchedByJobReference) */
   primaryLabel: string
-  /** Right: entityType / entityName · entityType / ClientName · PhotographerName */
+  /** Right: entityType / entityName · entityType / ClientName · PhotographerName (or CollectionName · ClientName when matchedByJobReference) */
   contextualLabel: string
   entityId?: string
   userId?: string
   collectionId?: string
   /** For collection: draft → /collections/create/[id], else → /collections/[id] */
   collectionStatus?: Collection["status"]
+  /** When true, display format is [jobReference] ------ [collectionName] · [clientName] */
+  matchedByJobReference?: boolean
 }
 
 interface SearchCommandProps {
@@ -250,6 +252,7 @@ export function SearchCommand({
     })
 
     // Search collections: CollectionName (left) --- ClientName · PhotographerName (right)
+    // Or when job reference matches: [jobReference] ------ [collectionName] · [clientName]
     collections.forEach((c) => {
       const nameMatch = (c.config.name ?? "").toLowerCase().includes(searchLower)
       const clientName = entities.find((e) => e.id === c.config.clientEntityId)?.name ?? ""
@@ -259,15 +262,29 @@ export function SearchCommand({
         : ""
       const clientMatch = clientName.toLowerCase().includes(searchLower)
       const photographerMatch = photographerName.toLowerCase().includes(searchLower)
-      if (nameMatch || clientMatch || photographerMatch) {
-        results.push({
-          id: `collection-${c.id}`,
-          type: "collection",
-          primaryLabel: c.config.name || "—",
-          contextualLabel: getCollectionContextualLabel(c),
-          collectionId: c.id,
-          collectionStatus: c.status,
-        })
+      const jobRefMatch = (c.config.reference ?? "").toLowerCase().includes(searchLower)
+      if (nameMatch || clientMatch || photographerMatch || jobRefMatch) {
+        // When matched by job reference, use format: [jobReference] ------ [collectionName] · [clientName]
+        results.push(
+          jobRefMatch
+            ? {
+                id: `collection-${c.id}`,
+                type: "collection" as const,
+                primaryLabel: c.config.reference?.trim() || "—",
+                contextualLabel: `------ ${c.config.name || "—"} · ${clientName || "—"}`,
+                collectionId: c.id,
+                collectionStatus: c.status,
+                matchedByJobReference: true,
+              }
+            : {
+                id: `collection-${c.id}`,
+                type: "collection" as const,
+                primaryLabel: c.config.name || "—",
+                contextualLabel: getCollectionContextualLabel(c),
+                collectionId: c.id,
+                collectionStatus: c.status,
+              }
+        )
       }
     })
 

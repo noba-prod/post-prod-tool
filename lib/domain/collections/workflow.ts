@@ -4,6 +4,7 @@
  * No side effects. No UI. No I/O.
  */
 
+import type { Role } from "@/lib/types"
 import type {
   CollectionConfig,
   CreationBlockId,
@@ -551,16 +552,22 @@ export function canUserEditStep(
 // =============================================================================
 // RESOLVE CURRENT USER FOR PERMISSION (collections-logic §8, §9)
 // Builds UserForPermission from collection participants/config and whether user is internal (noba).
+// For noba* team members only: Admin can view & edit all collections; Editor can view all,
+// edit only if configured by owner (invited as collaborator).
 // =============================================================================
 
 export function resolveUserForPermission(
   userId: string,
   isInternal: boolean,
-  draft: CollectionDraft
+  draft: CollectionDraft,
+  nobaUserRole?: Role
 ): UserForPermission {
   if (isInternal) {
+    // noba* team members: Admin = edit all; Editor = edit only if owner granted (nobaEditPermissionByUserId)
     const hasEdit =
-      draft.config.nobaEditPermissionByUserId?.[userId] ?? true
+      nobaUserRole === "admin"
+        ? true
+        : (draft.config.nobaEditPermissionByUserId?.[userId] ?? false)
     return { role: "producer", hasEditPermission: hasEdit }
   }
   for (const p of draft.participants) {

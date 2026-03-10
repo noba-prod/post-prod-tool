@@ -9,7 +9,10 @@ import { Grid } from "@/components/custom/grid"
 import { Tables, type Collection } from "@/components/custom/tables"
 import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
 import { createCollectionsService } from "@/lib/services"
-import type { Collection as DomainCollection } from "@/lib/domain/collections"
+import {
+  type Collection as DomainCollection,
+  VIEW_STEP_IDS,
+} from "@/lib/domain/collections"
 
 type CollectionStatus = "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
 
@@ -19,12 +22,40 @@ interface CollectionData {
   status: CollectionStatus
   clientId: string
   clientName: string
+  reference: string
   location: string
   startDate: string
   endDate: string
   createdBy: string
   participants: number
   createdAt: Date
+  progress?: number
+  stepHealthStatus?: "on-track" | "on-time" | "delayed" | "at-risk"
+}
+
+function getActiveStepHealth(c: DomainCollection): "on-track" | "on-time" | "delayed" | "at-risk" {
+  const statuses = c.stepStatuses
+  if (!statuses || typeof statuses !== "object") return "on-track"
+  for (const stepId of VIEW_STEP_IDS) {
+    const entry = statuses[stepId]
+    if (!entry) continue
+    if (entry.stage === "in-progress" && entry.health) {
+      if (entry.health === "on-time") return "on-time"
+      if (entry.health === "delayed") return "delayed"
+      if (entry.health === "at-risk") return "at-risk"
+      return "on-track"
+    }
+  }
+  for (let i = VIEW_STEP_IDS.length - 1; i >= 0; i--) {
+    const entry = statuses[VIEW_STEP_IDS[i]]
+    if (entry?.health) {
+      if (entry.health === "on-time") return "on-time"
+      if (entry.health === "delayed") return "delayed"
+      if (entry.health === "at-risk") return "at-risk"
+      return "on-track"
+    }
+  }
+  return "on-track"
 }
 
 function mapDomainToCollectionData(c: DomainCollection): CollectionData {
@@ -32,18 +63,24 @@ function mapDomainToCollectionData(c: DomainCollection): CollectionData {
   const startDate = c.config.shootingStartDate || "—"
   const endDate = c.config.shootingEndDate || "—"
   const status: CollectionStatus = c.status === "in_progress" ? "in-progress" : c.status
+  const showProgress = status === "in-progress"
   return {
     id: c.id,
     name: c.config.name || "Untitled",
     status,
     clientId: c.config.clientEntityId || "",
     clientName: "—",
+    reference: c.config.reference?.trim() || "—",
     location,
     startDate,
     endDate,
     createdBy: c.config.managerUserId || "",
     participants: c.participants?.length ?? 0,
     createdAt: c.updatedAt ? new Date(c.updatedAt) : new Date(),
+    ...(showProgress && {
+      progress: c.completionPercentage ?? 0,
+      stepHealthStatus: getActiveStepHealth(c),
+    }),
   }
 }
 
@@ -107,6 +144,11 @@ export default function CollectionsPreviewPage() {
     location: c.location,
     startDate: c.startDate,
     endDate: c.endDate,
+    ...(c.progress !== undefined &&
+      c.stepHealthStatus !== undefined && {
+        progress: c.progress,
+        stepHealthStatus: c.stepHealthStatus,
+      }),
   }))
 
   const tableItems: Collection[] = filteredCollections.map((c) => ({
@@ -114,6 +156,7 @@ export default function CollectionsPreviewPage() {
     name: c.name,
     status: c.status,
     client: c.clientName.charAt(0).toUpperCase() + c.clientName.slice(1),
+    jobReference: c.reference || "—",
     starting: c.startDate.charAt(0).toUpperCase() + c.startDate.slice(1),
     location: c.location.split(", ").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(", "),
     participants: c.participants,

@@ -116,6 +116,7 @@ export interface EntityCreationActions {
     phoneNumber: string
     countryCode: string
     role: "admin" | "editor" | "viewer"
+    profilePicture?: File | null
   }) => Promise<void>
   /** Open edit user modal for a team member */
   openEditUserModal: (userId: string) => void
@@ -613,6 +614,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     phoneNumber: string
     countryCode: string
     role: "admin" | "editor" | "viewer"
+    profilePicture?: File | null
   }) => {
     if (!entityId || !entity) {
       toast.error("Cannot add member", {
@@ -644,6 +646,22 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
       }
 
       const result = (await response.json()) as { user: User; teamMembers: User[] }
+      const createdUserId = result.user.id
+
+      // Upload profile picture if provided (user must exist first)
+      if (userData.profilePicture && createdUserId) {
+        const formData = new FormData()
+        formData.append("file", userData.profilePicture)
+        const uploadRes = await fetch(`/api/users/${createdUserId}/profile-picture`, {
+          method: "POST",
+          body: formData,
+        })
+        if (!uploadRes.ok) {
+          const uploadData = await uploadRes.json().catch(() => ({}))
+          throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        }
+      }
+
       setTeamMembers(result.teamMembers)
       setIsNewMemberModalOpen(false)
       toast.success("Team member added", {

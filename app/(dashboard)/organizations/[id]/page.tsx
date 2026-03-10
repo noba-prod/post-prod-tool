@@ -247,6 +247,7 @@ export default function OrganizationDetailPage() {
     countryCode: string
     entity: { type: EntityType; name: string } | null
     role: "admin" | "editor" | "viewer"
+    profilePicture?: File | null
   }) => {
     if (!entityId) return
 
@@ -273,7 +274,22 @@ export default function OrganizationDetailPage() {
       }
 
       const result = (await response.json()) as { user: import("@/lib/types").User }
-      
+      const createdUserId = result.user.id
+
+      // Upload profile picture if provided (user must exist first)
+      if (userData.profilePicture && createdUserId) {
+        const formData = new FormData()
+        formData.append("file", userData.profilePicture)
+        const uploadRes = await fetch(`/api/users/${createdUserId}/profile-picture`, {
+          method: "POST",
+          body: formData,
+        })
+        if (!uploadRes.ok) {
+          const uploadData = await uploadRes.json().catch(() => ({}))
+          throw new Error(uploadData.error ?? "Failed to upload profile picture")
+        }
+      }
+
       // Refresh entity data
       const updatedData = await fetchEntityData()
       setEntity(updatedData)
@@ -442,6 +458,7 @@ export default function OrganizationDetailPage() {
         <EntityBasicInformationForm
           entityType={entityTypeForForm}
           initialData={basicFormInitialData}
+          existingProfilePictureUrl={entity.entity.profilePictureUrl}
           showLocation={entityRequiresLocation(entityTypeForForm)}
           disabled={!canEdit}
           onDataChange={handleBasicFormDataChange}

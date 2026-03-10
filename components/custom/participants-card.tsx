@@ -23,6 +23,8 @@ export interface ParticipantsCardProps {
   email?: string
   /** Individual: phone number */
   phone?: string
+  /** Individual: when true, blur email and phone (e.g. for photographers) */
+  hideContactInfo?: boolean
   /** Entity: responsible person(s) — user(s) with edit permission; if multiple: "UserName + N more" */
   managerName?: string
   /** Entity: total members count */
@@ -44,6 +46,7 @@ export function ParticipantsCard({
   line2,
   email,
   phone,
+  hideContactInfo = false,
   managerName,
   teamMembersCount,
   className,
@@ -90,13 +93,23 @@ export function ParticipantsCard({
 
           {variant === "individual" && (
             <>
-              {email != null && email !== "" && (
-                <span className="truncate text-sm font-normal text-muted-foreground">
+              {(email != null && email !== "") && (
+                <span
+                  className={cn(
+                    "truncate text-sm font-normal text-muted-foreground",
+                    hideContactInfo && "select-none blur-[4px]"
+                  )}
+                >
                   {email}
                 </span>
               )}
-              {phone != null && phone !== "" && (
-                <span className="truncate text-sm font-normal text-muted-foreground">
+              {(phone != null && phone !== "") && (
+                <span
+                  className={cn(
+                    "truncate text-sm font-normal text-muted-foreground",
+                    hideContactInfo && "select-none blur-[4px]"
+                  )}
+                >
                   {phone}
                 </span>
               )}

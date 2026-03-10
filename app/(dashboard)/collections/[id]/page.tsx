@@ -167,8 +167,13 @@ export default function CollectionViewPage({
 
   const userForPermission = React.useMemo(() => {
     if (!collection || !user?.id) return null
-    return resolveUserForPermission(user.id, isNobaUser, collection)
-  }, [collection, user?.id, isNobaUser])
+    return resolveUserForPermission(
+      user.id,
+      isNobaUser,
+      collection,
+      isNobaUser ? user.role : undefined
+    )
+  }, [collection, user?.id, user?.role, isNobaUser])
 
   const refetchCollection = React.useCallback(() => {
     if (!id) return Promise.resolve()

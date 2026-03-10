@@ -115,7 +115,7 @@ export async function GET(
   // Collections where this entity is invited (client or participant: photographer, lab, edition studio, handprint lab)
   const { data: collectionsRows } = await adminClient
     .from("collections")
-    .select("id, name, status, client_id, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
+    .select("id, name, status, client_id, reference, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
     .or(
       `client_id.eq.${organizationId},photographer_id.eq.${organizationId},photo_lab_id.eq.${organizationId},retouch_studio_id.eq.${organizationId},handprint_lab_id.eq.${organizationId}`
     )
@@ -126,6 +126,7 @@ export async function GET(
     name: string
     status: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
     clientName: string
+    reference?: string
     location: string
     startDate: string
     endDate: string
@@ -174,6 +175,7 @@ export async function GET(
       name: string
       status: string
       client_id: string
+      reference: string | null
       shooting_start_date: string | null
       shooting_end_date: string | null
       shooting_city: string | null
@@ -187,6 +189,7 @@ export async function GET(
         name: row.name,
         status: normalizeStatus(row.status),
         clientName: clientNameById.get(row.client_id) || "—",
+        reference: row.reference?.trim() || undefined,
         location,
         startDate: formatDate(row.shooting_start_date),
         endDate: formatDate(row.shooting_end_date),

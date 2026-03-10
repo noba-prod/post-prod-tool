@@ -203,12 +203,23 @@ IMPORTANT RULE:
 Only Owners can access download URLs.
 
 ------------------------------------------------------------
-9. PRODUCER SPECIAL RULE
+9. PRODUCER SPECIAL RULE (NOBA* TEAM MEMBERS)
 ------------------------------------------------------------
 
-The noba Producer:
-- Always sees all steps as OWNER
-- Can perform actions on any step
+The noba Producer (noba* team member) always sees all steps as OWNER and can view all collections.
+
+Edit permission depends on the user's entity-level role (Admin vs Editor):
+
+NOBA Admin:
+- Can view and edit ALL collections
+- No owner invitation required
+
+NOBA Editor:
+- Can view all collections
+- Can edit only if the collection owner has invited them as collaborator
+  (configured via nobaEditPermissionByUserId / collection_members.can_edit)
+
+Other rules:
 - Acts as a fallback to avoid workflow blockage
 - This is intentional due to early product adoption
 

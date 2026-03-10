@@ -175,6 +175,7 @@ export interface ViewCollectionData {
   name: string
   status: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
   clientName: string
+  reference?: string
   location: string
   startDate: string
   endDate: string
@@ -779,6 +780,7 @@ export function ViewTemplate({
                       name: c.name,
                       status: c.status,
                       client: c.clientName.charAt(0).toUpperCase() + c.clientName.slice(1),
+                      jobReference: c.reference?.trim() || "—",
                       starting: c.startDate.charAt(0).toUpperCase() + c.startDate.slice(1),
                       location: c.location.split(", ").map((s: string) => s.charAt(0).toUpperCase() + s.slice(1)).join(", "),
                       participants: c.participants,
@@ -906,6 +908,7 @@ export function ViewTemplate({
             <EntityBasicInformationForm
               entityType={userContext.entity.type}
               initialData={companyFormData}
+              existingProfilePictureUrl={userContext.entity.profilePictureUrl}
               showLocation={entityRequiresLocation(userContext.entity.type)}
               disabled={isUpdatingCompany}
               onDataChange={handleCompanyFormDataChange}

@@ -20,7 +20,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Upload } from "lucide-react"
+import { ProfilePictureUpload } from "./profile-picture-upload"
 import { cn } from "@/lib/utils"
 
 // Import domain types
@@ -68,6 +68,8 @@ interface EntityBasicInformationFormProps {
   isValid?: boolean
   /** Whether all inputs should be disabled (for view-only mode) */
   disabled?: boolean
+  /** Existing profile picture URL (when editing, for preview) */
+  existingProfilePictureUrl?: string | null
 }
 
 // ============================================================================
@@ -108,6 +110,7 @@ export function EntityBasicInformationForm({
   showLocation = true,
   isValid: externalIsValid,
   disabled = false,
+  existingProfilePictureUrl,
 }: EntityBasicInformationFormProps) {
   // Form state
   const [formData, setFormData] = React.useState<EntityBasicInformationFormData>({
@@ -207,17 +210,6 @@ export function EntityBasicInformationForm({
     },
     []
   )
-
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null
-    updateFormData({ profilePicture: file })
-  }
-
-  const handleChooseFileClick = () => {
-    fileInputRef.current?.click()
-  }
 
   // Country list: full list + current value and current input when open (so value is always in items). Dedupe so keys are unique.
   const countryItems = React.useMemo(() => {
@@ -472,44 +464,16 @@ export function EntityBasicInformationForm({
           <FieldGroup>
             {/* Upload profile picture only (Email and Phone hidden for client, hand-print-lab, photo-lab, agency, retouch/post studio) */}
             <RowVariants variant="1">
-              {/* Profile Picture Upload */}
               <Field>
-                <div className="grid w-full items-center gap-1.5">
-                  <Label htmlFor="profile-picture" className={cn("h-3.5 leading-snug w-fit", disabled && "opacity-50")}>
-                    Upload profile picture
-                  </Label>
-                </div>
                 <FieldContent>
-                  <div className={cn(
-                    "flex items-center gap-3 h-9 pl-2 pr-px py-0.5 border border-border rounded-lg",
-                    disabled && "opacity-50 cursor-not-allowed"
-                  )}>
-                    <Input
-                      ref={fileInputRef}
-                      id="profile-picture"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                      disabled={disabled}
-                    />
-                    <span className="text-sm text-muted-foreground truncate flex-1 min-w-0">
-                      {formData.profilePicture
-                        ? formData.profilePicture.name
-                        : "No file chosen"}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="default"
-                      className="rounded-lg cursor-pointer h-8 shrink-0"
-                      onClick={handleChooseFileClick}
-                      disabled={disabled}
-                    >
-                      <Upload className="size-4 mr-2" />
-                      Choose file
-                    </Button>
-                  </div>
+                  <ProfilePictureUpload
+                    id="entity-profile-picture"
+                    label="Upload profile picture"
+                    value={formData.profilePicture}
+                    existingUrl={existingProfilePictureUrl}
+                    onChange={(file) => updateFormData({ profilePicture: file })}
+                    disabled={disabled}
+                  />
                 </FieldContent>
               </Field>
             </RowVariants>
