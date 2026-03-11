@@ -348,6 +348,8 @@ export interface CollectionTemplateProps {
   onAddPhotographerLastCheckLink?: (payload: { url?: string; comments?: string }) => void | Promise<void>
   /** Step 10: called when photographer shares final edits url with client (primary action). */
   onValidateFinals?: () => void | Promise<void>
+  /** When false (Analog HPy no retouches): photographer_last_check shows high-res to validate; when true: shows final edits from retouch studio. */
+  hasEditionStudio?: boolean
   /** Step 11: called when client completes collection (primary action). */
   onCompleteCollection?: () => void | Promise<void>
   /** Step notes conversation for photographer last check step (step 10). */
@@ -482,6 +484,7 @@ export function CollectionTemplate({
   finalsUploadedByEntityName,
   onAddPhotographerLastCheckLink,
   onValidateFinals,
+  hasEditionStudio = true,
   onCompleteCollection,
   stepNotesPhotographerLastCheck,
   stepNotesClientConfirmation,
@@ -705,9 +708,23 @@ export function CollectionTemplate({
         return true
       })
       if (urls.length === 0) return []
+      // Deduplicate notes (same from, text, url within 2s) to avoid showing duplicates from double-submit.
+      const dedupeNotes = <T extends { from: string; text: string; at: string; url?: string }>(arr: T[], windowMs = 2000): T[] => {
+        const out: T[] = []
+        for (const n of arr) {
+          const prev = out[out.length - 1]
+          if (!prev) { out.push(n); continue }
+          if (prev.from !== n.from || prev.text !== n.text) { out.push(n); continue }
+          const prevUrl = (prev as { url?: string }).url?.trim() ?? ""
+          const nUrl = (n as { url?: string }).url?.trim() ?? ""
+          if (prevUrl !== nUrl) { out.push(n); continue }
+          if (Math.abs(new Date(n.at).getTime() - new Date(prev.at).getTime()) > windowMs) out.push(n)
+        }
+        return out
+      }
+      const allNotes = dedupeNotes(notes ?? [])
       // Filter notes by url: each block shows only notes linked to that URL.
       // Legacy notes (no url) are shown in the first block.
-      const allNotes = notes ?? []
       const fallbackEntityName = uploaderDisplay?.name?.trim() || (expectedNoteFrom ? expectedNoteFrom.charAt(0).toUpperCase() + expectedNoteFrom.slice(1).replace(/_/g, " ") : "Unknown")
       const resolveAuthor = (n: { from: string; userId?: string }) => {
         const author = n?.userId ? noteAuthorsByUserId?.[n.userId] : undefined
@@ -809,6 +826,8 @@ export function CollectionTemplate({
   const [addCommentDialogOpen, setAddCommentDialogOpen] = React.useState(false)
   const [addCommentNotes, setAddCommentNotes] = React.useState("")
   const [addCommentContext, setAddCommentContext] = React.useState<{ stepNoteKey: string; from: string; url?: string } | null>(null)
+  const [addCommentSubmitting, setAddCommentSubmitting] = React.useState(false)
+  const [uploadSubmitting, setUploadSubmitting] = React.useState(false)
   // Link accordion dialog (shared across steps)
   const [linkDialogOpen, setLinkDialogOpen] = React.useState(false)
   const [linkDialogTitle, setLinkDialogTitle] = React.useState("")
@@ -951,7 +970,7 @@ export function CollectionTemplate({
     }
     setIsUpdatingProfile(true)
     try {
-      let profilePictureUrl: string | undefined
+      let profilePictureUrl: string | null | undefined
       if (userData.profilePicture) {
         const formData = new FormData()
         formData.append("file", userData.profilePicture)
@@ -962,6 +981,8 @@ export function CollectionTemplate({
         const uploadData = await uploadRes.json().catch(() => ({}))
         if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
         profilePictureUrl = uploadData.profilePictureUrl
+      } else if (userData.profilePictureRemoved) {
+        profilePictureUrl = null
       }
       const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
       const res = await fetch(`/api/users/${userContext.user.id}`, {
@@ -1583,34 +1604,42 @@ export function CollectionTemplate({
                   <StepDetails
                     variant="primary"
                     mainTitle="Final confirmation"
-                    subtitle="Photographer needs to carefully review final retouches and approve the job done by the edition studio in order to share finals with client."
+                    subtitle={
+                      hasEditionStudio
+                        ? "Photographer needs to carefully review final retouches and approve the job done by the edition studio in order to share finals with client."
+                        : "Photographer needs to review the high-res selection, add links or comments if needed, and validate before sharing with client."
+                    }
                     backgroundImage="/assets/bg-improvements.png"
                     hideActionButton
                     className="w-full"
                   />
                   {canShowModalActions && (() => {
-                    // 1. Final edits (from retouch studio, step 9) — always shown
+                    // Material to review: when hasEditionStudio → finals from retouch; when no edition → high-res from handprint
+                    const materialUrls = hasEditionStudio ? finalsSelectionUrl : highResSelectionUrl
+                    const materialNotes = hasEditionStudio ? stepNotesFinalEdits : stepNotesHighRes
+                    const materialUploader = hasEditionStudio ? "retouch_studio" : "handprint_lab"
+                    const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
+                    const materialUploadedAt = hasEditionStudio ? finalsUploadedAt : highResUploadedAt
                     const block1 = buildUrlHistoryItems(
-                      finalsSelectionUrl,
-                      stepNotesFinalEdits,
-                      "retouch_studio",
-                      resolveUploaderDisplay("retouch_studio"),
-                      finalsUploadedAt,
-                      "final_edits",
-                      "Final edits"
+                      materialUrls,
+                      materialNotes,
+                      materialUploader,
+                      resolveUploaderDisplay(materialUploader),
+                      materialUploadedAt,
+                      hasEditionStudio ? "final_edits" : "handprint_high_res",
+                      materialLabel
                     )
-                    // 2. What was shared with client (only when step completed) — uses step_notes_photographer_last_check
-                    const finalsUrls = allUrls(finalsSelectionUrl)
-                    const validatedNotesForFinals = (stepNotesPhotographerLastCheck ?? []).filter((n) => {
+                    const materialUrlsList = allUrls(materialUrls)
+                    const validatedNotesForMaterial = (stepNotesPhotographerLastCheck ?? []).filter((n) => {
                       const u = (n as { url?: string }).url?.trim()
                       if (!u) return true
-                      return finalsUrls.includes(u)
+                      return materialUrlsList.includes(u)
                     })
                     const block2a =
-                      openStep.status === "completed" && finalsUrls.length > 0
+                      openStep.status === "completed" && materialUrlsList.length > 0
                         ? buildUrlHistoryItems(
-                            finalsSelectionUrl,
-                            validatedNotesForFinals,
+                            materialUrls,
+                            validatedNotesForMaterial,
                             "photographer",
                             resolveUploaderDisplay("photographer"),
                             undefined,
@@ -1618,11 +1647,10 @@ export function CollectionTemplate({
                             undefined,
                             (_url, idx) =>
                               idx === 0
-                                ? "Final edits (validated by photographer)"
-                                : `Final edits (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
+                                ? `${materialLabel} (validated by photographer)`
+                                : `${materialLabel} (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
                           )
                         : []
-                    // 3. Finals (photographer added via "Add new link") — when photographer added links
                     const block2b = buildUrlHistoryItems(
                       photographerLastCheckUrl,
                       stepNotesPhotographerLastCheck,
@@ -1669,7 +1697,7 @@ export function CollectionTemplate({
                       ) : (
                         <>
                           <p className="text-center text-base font-semibold text-foreground">
-                            Are final retouches ok?
+                            {hasEditionStudio ? "Are final retouches ok?" : "Are high-res selection ok?"}
                           </p>
                           <div className="flex flex-wrap items-center justify-center gap-3">
                             <Button
@@ -1700,7 +1728,7 @@ export function CollectionTemplate({
                                 }
                               }}
                             >
-                              Share final edits url with client
+                              {hasEditionStudio ? "Share final edits url with client" : "Share high-res with client"}
                             </Button>
                           </div>
                         </>
@@ -2106,6 +2134,7 @@ export function CollectionTemplate({
           } else {
             setUploadMorePhotosUrl("")
             setUploadMorePhotosNotes("")
+            setUploadSubmitting(false)
           }
         }}
       >
@@ -2144,19 +2173,24 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!uploadMorePhotosUrl.trim()}
+              disabled={!uploadMorePhotosUrl.trim() || uploadSubmitting}
               onClick={async () => {
                 const url = uploadMorePhotosUrl.trim()
-                if (!url) return
-                await onUploadMoreLowRes?.({ url, notes: uploadMorePhotosNotes.trim() || undefined })
-                setUploadMorePhotosDialogOpen(false)
-                setUploadMorePhotosUrl("")
-                setUploadMorePhotosNotes("")
-                setOpenStepId(null)
-                toast.success("Additional photos uploaded.")
+                if (!url || uploadSubmitting) return
+                setUploadSubmitting(true)
+                try {
+                  await onUploadMoreLowRes?.({ url, notes: uploadMorePhotosNotes.trim() || undefined })
+                  setUploadMorePhotosDialogOpen(false)
+                  setUploadMorePhotosUrl("")
+                  setUploadMorePhotosNotes("")
+                  setOpenStepId(null)
+                  toast.success("Additional photos uploaded.")
+                } finally {
+                  setUploadSubmitting(false)
+                }
               }}
             >
-              Upload more photos
+              {uploadSubmitting ? "Uploading…" : "Upload more photos"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2172,6 +2206,7 @@ export function CollectionTemplate({
           } else {
             setUploadLowResUrl("")
             setUploadLowResNotes("")
+            setUploadSubmitting(false)
           }
         }}
       >
@@ -2245,10 +2280,11 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!uploadLowResUrl.trim()}
+              disabled={!uploadLowResUrl.trim() || uploadSubmitting}
               onClick={async () => {
                 const url = uploadLowResUrl.trim()
-                if (!url) return
+                if (!url || uploadSubmitting) return
+                setUploadSubmitting(true)
                 try {
                   await onUploadLowRes?.({ url, notes: uploadLowResNotes.trim() || undefined })
                   setUploadLowResDialogOpen(false)
@@ -2258,10 +2294,12 @@ export function CollectionTemplate({
                   toast.success("Low-res scans uploaded.")
                 } catch {
                   // Error already surfaced by page (toast.error)
+                } finally {
+                  setUploadSubmitting(false)
                 }
               }}
             >
-              Upload low-res
+              {uploadSubmitting ? "Uploading…" : "Upload low-res"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2275,6 +2313,7 @@ export function CollectionTemplate({
           if (!open) {
             setUploadPhotographerSelectionUrl("")
             setUploadPhotographerSelectionNotes("")
+            setUploadSubmitting(false)
           }
         }}
       >
@@ -2316,16 +2355,21 @@ export function CollectionTemplate({
               disabled={!uploadPhotographerSelectionUrl.trim()}
               onClick={async () => {
                 const url = uploadPhotographerSelectionUrl.trim()
-                if (!url) return
-                await onUploadPhotographerSelection?.({ url, notes: uploadPhotographerSelectionNotes.trim() || undefined })
-                setUploadPhotographerSelectionDialogOpen(false)
-                setUploadPhotographerSelectionUrl("")
-                setUploadPhotographerSelectionNotes("")
-                setOpenStepId(null)
-                toast.success("Selection uploaded.")
+                if (!url || uploadSubmitting) return
+                setUploadSubmitting(true)
+                try {
+                  await onUploadPhotographerSelection?.({ url, notes: uploadPhotographerSelectionNotes.trim() || undefined })
+                  setUploadPhotographerSelectionDialogOpen(false)
+                  setUploadPhotographerSelectionUrl("")
+                  setUploadPhotographerSelectionNotes("")
+                  setOpenStepId(null)
+                  toast.success("Selection uploaded.")
+                } finally {
+                  setUploadSubmitting(false)
+                }
               }}
             >
-              Upload selection
+              {uploadSubmitting ? "Uploading…" : "Upload selection"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2388,6 +2432,7 @@ export function CollectionTemplate({
           if (!open) {
             setAddCommentNotes("")
             setAddCommentContext(null)
+            setAddCommentSubmitting(false)
           }
         }}
       >
@@ -2415,10 +2460,11 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!addCommentNotes.trim()}
+              disabled={!addCommentNotes.trim() || addCommentSubmitting}
               onClick={async () => {
                 const text = addCommentNotes.trim()
-                if (!text || !addCommentContext) return
+                if (!text || !addCommentContext || addCommentSubmitting) return
+                setAddCommentSubmitting(true)
                 try {
                   await onAddStepNote?.({ stepNoteKey: addCommentContext.stepNoteKey, from: getStepNoteFromForCurrentUser(), text, url: addCommentContext.url })
                   setAddCommentDialogOpen(false)
@@ -2427,10 +2473,12 @@ export function CollectionTemplate({
                   toast.success("Comment added.")
                 } catch {
                   // Error surfaced by page callback
+                } finally {
+                  setAddCommentSubmitting(false)
                 }
               }}
             >
-              Add comment
+              {addCommentSubmitting ? "Adding…" : "Add comment"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2444,6 +2492,7 @@ export function CollectionTemplate({
           if (!open) {
             setClientUploadSelectionUrl("")
             setClientUploadSelectionNotes("")
+            setUploadSubmitting(false)
           }
         }}
       >
@@ -2482,10 +2531,11 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!clientUploadSelectionUrl.trim()}
+              disabled={!clientUploadSelectionUrl.trim() || uploadSubmitting}
               onClick={async () => {
                 const url = clientUploadSelectionUrl.trim()
-                if (!url) return
+                if (!url || uploadSubmitting) return
+                setUploadSubmitting(true)
                 try {
                   await onUploadClientSelection?.({ url, notes: clientUploadSelectionNotes.trim() || undefined })
                   setClientUploadSelectionDialogOpen(false)
@@ -2495,10 +2545,12 @@ export function CollectionTemplate({
                   toast.success("Selection uploaded.")
                 } catch {
                   // Error surfaced by page if any
+                } finally {
+                  setUploadSubmitting(false)
                 }
               }}
             >
-              Upload selection
+              {uploadSubmitting ? "Uploading…" : "Upload selection"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2561,6 +2613,7 @@ export function CollectionTemplate({
           if (!open) {
             setValidateSelectionComments("")
             setValidateSelectionLink("")
+            setUploadSubmitting(false)
           }
         }}
       >
@@ -2599,8 +2652,10 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!validateSelectionComments.trim() && !validateSelectionLink.trim()}
+              disabled={(!validateSelectionComments.trim() && !validateSelectionLink.trim()) || uploadSubmitting}
               onClick={async () => {
+                if (uploadSubmitting) return
+                setUploadSubmitting(true)
                 try {
                   await onValidateClientSelection?.(
                     validateSelectionComments.trim() || undefined,
@@ -2613,10 +2668,12 @@ export function CollectionTemplate({
                   toast.success("Comments sent to lab.")
                 } catch {
                   // Error surfaced by page if any
+                } finally {
+                  setUploadSubmitting(false)
                 }
               }}
             >
-              Add comments for HR
+              {uploadSubmitting ? "Sending…" : "Add comments for HR"}
             </Button>
           </DialogFooter>
         </DialogContent>

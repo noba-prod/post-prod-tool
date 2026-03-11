@@ -12,7 +12,7 @@ type UpdateUserPayload = {
   phoneNumber?: string
   countryCode?: string
   role?: "admin" | "editor" | "viewer"
-  profilePictureUrl?: string
+  profilePictureUrl?: string | null
 }
 
 async function getSessionProfile() {
@@ -105,13 +105,15 @@ export async function PATCH(
 
   const targetForEdit = targetProfile as Profile
   const isInternal = Boolean(profile.is_internal)
+  const canEditSelf = profile.id === targetUserId
   const canEditSameOrg =
+    !canEditSelf &&
     profile.organization_id &&
     targetForEdit.organization_id &&
     profile.organization_id === targetForEdit.organization_id &&
     (profile.role === "admin" || profile.role === "editor")
 
-  if (!isInternal && !canEditSameOrg) {
+  if (!isInternal && !canEditSelf && !canEditSameOrg) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -189,6 +191,22 @@ export async function PATCH(
       { error: updateError?.message || "Failed to update user" },
       { status: 500 }
     )
+  }
+
+  // For self-photographer: sync organizations.profile_picture_url when profile image changes
+  if (payload.profilePictureUrl !== undefined && targetForEdit.organization_id) {
+    const { data: orgRow } = await adminClient
+      .from("organizations")
+      .select("type")
+      .eq("id", targetForEdit.organization_id)
+      .maybeSingle()
+    const orgType = (orgRow as { type?: string } | null)?.type
+    if (orgType === "self_photographer") {
+      await adminClient
+        .from("organizations")
+        .update({ profile_picture_url: payload.profilePictureUrl } as never)
+        .eq("id", targetForEdit.organization_id)
+    }
   }
 
   const updated = updatedProfile as Profile

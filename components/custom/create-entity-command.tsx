@@ -187,6 +187,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
           number: formData.phoneNumber,
         },
         notes: formData.notes || undefined,
+        profilePicture: formData.profilePicture ?? null,
       })
 
       // Close modal

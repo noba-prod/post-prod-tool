@@ -11,7 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
 import { NotificationsService } from "@/lib/services/notifications/notifications.service"
 import type { StepNoteEntry } from "@/lib/domain/collections"
-import { appendToUrlArray, appendNote } from "@/lib/utils/collection-mappers"
+import { appendToUrlArray, appendNote, isDuplicateNote } from "@/lib/utils/collection-mappers"
 
 interface PatchBody {
   // URL appends (single URL string → appended to JSONB array)
@@ -251,6 +251,7 @@ export async function PATCH(
           ...(noteInput.url?.trim() ? { url: noteInput.url.trim() } : {}),
         }
         const existing = parseStoredNotes(raw[rawKey])
+        if (isDuplicateNote(existing, entry)) continue
         const next = appendNote(existing, entry)
         const dbKeyByPatchKey: Record<string, string> = {
           stepNotesLowRes: "step_notes_low_res",

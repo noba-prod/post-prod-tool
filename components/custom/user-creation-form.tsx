@@ -53,6 +53,8 @@ interface UserFormData {
   role: Role
   /** Profile picture file (for upload) */
   profilePicture?: File | null
+  /** True when user explicitly removed the existing profile picture (edit mode) */
+  profilePictureRemoved?: boolean
 }
 
 interface UserCreationFormProps {
@@ -189,10 +191,11 @@ export function UserCreationForm({
   }, [entity])
 
   // Update form data when initialUserData changes (for edit mode)
+  // Preserve profilePicture (selected file) to avoid resetting when user has picked a new file
   React.useEffect(() => {
     if (mode === "edit" && initialUserData && entity) {
       const { countryCode, phoneNumber } = parsePhoneNumber(initialUserData.phoneNumber)
-      setFormData({
+      setFormData((prev) => ({
         firstName: initialUserData.firstName,
         lastName: initialUserData.lastName || "",
         email: initialUserData.email,
@@ -200,8 +203,9 @@ export function UserCreationForm({
         countryCode: countryCode,
         entity: { type: entity.type, name: entity.name },
         role: initialUserData.role,
-        profilePicture: null,
-      })
+        profilePicture: prev.profilePicture instanceof File ? prev.profilePicture : null,
+        profilePictureRemoved: prev.profilePicture instanceof File ? false : prev.profilePictureRemoved,
+      }))
     }
   }, [mode, initialUserData, entity])
 
@@ -264,6 +268,7 @@ export function UserCreationForm({
           entity: { type: entity.type, name: entity.name },
           role: initialUserData.role,
           profilePicture: null,
+          profilePictureRemoved: false,
         })
       } else {
         setFormData({
@@ -275,6 +280,7 @@ export function UserCreationForm({
           entity: entity || parsedInitialData?.entity || null,
           role: isAdminUser ? "admin" : (parsedInitialData?.role || "editor"),
           profilePicture: null,
+          profilePictureRemoved: false,
         })
       }
     }
@@ -501,8 +507,12 @@ export function UserCreationForm({
                     existingUrl={initialUserData?.profilePictureUrl}
                     hideExisting={userRemovedProfilePicture}
                     onChange={(file) => {
-                      setFormData((prev) => ({ ...prev, profilePicture: file }))
-                      if (!file) setUserRemovedProfilePicture(true)
+                      setFormData((prev) => ({
+                        ...prev,
+                        profilePicture: file,
+                        profilePictureRemoved: !file && Boolean(initialUserData?.profilePictureUrl),
+                      }))
+                      setUserRemovedProfilePicture(!file)
                     }}
                     disabled={disabled}
                   />

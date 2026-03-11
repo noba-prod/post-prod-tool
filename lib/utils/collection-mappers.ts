@@ -99,6 +99,24 @@ export function appendNote(existing: StepNoteEntry[] | undefined, entry: StepNot
   return [...(existing ?? []), entry]
 }
 
+/** Returns true if we should skip appending this entry (idempotency: prevents duplicate from double-submit). */
+export function isDuplicateNote(
+  existing: StepNoteEntry[] | undefined,
+  entry: StepNoteEntry,
+  windowMs = 10_000
+): boolean {
+  const arr = existing ?? []
+  const last = arr[arr.length - 1]
+  if (!last) return false
+  if (last.from !== entry.from || last.text !== entry.text) return false
+  const lastUrl = (last as { url?: string }).url?.trim() ?? ""
+  const entryUrl = (entry as { url?: string }).url?.trim() ?? ""
+  if (lastUrl !== entryUrl) return false
+  const lastAt = new Date(last.at).getTime()
+  const entryAt = new Date(entry.at).getTime()
+  return Math.abs(entryAt - lastAt) < windowMs
+}
+
 /** DB → Domain: build config from flat DB row */
 function dbRowToConfig(row: DbCollection, members: CollectionMember[]): CollectionConfig {
   const managerUserId =

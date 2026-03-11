@@ -58,13 +58,15 @@ export async function POST(
 
   const targetForEdit = targetProfile as Profile
   const isInternal = Boolean(profile.is_internal)
+  const canEditSelf = profile.id === targetUserId
   const canEditSameOrg =
+    !canEditSelf &&
     profile.organization_id &&
     targetForEdit.organization_id &&
     profile.organization_id === targetForEdit.organization_id &&
     (profile.role === "admin" || profile.role === "editor")
 
-  if (!isInternal && !canEditSameOrg) {
+  if (!isInternal && !canEditSelf && !canEditSameOrg) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -118,6 +120,22 @@ export async function POST(
       { error: updateError.message || "Failed to update profile" },
       { status: 500 }
     )
+  }
+
+  // For self-photographer: sync organizations.profile_picture_url from profiles.image
+  if (targetForEdit.organization_id) {
+    const { data: orgRow } = await adminClient
+      .from("organizations")
+      .select("type")
+      .eq("id", targetForEdit.organization_id)
+      .maybeSingle()
+    const orgType = (orgRow as { type?: string } | null)?.type
+    if (orgType === "self_photographer") {
+      await adminClient
+        .from("organizations")
+        .update({ profile_picture_url: profilePictureUrl } as never)
+        .eq("id", targetForEdit.organization_id)
+    }
   }
 
   return NextResponse.json({ profilePictureUrl })

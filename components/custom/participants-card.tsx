@@ -23,7 +23,7 @@ export interface ParticipantsCardProps {
   email?: string
   /** Individual: phone number */
   phone?: string
-  /** Individual: when true, blur email and phone (e.g. for photographers) */
+  /** Individual: when true, hide email and phone (e.g. for photographers) */
   hideContactInfo?: boolean
   /** Entity: responsible person(s) — user(s) with edit permission; if multiple: "UserName + N more" */
   managerName?: string
@@ -58,6 +58,7 @@ export function ParticipantsCard({
     <div
       className={cn(
         "flex flex-col gap-3 rounded-xl bg-zinc-100 p-3 w-full min-w-0",
+        hideContactInfo && "min-h-[144px]",
         className
       )}
     >
@@ -91,25 +92,15 @@ export function ParticipantsCard({
             </>
           )}
 
-          {variant === "individual" && (
+          {variant === "individual" && !hideContactInfo && (
             <>
               {(email != null && email !== "") && (
-                <span
-                  className={cn(
-                    "truncate text-sm font-normal text-muted-foreground",
-                    hideContactInfo && "select-none blur-[4px]"
-                  )}
-                >
+                <span className="truncate text-sm font-normal text-muted-foreground">
                   {email}
                 </span>
               )}
               {(phone != null && phone !== "") && (
-                <span
-                  className={cn(
-                    "truncate text-sm font-normal text-muted-foreground",
-                    hideContactInfo && "select-none blur-[4px]"
-                  )}
-                >
+                <span className="truncate text-sm font-normal text-muted-foreground">
                   {phone}
                 </span>
               )}

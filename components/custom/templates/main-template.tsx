@@ -153,7 +153,7 @@ export function MainTemplate({
 
     setIsUpdatingProfile(true)
     try {
-      let profilePictureUrl: string | undefined
+      let profilePictureUrl: string | null | undefined
       if (userData.profilePicture) {
         const formData = new FormData()
         formData.append("file", userData.profilePicture)
@@ -164,6 +164,8 @@ export function MainTemplate({
         const uploadData = await uploadRes.json().catch(() => ({}))
         if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
         profilePictureUrl = uploadData.profilePictureUrl
+      } else if (userData.profilePictureRemoved) {
+        profilePictureUrl = null
       }
 
       const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)

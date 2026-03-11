@@ -174,13 +174,18 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
     }
 
     // Build Entity object
+    // For self-photographer: use profile.image (profiles) as source of truth, not organization.profile_picture_url
+    const entityProfilePictureUrl =
+      entityType === "self-photographer"
+        ? (p.image || undefined)
+        : (organization?.profile_picture_url || undefined)
     const entity: Entity = {
       id: organization?.id || NOBA_ORGANIZATION_ID,
       type: entityType,
       name: organization?.name || "noba*",
       email: organization?.email || undefined,
       phoneNumber: organization?.phone || undefined,
-      profilePictureUrl: organization?.profile_picture_url || undefined,
+      profilePictureUrl: entityProfilePictureUrl,
       notes: organization?.notes || undefined,
       location: organization?.street_address ? {
         streetAddress: organization.street_address,

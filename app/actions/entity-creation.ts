@@ -114,6 +114,47 @@ function mapProfileToUser(profile: Profile): User {
   }
 }
 
+async function uploadProfilePicture(
+  adminSupabase: ReturnType<typeof createAdminClient>,
+  userId: string,
+  file: File
+): Promise<string | null> {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "png"
+  const objectPath = `profiles/${userId}/avatar.${extension}`
+  const arrayBuffer = await file.arrayBuffer()
+
+  const { error: uploadError } = await adminSupabase.storage
+    .from("profile-pictures")
+    .upload(objectPath, arrayBuffer, {
+      contentType: file.type || "application/octet-stream",
+      upsert: true,
+    })
+
+  if (uploadError) {
+    console.error("Profile picture upload failed:", uploadError)
+    return null
+  }
+
+  const { data } = adminSupabase.storage
+    .from("profile-pictures")
+    .getPublicUrl(objectPath)
+
+  const publicUrl = data.publicUrl || null
+  if (!publicUrl) return null
+
+  const { error: updateError } = await adminSupabase
+    .from("profiles")
+    .update({ image: publicUrl } as never)
+    .eq("id", userId)
+
+  if (updateError) {
+    console.error("Failed to update profile image:", updateError)
+    return null
+  }
+
+  return publicUrl
+}
+
 async function uploadOrganizationProfilePicture(
   adminSupabase: ReturnType<typeof createAdminClient>,
   organizationId: string,
@@ -325,6 +366,7 @@ type CreateSelfPhotographerInput = {
   email: string
   phone?: PhoneInput
   notes?: string
+  profilePicture?: File | null
 }
 
 /**
@@ -345,6 +387,7 @@ export async function createSelfPhotographerInSupabase({
   email,
   phone,
   notes,
+  profilePicture,
 }: CreateSelfPhotographerInput): Promise<{
   entityId: string
   entity: Entity
@@ -369,7 +412,7 @@ export async function createSelfPhotographerInSupabase({
     ? `${trimmedFirstName} ${trimmedLastName}`
     : trimmedFirstName
 
-  // Create the organization (entity)
+  // Create the organization (entity) - no profile picture here; for photographer we use profiles.image
   const { entityId, entity } = await createOrganizationFromDraft({
     draft: {
       type: "self-photographer",
@@ -380,7 +423,7 @@ export async function createSelfPhotographerInSupabase({
       location: undefined,
     },
     phone,
-    profilePicture: null,
+    profilePicture: null, // Photographer uses profiles.image, uploaded after admin creation
   })
 
   // Create the admin user
@@ -394,10 +437,29 @@ export async function createSelfPhotographerInSupabase({
     },
   })
 
+  // Upload profile picture to profiles.image (source of truth for photographer)
+  let finalEntity = entity
+  if (profilePicture && adminUser.id) {
+    const adminSupabase = createAdminClient()
+    const publicUrl = await uploadProfilePicture(adminSupabase, adminUser.id, profilePicture)
+    if (publicUrl) {
+      // Sync organizations.profile_picture_url from profiles.image
+      await adminSupabase
+        .from("organizations")
+        .update({ profile_picture_url: publicUrl } as never)
+        .eq("id", entityId)
+      finalEntity = { ...entity, profilePictureUrl: publicUrl }
+    }
+  }
+
   return {
     entityId,
-    entity,
-    adminUser,
+    entity: finalEntity,
+    adminUser: {
+      ...adminUser,
+      profilePictureUrl:
+        finalEntity.profilePictureUrl ?? adminUser.profilePictureUrl ?? undefined,
+    },
     teamMembers,
   }
 }

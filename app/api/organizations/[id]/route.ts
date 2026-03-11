@@ -93,6 +93,12 @@ export async function GET(
 
   const entity = mapOrganizationToEntity(org)
   const teamMembersBase = mapProfilesToUsers((profiles || []) as Profile[])
+  // For self-photographer: entity profile picture comes from admin user's profiles.image, not organizations
+  const adminUsersForPic = teamMembersBase.filter((u) => u.role === "admin")
+  const adminUserForPic = adminUsersForPic.length > 0 ? adminUsersForPic[0] : null
+  if (org.type === "self_photographer" && adminUserForPic?.profilePictureUrl) {
+    entity.profilePictureUrl = adminUserForPic.profilePictureUrl
+  }
 
   const { data: pendingInvites } = await adminClient
     .from("invitations")

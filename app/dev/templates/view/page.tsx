@@ -201,6 +201,7 @@ export default function ViewTemplatePage() {
       return (
         <SelfPhotographerForm
           initialData={basicFormInitialData}
+          existingProfilePictureUrl={fullEntity.profilePictureUrl}
           disabled={!canEdit}
           onDataChange={(data) => {
             console.log("Form data changed:", data)

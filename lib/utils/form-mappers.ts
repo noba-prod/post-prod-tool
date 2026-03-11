@@ -232,6 +232,7 @@ export function mapSelfPhotographerToFormData(
     email: adminUser?.email || entity.email || "",
     phoneNumber: phoneNumber,
     countryCode: countryCode,
+    profilePicture: null, // File cannot be reconstructed from URL
     notes: entity.notes || "",
   }
 }
@@ -303,6 +304,8 @@ export type UserFormDataForUpdate = Pick<
   "firstName" | "lastName" | "email" | "phoneNumber" | "countryCode" | "role"
 > & {
   profilePicture?: File | null
+  /** True when user explicitly removed the existing profile picture (edit mode) */
+  profilePictureRemoved?: boolean
   /** Optional; not used by the mapper but callers may include it for type compatibility */
   entity?: { type: EntityType; name: string } | null
 }
@@ -316,7 +319,7 @@ export type UserFormDataForUpdate = Pick<
  */
 export function mapFormToUpdateUserPayload(
   formData: UserFormDataForUpdate,
-  profilePictureUrl?: string
+  profilePictureUrl?: string | null
 ): UpdateUserPayload {
   return {
     firstName: formData.firstName.trim(),

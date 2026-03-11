@@ -1016,6 +1016,7 @@ export default function CollectionViewPage({
       finalsUploadedByEntityName={undefined}
       onAddPhotographerLastCheckLink={handleAddPhotographerLastCheckLink}
       onValidateFinals={handleValidateFinals}
+      hasEditionStudio={collection.config.hasEditionStudio}
       onCompleteCollection={handleCompleteCollection}
       stepNotesPhotographerLastCheck={collection.stepNotesPhotographerLastCheck}
       stepNotesClientConfirmation={collection.stepNotesClientConfirmation}

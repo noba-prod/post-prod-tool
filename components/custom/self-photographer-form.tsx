@@ -7,6 +7,7 @@ import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/fie
 import { Input } from "@/components/ui/input"
 import { PhoneInput } from "./phone-input"
 import { Textarea } from "@/components/ui/textarea"
+import { ProfilePictureUpload } from "./profile-picture-upload"
 import { cn } from "@/lib/utils"
 
 // Import domain types
@@ -26,6 +27,8 @@ interface SelfPhotographerFormProps {
   onValidationChange?: (isValid: boolean) => void
   /** Whether all inputs should be disabled (for view-only mode) */
   disabled?: boolean
+  /** Existing profile picture URL (when editing, for preview) */
+  existingProfilePictureUrl?: string | null
   /** Additional class name */
   className?: string
 }
@@ -56,6 +59,7 @@ export function SelfPhotographerForm({
   onDataChange,
   onValidationChange,
   disabled = false,
+  existingProfilePictureUrl,
   className,
 }: SelfPhotographerFormProps) {
   // Form state
@@ -65,6 +69,7 @@ export function SelfPhotographerForm({
     email: initialData?.email || "",
     phoneNumber: initialData?.phoneNumber || "",
     countryCode: initialData?.countryCode || "+34",
+    profilePicture: initialData?.profilePicture ?? null,
     notes: initialData?.notes || "",
   })
 
@@ -77,6 +82,7 @@ export function SelfPhotographerForm({
         email: initialData.email ?? prev.email,
         phoneNumber: initialData.phoneNumber ?? prev.phoneNumber,
         countryCode: initialData.countryCode ?? prev.countryCode,
+        profilePicture: initialData.profilePicture ?? prev.profilePicture,
         notes: initialData.notes ?? prev.notes,
       }))
     }
@@ -252,7 +258,23 @@ export function SelfPhotographerForm({
             </Field>
           </RowVariants>
 
-          {/* Row 4: Notes */}
+          {/* Row 4: Profile Picture */}
+          <RowVariants variant="1">
+            <Field>
+              <FieldContent>
+                <ProfilePictureUpload
+                  id="sp-profile-picture"
+                  label="Profile picture"
+                  value={formData.profilePicture}
+                  existingUrl={existingProfilePictureUrl}
+                  onChange={(file) => updateFormData({ profilePicture: file })}
+                  disabled={disabled}
+                />
+              </FieldContent>
+            </Field>
+          </RowVariants>
+
+          {/* Row 5: Notes */}
           <RowVariants variant="1">
             <Field>
               <FieldLabel htmlFor="sp-notes" disabled={disabled}>

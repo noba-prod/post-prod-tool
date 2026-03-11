@@ -110,7 +110,7 @@ export interface UpdateUserPayload {
   phoneNumber?: string
   countryCode?: string
   role?: Role
-  profilePictureUrl?: string
+  profilePictureUrl?: string | null
   notes?: string
 }
 

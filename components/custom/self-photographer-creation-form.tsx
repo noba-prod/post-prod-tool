@@ -8,6 +8,7 @@ import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/fie
 import { Input } from "@/components/ui/input"
 import { PhoneInput } from "./phone-input"
 import { Textarea } from "@/components/ui/textarea"
+import { ProfilePictureUpload } from "./profile-picture-upload"
 
 // Import domain types
 import { entityTypeToLabel, roleToLabel } from "@/lib/types"
@@ -25,6 +26,7 @@ export interface SelfPhotographerFormData {
   email: string
   phoneNumber: string
   countryCode: string
+  profilePicture: File | null
   notes: string
 }
 
@@ -83,6 +85,7 @@ export function SelfPhotographerCreationForm({
     email: initialData?.email || "",
     phoneNumber: initialData?.phoneNumber || "",
     countryCode: initialData?.countryCode || "+34",
+    profilePicture: initialData?.profilePicture ?? null,
     notes: initialData?.notes || "",
   })
 
@@ -95,6 +98,7 @@ export function SelfPhotographerCreationForm({
         email: initialData?.email || "",
         phoneNumber: initialData?.phoneNumber || "",
         countryCode: initialData?.countryCode || "+34",
+        profilePicture: initialData?.profilePicture ?? null,
         notes: initialData?.notes || "",
       })
     }
@@ -265,7 +269,23 @@ export function SelfPhotographerCreationForm({
               </Field>
             </RowVariants>
 
-            {/* Row 4: Notes */}
+            {/* Row 4: Profile Picture */}
+            <RowVariants variant="1">
+              <Field>
+                <FieldContent>
+                  <ProfilePictureUpload
+                    id="sp-profile-picture"
+                    label="Profile picture"
+                    value={formData.profilePicture}
+                    onChange={(file) =>
+                      setFormData((prev) => ({ ...prev, profilePicture: file }))
+                    }
+                  />
+                </FieldContent>
+              </Field>
+            </RowVariants>
+
+            {/* Row 5: Notes */}
             <RowVariants variant="1">
               <Field>
                 <FieldLabel htmlFor="sp-notes">

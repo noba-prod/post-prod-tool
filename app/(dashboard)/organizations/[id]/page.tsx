@@ -127,10 +127,19 @@ export default function OrganizationDetailPage() {
     setIsSavingBasicInfo(true)
     try {
       let profilePictureUrl: string | undefined
-      if (entity.entity.type !== "self-photographer" && basicFormData?.profilePicture) {
+      const profilePictureFile =
+        entity.entity.type === "self-photographer"
+          ? selfPhotographerFormData?.profilePicture
+          : basicFormData?.profilePicture
+      if (profilePictureFile) {
         const formData = new FormData()
-        formData.append("file", basicFormData.profilePicture)
-        const uploadRes = await fetch(`/api/organizations/${entityId}/profile-picture`, {
+        formData.append("file", profilePictureFile)
+        // For self-photographer: upload to profiles.image (users API), which syncs to organizations
+        const uploadUrl =
+          entity.entity.type === "self-photographer" && entity.adminUser
+            ? `/api/users/${entity.adminUser.id}/profile-picture`
+            : `/api/organizations/${entityId}/profile-picture`
+        const uploadRes = await fetch(uploadUrl, {
           method: "POST",
           body: formData,
         })
@@ -164,6 +173,9 @@ export default function OrganizationDetailPage() {
           phoneNumber: selfPhotographerFormData.phoneNumber.trim(),
           countryCode: selfPhotographerFormData.countryCode,
           notes: selfPhotographerFormData.notes.trim() || undefined,
+        }
+        if (profilePictureUrl) {
+          payload.profilePictureUrl = profilePictureUrl
         }
       } else {
         if (!basicFormData) {
@@ -447,6 +459,7 @@ export default function OrganizationDetailPage() {
       return (
         <SelfPhotographerForm
           initialData={basicFormInitialData}
+          existingProfilePictureUrl={entity.adminUser?.profilePictureUrl ?? entity.entity.profilePictureUrl}
           disabled={!canEdit}
           onDataChange={handleSelfPhotographerFormDataChange}
           onValidationChange={handleBasicValidationChange}
