@@ -555,7 +555,9 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     : photographerParticipant?.entityId
   const labId = c.participants.find((p) => p.role === "photo_lab")?.entityId
   const retouchStudioId = c.participants.find((p) => p.role === "retouch_studio")?.entityId
-  const handprintLabId = c.participants.find((p) => p.role === "handprint_lab")?.entityId
+  const handprintLabParticipant = c.participants.find((p) => p.role === "handprint_lab")?.entityId
+  const handprintLabId =
+    conf.handprintIsDifferentLab === true ? handprintLabParticipant : labId
   return {
     id: c.id,
     client_id: conf.clientEntityId,
@@ -779,7 +781,9 @@ export function mapDomainPatchToDbUpdate(
       : photographerParticipant?.entityId
     const labId = patch.participants.find((p) => p.role === "photo_lab")?.entityId
     const retouchStudioId = patch.participants.find((p) => p.role === "retouch_studio")?.entityId
-    const handprintLabId = patch.participants.find((p) => p.role === "handprint_lab")?.entityId
+    const handprintLabParticipant = patch.participants.find((p) => p.role === "handprint_lab")?.entityId
+    const handprintLabId =
+      patch.config?.handprintIsDifferentLab === false ? labId : (handprintLabParticipant ?? labId)
     u.photographer_id = photographerId ?? null
     u.photo_lab_id = labId ?? null
     u.retouch_studio_id = retouchStudioId ?? null

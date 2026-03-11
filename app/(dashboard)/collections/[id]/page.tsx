@@ -512,7 +512,7 @@ export default function CollectionViewPage({
   // =============================================================================
   // STEP 6: Validate client selection (photographer review)
   // =============================================================================
-  /** Step 6: Photographer adds comments/link for lab. Does NOT advance — stays in step 6 until they click "Validate client selection". */
+  /** Step 6: Photographer adds comments/link for lab. When URL is provided, advances to step 7 (same as "Validate client selection"). */
   const handleValidateClientSelection = React.useCallback(
     async (comments?: string, url?: string) => {
       if (!id) return
@@ -531,13 +531,16 @@ export default function CollectionViewPage({
         if (Object.keys(body).length > 0) {
           await patchCollection(body)
         }
+        if (url?.trim()) {
+          await fireEvent("photographer_check_approved", {})
+        }
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Validate client selection error:", err)
         toast.error("Failed to validate selection")
       }
     },
-    [id, patchCollection, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   /** Step 6: Photographer approves client selection directly — copy client URLs to photographer_review, advance to step 7. */

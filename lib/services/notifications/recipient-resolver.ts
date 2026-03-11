@@ -123,6 +123,9 @@ export async function resolveRecipients(
       case "handprint_lab":
         if (collectionData.handprint_lab_id) {
           orgIds.add(collectionData.handprint_lab_id)
+        } else if (collectionData.photo_lab_id) {
+          orgIds.add(collectionData.photo_lab_id)
+          memberRoles.push("photo_lab")
         }
         break
       

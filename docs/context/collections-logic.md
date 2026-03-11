@@ -302,6 +302,10 @@ Owner:
 - Handprint Lab (if hand-print lab differs from original lab)
 - Photo Lab (if low-res lab is the same as high-res)
 
+Modal configuration: When "Handprint different from original lab" is OFF, Photo Lab = Handprint Lab.
+The Photo Lab is the owner of this step and receives all step-related notifications (e.g. photographer_check_ready_for_hr).
+Collections store handprint_lab_id = photo_lab_id in this case so notifications resolve correctly.
+
 Action:
 - Download client selection (after photographer has validated it)
 - Convert to high-res the selected photos
