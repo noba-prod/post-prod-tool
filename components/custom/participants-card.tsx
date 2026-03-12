@@ -58,7 +58,6 @@ export function ParticipantsCard({
     <div
       className={cn(
         "flex flex-col gap-3 rounded-xl bg-zinc-100 p-3 w-full min-w-0",
-        hideContactInfo && "min-h-[144px]",
         className
       )}
     >
@@ -104,6 +103,17 @@ export function ParticipantsCard({
                   {phone}
                 </span>
               )}
+            </>
+          )}
+
+          {variant === "individual" && hideContactInfo && (
+            <>
+              <span className="truncate text-sm font-normal text-muted-foreground">
+                Photographer
+              </span>
+              <span className="truncate text-sm font-normal text-muted-foreground">
+                Admin
+              </span>
             </>
           )}
 

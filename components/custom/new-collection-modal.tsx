@@ -238,8 +238,15 @@ export function NewCollectionModal({
     }
   }, [open, clientEntityId, managerUserId])
 
+  // Only reset handprintIsDifferentLab when user changes FROM "handprint_hp" to another type.
+  // Do NOT reset when modal opens with initialConfig (shootType goes null → handprint_hp),
+  // otherwise we'd overwrite the DB value (handprint_different_from_original_lab) with false.
+  const prevShootTypeRef = React.useRef<typeof shootType>(shootType)
   React.useEffect(() => {
-    if (shootType !== "handprint_hp") setHandprintIsDifferentLab(false)
+    if (prevShootTypeRef.current === "handprint_hp" && shootType !== "handprint_hp") {
+      setHandprintIsDifferentLab(false)
+    }
+    prevShootTypeRef.current = shootType
   }, [shootType])
 
   const hasLowResLab = shootType === "digital"

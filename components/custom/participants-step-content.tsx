@@ -22,7 +22,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import { NOBA_ORGANIZATION_ID } from "@/lib/services"
+import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { useUserContext } from "@/lib/contexts/user-context"
 import type {
@@ -34,6 +36,7 @@ import type {
 import type { EntityType } from "@/lib/types"
 import type { User } from "@/lib/types"
 import type { Entity } from "@/lib/types"
+import { UserCreationForm, type UserFormData } from "./user-creation-form"
 import type { Organization, OrganizationType, Profile } from "@/lib/supabase/database.types"
 
 // ============================================================================
@@ -322,11 +325,17 @@ export function ParticipantsStepContent({
         onConfigChange={onConfigChange}
       />
       {sections.map(({ role, prefilled }) => {
+        const label =
+          role === "photo_lab" &&
+          config.hasHandprint &&
+          config.handprintIsDifferentLab === false
+            ? "Photo lab & Handprint"
+            : ROLE_LABELS[role]
         return (
           <ParticipantSection
             key={role}
             role={role}
-            label={ROLE_LABELS[role]}
+            label={label}
             draft={draft}
             prefilled={prefilled}
             onEntitySelect={(entityId) => setEntityId(role, entityId)}
@@ -401,6 +410,8 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
   const { user: currentUser } = useUserContext()
   const config = draft.config
   const [addOpen, setAddOpen] = React.useState(false)
+  const [editingUserId, setEditingUserId] = React.useState<string | null>(null)
+  const [refreshTrigger, setRefreshTrigger] = React.useState(0)
   const ownerId = config.ownerUserId ?? currentUser?.id ?? ""
   const extraIds = config.nobaUserIds ?? []
   const nobaUserIds = React.useMemo(() => {
@@ -418,7 +429,7 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
     }
     return out
   }, [ownerId, extraIds])
-  const usersById = useUsersByIds(nobaUserIds)
+  const usersById = useUsersByIds(nobaUserIds, refreshTrigger)
   const memberUsers = React.useMemo(
     () =>
       nobaUserIds
@@ -452,6 +463,55 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
     [onConfigChange, config.nobaUserIds, config.nobaEditPermissionByUserId, ownerId]
   )
 
+  const handleEditUser = React.useCallback((userId: string) => {
+    setEditingUserId(userId)
+  }, [])
+
+  const handleCloseEditUserModal = React.useCallback(() => {
+    setEditingUserId(null)
+  }, [])
+
+  const handleUpdateUser = React.useCallback(
+    async (userData: UserFormData) => {
+      if (!editingUserId) return
+      try {
+        let profilePictureUrl: string | null | undefined
+        if (userData.profilePicture) {
+          const formData = new FormData()
+          formData.append("file", userData.profilePicture)
+          const uploadRes = await fetch(`/api/users/${editingUserId}/profile-picture`, {
+            method: "POST",
+            body: formData,
+          })
+          const uploadData = await uploadRes.json().catch(() => ({}))
+          if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+          profilePictureUrl = uploadData.profilePictureUrl
+        } else if (userData.profilePictureRemoved) {
+          profilePictureUrl = null
+        }
+        const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
+        const res = await fetch(`/api/users/${editingUserId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? "Failed to update user")
+        setEditingUserId(null)
+        setRefreshTrigger((prev) => prev + 1)
+        toast.success("User updated successfully", {
+          description: `${userData.firstName} ${userData.lastName || ""}`.trim() + " has been updated.",
+        })
+      } catch (error) {
+        console.error("Failed to update user:", error)
+        toast.error("Failed to update user", {
+          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        })
+      }
+    },
+    [editingUserId]
+  )
+
   return (
     <div className="flex flex-col gap-4 p-4 bg-background border border-border rounded-xl w-full">
       <div className="flex items-center justify-between gap-4">
@@ -480,11 +540,11 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
             <TableBody>
               {memberUsers.map((u) => (
                 <TableRow key={u.id} className="h-[52px]">
-                  <TableCell className="font-medium">
+                  <TableCell
+                    className="font-medium cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleEditUser(u.id)}
+                  >
                     {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
-                    {u.id === ownerId && (
-                      <span className="ml-2 text-xs text-muted-foreground">(owner)</span>
-                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-[120px]">
                     {u.email}
@@ -499,7 +559,18 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
                     />
                   </TableCell>
                   <TableCell className="text-center">
-                    {u.id !== ownerId && (
+                    {u.id === ownerId ? (
+                      <span className="cursor-not-allowed">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled
+                          className="h-10 text-muted-foreground"
+                        >
+                          owner
+                        </Button>
+                      </span>
+                    ) : (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -523,6 +594,18 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
         existingIds={new Set(nobaUserIds)}
         onSelect={handleAdd}
       />
+
+      {editingUserId && (
+        <UserCreationForm
+          open={Boolean(editingUserId)}
+          onOpenChange={(open) => !open && handleCloseEditUserModal()}
+          mode="edit"
+          entity={{ type: "noba", name: "noba*" }}
+          initialUserData={memberUsers.find((u) => u.id === editingUserId)}
+          onSubmit={handleUpdateUser}
+          onCancel={handleCloseEditUserModal}
+        />
+      )}
     </div>
   )
 }
@@ -552,6 +635,8 @@ function ParticipantSection({
   onEditPermissionChange,
 }: ParticipantSectionProps) {
   const [addMemberOpen, setAddMemberOpen] = React.useState(false)
+  const [editingUserId, setEditingUserId] = React.useState<string | null>(null)
+  const [refreshTrigger, setRefreshTrigger] = React.useState(0)
   const config = draft.config
   const participant = getParticipantByRole(draft.participants, role)
   const entityId = effectiveEntityId(participant, role, draft.config)
@@ -598,7 +683,7 @@ function ParticipantSection({
     return out
   }, [role, participant?.userIds])
 
-  const usersByIdsResolved = useUsersByIds(memberUserIds)
+  const usersByIdsResolved = useUsersByIds(memberUserIds, refreshTrigger)
   const memberUsersRaw = React.useMemo(
     () =>
       memberUserIds
@@ -642,6 +727,71 @@ function ParticipantSection({
     },
     [isPhotographerNoAgency, onAddMember]
   )
+
+  const handleEditUser = React.useCallback((userId: string) => {
+    setEditingUserId(userId)
+  }, [])
+
+  const handleCloseEditUserModal = React.useCallback(() => {
+    setEditingUserId(null)
+  }, [])
+
+  const handleUpdateUser = React.useCallback(
+    async (userData: UserFormData) => {
+      if (!editingUserId) return
+      try {
+        let profilePictureUrl: string | null | undefined
+        if (userData.profilePicture) {
+          const formData = new FormData()
+          formData.append("file", userData.profilePicture)
+          const uploadRes = await fetch(`/api/users/${editingUserId}/profile-picture`, {
+            method: "POST",
+            body: formData,
+          })
+          const uploadData = await uploadRes.json().catch(() => ({}))
+          if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload profile picture")
+          profilePictureUrl = uploadData.profilePictureUrl
+        } else if (userData.profilePictureRemoved) {
+          profilePictureUrl = null
+        }
+        const payload = mapFormToUpdateUserPayload(userData, profilePictureUrl)
+        const res = await fetch(`/api/users/${editingUserId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? "Failed to update user")
+        setEditingUserId(null)
+        setRefreshTrigger((prev) => prev + 1)
+        toast.success("User updated successfully", {
+          description: `${userData.firstName} ${userData.lastName || ""}`.trim() + " has been updated.",
+        })
+      } catch (error) {
+        console.error("Failed to update user:", error)
+        toast.error("Failed to update user", {
+          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        })
+      }
+    },
+    [editingUserId]
+  )
+
+  const editEntity = React.useMemo((): { type: EntityType; name: string } | undefined => {
+    if (entityId) {
+      const e = entities.find((ent) => ent.id === entityId)
+      if (e) return { type: e.type, name: e.name }
+    }
+    const fallback: Record<Exclude<ParticipantRole, "producer">, { type: EntityType; name: string }> = {
+      client: { type: "client", name: "Client" },
+      photographer: { type: "self-photographer", name: "Photographer" },
+      agency: { type: "agency", name: "Agency" },
+      photo_lab: { type: "photo-lab", name: "Photo Lab" },
+      handprint_lab: { type: "hand-print-lab", name: "Hand Print Lab" },
+      retouch_studio: { type: "edition-studio", name: "Retouch/Post Studio" },
+    }
+    return fallback[role]
+  }, [entityId, entities, role])
 
   // Edit permission: all participants can have their edit permission toggled.
   // When can_edit = true the user can interact with milestone actions
@@ -701,7 +851,10 @@ function ParticipantSection({
             <TableBody>
               {memberUsers.map((u) => (
                 <TableRow key={u.id} className="h-[52px]">
-                  <TableCell className="font-medium">
+                  <TableCell
+                    className="font-medium cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleEditUser(u.id)}
+                  >
                     {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
                   </TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-[120px]">
@@ -734,6 +887,17 @@ function ParticipantSection({
             </TableBody>
           </Table>
         </div>
+      )}
+      {editingUserId && (
+        <UserCreationForm
+          open={Boolean(editingUserId)}
+          onOpenChange={(open) => !open && handleCloseEditUserModal()}
+          mode="edit"
+          entity={editEntity}
+          initialUserData={memberUsers.find((u) => u.id === editingUserId)}
+          onSubmit={handleUpdateUser}
+          onCancel={handleCloseEditUserModal}
+        />
       )}
       <AddMemberOverlay
         open={addMemberOpen}
@@ -882,7 +1046,7 @@ function useUsersFromAllEntitiesOfType(entityType: EntityType | null): User[] {
   return users
 }
 
-function useUsersByIds(userIds: string[]): Map<string, User> {
+function useUsersByIds(userIds: string[], refreshTrigger?: unknown): Map<string, User> {
   const [byId, setById] = React.useState<Map<string, User>>(new Map())
   const idsKey = userIds.join(",")
 
@@ -920,7 +1084,7 @@ function useUsersByIds(userIds: string[]): Map<string, User> {
     return () => {
       cancelled = true
     }
-  }, [idsKey])
+  }, [idsKey, refreshTrigger])
 
   return byId
 }

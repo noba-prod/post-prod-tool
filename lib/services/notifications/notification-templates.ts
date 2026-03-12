@@ -102,7 +102,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerOffsetMinutes: 0,
     triggerCondition: null,
     emailRecipients: ["producer"],
-    inappRecipients: ["producer", "photo_lab"],
+    inappRecipients: ["producer"],
   },
   {
     code: "dropoff_confirmed_status",

@@ -342,10 +342,22 @@ const COMMENT_STEP_SLUG_BY_NOTE_AND_RECIPIENT: Record<string, Partial<Record<Rec
 }
 
 /**
- * Per-template navigation overrides for "shared additional link" notifications.
- * These should open the step where each recipient can actually see the UrlHistory block.
+ * Per-template navigation overrides.
+ * - "shared additional link": open the step where recipient can see the UrlHistory block.
+ * - scanning_completed: photographer goes to step 4 (Photographer selection) to review and upload
+ *   their selection, not step 3 (Low-res scanning) where the lab completed the work.
  */
 const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientType, string>>> = {
+  scanning_completed: {
+    photographer: "photographer_selection",
+  },
+  photographer_selection_uploaded: {
+    client: "client_selection",
+  },
+  client_selection_confirmed: {
+    photographer: "photographer_check",
+    handprint_lab: "handprint_high_res",
+  },
   lab_shared_additional_materials: {
     photographer: "photographer_selection",
   },
@@ -587,6 +599,15 @@ export class NotificationsService implements INotificationsService {
         })
       }
     }
+
+    // 6. Process pending email deliveries immediately so event-driven emails
+    //    (e.g. dropoff_upcoming to photo_lab) are sent without waiting for cron.
+    const now = new Date().toISOString()
+    const runId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    await this.processPendingNotificationDeliveries(runId, now)
   }
 
   /**
@@ -740,7 +761,25 @@ export class NotificationsService implements INotificationsService {
       }
     }
 
-    // 2. Process pending notification deliveries
+    // 2. Process pending notification deliveries (emails, etc.)
+    const pendingResult = await this.processPendingNotificationDeliveries(runId, now, staleProcessingIso)
+    return { processed: processed + pendingResult.processed, errors: errors + pendingResult.errors }
+  }
+
+  /**
+   * Process pending notification deliveries (emails with status=pending).
+   * Called by cron (processScheduledNotifications) and immediately after triggerEvent
+   * so event-driven emails are sent without waiting for the next cron run.
+   */
+  private async processPendingNotificationDeliveries(
+    runId: string,
+    now: string,
+    staleProcessingIso?: string
+  ): Promise<{ processed: number; errors: number }> {
+    const stale = staleProcessingIso ?? new Date(Date.now() - 15 * 60_000).toISOString()
+    let processed = 0
+    let errors = 0
+
     const { data: pendingNotifications, error: notifError } = await this.supabase
       .from("notifications")
       .select("*")
@@ -750,13 +789,12 @@ export class NotificationsService implements INotificationsService {
 
     if (notifError) {
       console.error("[NotificationsService] Failed to fetch pending notifications:", notifError)
-      return { processed, errors: errors + 1 }
+      return { processed: 0, errors: 1 }
     }
 
     const notificationList = (pendingNotifications ?? []) as NotificationRow[]
     for (const notification of notificationList) {
       try {
-        // Claim row atomically so only one worker can send it.
         const claimNotifResult = await this.supabase
           .from("notifications")
           .update({
@@ -765,16 +803,13 @@ export class NotificationsService implements INotificationsService {
             processing_by: runId,
           } as never)
           .eq("id", notification.id)
-          .or(`status.eq.pending,and(status.eq.processing,processing_started_at.lt.${staleProcessingIso})`)
+          .or(`status.eq.pending,and(status.eq.processing,processing_started_at.lt.${stale})`)
           .select("id")
           .limit(1)
         const claimedNotification = (claimNotifResult.data as { id: string }[] | null) ?? []
-        if (claimedNotification.length === 0) {
-          continue
-        }
+        if (claimedNotification.length === 0) continue
 
         if (notification.channel === "email") {
-          // Get user email
           const { data: userData } = await this.supabase
             .from("profiles")
             .select("email, first_name")
@@ -783,12 +818,10 @@ export class NotificationsService implements INotificationsService {
           const user = userData as { email: string; first_name: string | null } | null
 
           if (user?.email) {
-            // Email body is stored as JSON with structured fields
             let emailPayload: Record<string, string | null> = {}
             try {
               emailPayload = JSON.parse(notification.body)
             } catch {
-              // Legacy plain-text body fallback
               emailPayload = { emailTitle: notification.title, emailDescription: notification.body }
             }
 
@@ -836,7 +869,6 @@ export class NotificationsService implements INotificationsService {
             }
           }
         } else {
-          // In-app notifications are immediately "sent"
           await this.supabase
             .from("notifications")
             .update({
@@ -1234,6 +1266,57 @@ export class NotificationsService implements INotificationsService {
   }
 
   /**
+   * Detect missed deadlines for a single collection and fire events if needed.
+   * Used when viewing a collection so missed-deadline notifications fire even
+   * without the cron (e.g. in dev). Idempotent: skips if event already exists.
+   */
+  async detectAndFireMissedDeadlinesForCollection(collectionId: string): Promise<{ fired: number }> {
+    const { data: collection, error } = await this.supabase
+      .from("collections")
+      .select("*")
+      .eq("id", collectionId)
+      .eq("status", "in_progress")
+      .single()
+
+    if (error || !collection) return { fired: 0 }
+
+    const col = collection as Record<string, unknown>
+    const collSubstatus = col.substatus as string | null
+    const now = new Date()
+    let fired = 0
+
+    for (const [dateField, timeField, eventType] of DEADLINE_TO_MISSED_EVENT) {
+      const dateVal = col[dateField] as string | null
+      if (!dateVal) continue
+
+      const timeVal = col[timeField] as string | null
+      const deadline = this.parseDeadline(dateVal, timeVal)
+      if (!deadline || deadline > now) continue
+
+      const minSubstatus = MISSED_EVENT_MIN_SUBSTATUS[eventType]
+      if (minSubstatus && collSubstatus) {
+        const currentIdx = SUBSTATUS_ORDER.indexOf(collSubstatus as (typeof SUBSTATUS_ORDER)[number])
+        const minIdx = SUBSTATUS_ORDER.indexOf(minSubstatus)
+        if (currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx) continue
+      }
+
+      const { data: existing } = await this.supabase
+        .from("collection_events")
+        .select("id")
+        .eq("collection_id", collectionId)
+        .eq("event_type", eventType)
+        .limit(1)
+
+      if (existing && existing.length > 0) continue
+
+      await this.triggerEvent(collectionId, eventType as CollectionEventType)
+      fired++
+    }
+
+    return { fired }
+  }
+
+  /**
    * Handle a new comment being added to a step.
    * Resolves all relevant recipients for the step, excludes the commenter,
    * and creates both email and in-app notifications.
@@ -1559,6 +1642,12 @@ export class NotificationsService implements INotificationsService {
       .replace(/\{stepName\}/g, stepName)
   }
 
+  /**
+   * Build CTA URL and step name from template's cta_url_template.
+   * Uses the step from the template directly (no advancement to "next" step).
+   * The template's cta_url_template already points to the correct action step
+   * (e.g. negatives_dropoff for dropoff_upcoming — photo_lab must confirm drop-off there).
+   */
   private static getUpcomingStepNavigation(
     ctaUrlTemplate: string | null,
     collectionId: string,
@@ -1576,12 +1665,13 @@ export class NotificationsService implements INotificationsService {
       if (!stepSlug) {
         return { ctaUrl: rawUrl, upcomingStepName: fallbackStepName }
       }
-      const nextStepSlug = NotificationsService.getNextNavigableStepSlug(stepSlug, workflowOptions)
-      parsed.searchParams.set("step", nextStepSlug)
+      // Use template's step as-is; map to nearest navigable if workflow skips steps (e.g. no handprint)
+      const navigableStepSlug = NotificationsService.getNearestNavigableStepSlug(stepSlug, workflowOptions)
+      parsed.searchParams.set("step", navigableStepSlug)
       const ctaUrl = `${parsed.pathname}${parsed.search}${parsed.hash}`
       return {
         ctaUrl,
-        upcomingStepName: STEP_NAME_BY_SLUG[nextStepSlug] ?? fallbackStepName,
+        upcomingStepName: STEP_NAME_BY_SLUG[navigableStepSlug] ?? fallbackStepName,
       }
     } catch {
       return { ctaUrl: rawUrl, upcomingStepName: fallbackStepName }
@@ -1925,8 +2015,8 @@ export class NotificationsService implements INotificationsService {
         ? (NotificationsService.TIME_PRESET_TO_HHMM[preset] ?? NotificationsService.TIME_PRESET_TO_HHMM["end-of-day"])
         : rawTime && NotificationsService.TIME_PRESET_TO_HHMM[rawTime]
           ? NotificationsService.TIME_PRESET_TO_HHMM[rawTime]
-          : rawTime && /^\d{1,2}:\d{2}$/.test(rawTime)
-            ? rawTime
+          : rawTime && /^\d{1,2}:\d{2}(:\d{2})?$/.test(rawTime)
+            ? rawTime.slice(0, 5) // HH:mm (strip HH:mm:ss to HH:mm for combined)
             : null
       const combined = timePart
         ? `${dateOnly}T${timePart}:00`

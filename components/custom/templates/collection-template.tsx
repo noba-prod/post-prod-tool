@@ -165,6 +165,7 @@ import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
 import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
 import { InformativeToast } from "@/components/custom/informative-toast"
+import { ValidateLinksDialog, type ValidateLinksDialogItem } from "@/components/custom/validate-links-dialog"
 import type { CollectionMemberRole } from "@/lib/supabase/database.types"
 
 const NOTIFICATIONS_REFRESH_EVENT = "noba:notifications:refresh"
@@ -308,8 +309,8 @@ export interface CollectionTemplateProps {
   stepNotesClientSelection?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 6: called when photographer validates client selection (adds comments/link). */
   onValidateClientSelection?: (comments?: string, url?: string) => void | Promise<void>
-  /** Step 6: called when photographer approves client selection directly (no dialog). */
-  onValidateClientSelectionDirect?: () => void | Promise<void>
+  /** Step 6: called when photographer approves client selection directly. Receives selected URLs when multiple links exist. */
+  onValidateClientSelectionDirect?: (selectedUrls?: string[]) => void | Promise<void>
   /** Step 6: called when photographer requests more photos from client. */
   onRequestMorePhotosFromClient?: (notes: string) => void | Promise<void>
   /** Step notes conversation for photographer review step (step 6). */
@@ -344,6 +345,8 @@ export interface CollectionTemplateProps {
   photographerLastCheckUrl?: string | string[]
   /** Step 10: when photographer last check URL was last uploaded. ISO. */
   photographerLastCheckUploadedAt?: string
+  /** Step 10: URLs from material (finals/high-res) that photographer selected to share with client. When set, client_confirmation shows only these. */
+  photographerApprovedMaterialUrls?: string[]
   /** Step 10: name of entity that uploaded finals (e.g. Edition studio name) for "Uploaded by @X". */
   finalsUploadedByName?: string
   /** Step notes conversation for final edits step (step 9). */
@@ -352,8 +355,8 @@ export interface CollectionTemplateProps {
   finalsUploadedByEntityName?: string
   /** Step 10: called when photographer adds a new link and/or comments (secondary action). */
   onAddPhotographerLastCheckLink?: (payload: { url?: string; comments?: string }) => void | Promise<void>
-  /** Step 10: called when photographer shares final edits url with client (primary action). */
-  onValidateFinals?: () => void | Promise<void>
+  /** Step 10: called when photographer shares final edits url with client (primary action). Receives selected URLs when multiple links exist. */
+  onValidateFinals?: (selectedUrls?: string[]) => void | Promise<void>
   /** When false (Analog HPy no retouches): photographer_last_check shows high-res to validate; when true: shows final edits from retouch studio. */
   hasEditionStudio?: boolean
   /** Step 11: called when client completes collection (primary action). */
@@ -486,6 +489,7 @@ export function CollectionTemplate({
   finalsUploadedByName,
   photographerLastCheckUrl,
   photographerLastCheckUploadedAt,
+  photographerApprovedMaterialUrls,
   stepNotesFinalEdits,
   finalsUploadedByEntityName,
   onAddPhotographerLastCheckLink,
@@ -844,6 +848,13 @@ export function CollectionTemplate({
   const [linkDialogTitle, setLinkDialogTitle] = React.useState("")
   const [linkDialogDescription, setLinkDialogDescription] = React.useState("")
   const [linkDialogItems, setLinkDialogItems] = React.useState<LinkAccordionItem[]>([])
+  const [validateLinksDialogOpen, setValidateLinksDialogOpen] = React.useState(false)
+  const [validateLinksDialogConfig, setValidateLinksDialogConfig] = React.useState<{
+    links: ValidateLinksDialogItem[]
+    singleSelect: boolean
+    confirmLabel: string
+    onConfirm: (selectedUrls: string[]) => void
+  } | null>(null)
 
   /** Step note config for Add comment: which column + author role per step. */
   const getStepNoteConfig = React.useCallback((stepId: string): { stepNoteKey: string; from: string } | null => {
@@ -1113,17 +1124,23 @@ export function CollectionTemplate({
     }
   }, [collectionId, openStepId])
 
-  const handleStepModalOpenChange = React.useCallback((open: boolean) => {
-    if (open) return
-
+  const closeStepModalAndClearUrl = React.useCallback(() => {
     setOpenStepId(null)
-
-    if (!searchParams.get("step")) return
-    const nextParams = new URLSearchParams(searchParams.toString())
-    nextParams.delete("step")
-    const nextQuery = nextParams.toString()
-    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false })
+    if (searchParams.get("step")) {
+      const nextParams = new URLSearchParams(searchParams.toString())
+      nextParams.delete("step")
+      const nextQuery = nextParams.toString()
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false })
+    }
   }, [pathname, router, searchParams])
+
+  const handleStepModalOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (open) return
+      closeStepModalAndClearUrl()
+    },
+    [closeStepModalAndClearUrl]
+  )
 
   const openStep = React.useMemo(
     () => steps.find((s) => s.id === openStepId) ?? null,
@@ -1590,13 +1607,36 @@ export function CollectionTemplate({
                                 size="lg"
                                 className="w-fit rounded-xl"
                                 onClick={async () => {
-                                  try {
-                                    await onValidateClientSelectionDirect?.()
-                                    setOpenStepId(null)
-                                    toast.success("Client selection validated.")
-                                  } catch {
-                                    // Error surfaced by page if any
+                                  const clientUrls = allUrls(clientSelectionUrl)
+                                  if (clientUrls.length === 0) {
+                                    try {
+                                      await onValidateClientSelectionDirect?.()
+                                      setOpenStepId(null)
+                                      toast.success("Client selection validated.")
+                                    } catch {
+                                      // Error surfaced by page if any
+                                    }
+                                    return
                                   }
+                                  const links: ValidateLinksDialogItem[] = clientUrls.map((url, idx) => ({
+                                    label: idx === 0 ? "Client selection" : `Additional Link ${String(idx).padStart(2, "0")}`,
+                                    url,
+                                  }))
+                                  setValidateLinksDialogConfig({
+                                    links,
+                                    singleSelect: links.length === 1,
+                                    confirmLabel: "Validate client selection",
+                                    onConfirm: async (selectedUrls) => {
+                                      try {
+                                        await onValidateClientSelectionDirect?.(selectedUrls)
+                                        setOpenStepId(null)
+                                        toast.success("Client selection validated.")
+                                      } catch {
+                                        // Error surfaced by page if any
+                                      }
+                                    },
+                                  })
+                                  setValidateLinksDialogOpen(true)
                                 }}
                               >
                                 Validate client selection
@@ -1814,13 +1854,38 @@ export function CollectionTemplate({
                               size="lg"
                               className="w-fit rounded-xl"
                               onClick={async () => {
-                                try {
-                                  await onValidateFinals?.()
-                                  setOpenStepId(null)
-                                  toast.success("Finals shared with client.")
-                                } catch {
-                                  // Error surfaced by page if any
+                                const materialUrls = hasEditionStudio ? finalsSelectionUrl : highResSelectionUrl
+                                const materialUrlsList = allUrls(materialUrls)
+                                const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
+                                if (materialUrlsList.length === 0) {
+                                  try {
+                                    await onValidateFinals?.()
+                                    setOpenStepId(null)
+                                    toast.success("Finals shared with client.")
+                                  } catch {
+                                    // Error surfaced by page if any
+                                  }
+                                  return
                                 }
+                                const links: ValidateLinksDialogItem[] = materialUrlsList.map((url, idx) => ({
+                                  label: idx === 0 ? materialLabel : `Additional Link ${String(idx).padStart(2, "0")}`,
+                                  url,
+                                }))
+                                setValidateLinksDialogConfig({
+                                  links,
+                                  singleSelect: links.length === 1,
+                                  confirmLabel: hasEditionStudio ? "Share final edits url with client" : "Share high-res with client",
+                                  onConfirm: async (selectedUrls) => {
+                                    try {
+                                      await onValidateFinals?.(selectedUrls)
+                                      setOpenStepId(null)
+                                      toast.success("Finals shared with client.")
+                                    } catch {
+                                      // Error surfaced by page if any
+                                    }
+                                  },
+                                })
+                                setValidateLinksDialogOpen(true)
                               }}
                             >
                               {hasEditionStudio ? "Share final edits url with client" : "Share high-res with client"}
@@ -1919,14 +1984,18 @@ export function CollectionTemplate({
                     const materialUrls = hasEditionStudio ? finalsSelectionUrl : highResSelectionUrl
                     const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
                     const materialUrlsList = allUrls(materialUrls)
+                    const validatedUrls =
+                      photographerApprovedMaterialUrls && photographerApprovedMaterialUrls.length > 0
+                        ? photographerApprovedMaterialUrls
+                        : materialUrlsList
                     const validatedNotesForMaterial = (stepNotesPhotographerLastCheck ?? []).filter((n) => {
                       const u = (n as { url?: string }).url?.trim()
                       if (!u) return true
-                      return materialUrlsList.includes(u)
+                      return validatedUrls.includes(u)
                     })
                     return [
                       ...buildUrlHistoryItems(
-                        materialUrls,
+                        validatedUrls,
                         validatedNotesForMaterial,
                         "photographer",
                         resolveUploaderDisplay("photographer"),
@@ -2019,7 +2088,7 @@ export function CollectionTemplate({
                     onClick={async () => {
                       try {
                         await onConfirmPickup?.("shooting")
-                        setOpenStepId(null)
+                        closeStepModalAndClearUrl()
                         toast.success("Pickup confirmed.")
                       } catch {
                         // Error toast is shown by the page callback.
@@ -2149,6 +2218,19 @@ export function CollectionTemplate({
         onSecondaryClick={() => setParticipantsModalOpen(false)}
       />
 
+      {validateLinksDialogConfig && (
+        <ValidateLinksDialog
+          open={validateLinksDialogOpen}
+          onOpenChange={(open) => {
+            setValidateLinksDialogOpen(open)
+            if (!open) setValidateLinksDialogConfig(null)
+          }}
+          links={validateLinksDialogConfig.links}
+          singleSelect={validateLinksDialogConfig.singleSelect}
+          confirmLabel={validateLinksDialogConfig.confirmLabel}
+          onConfirm={validateLinksDialogConfig.onConfirm}
+        />
+      )}
       <Dialog open={editCollectionDialogOpen} onOpenChange={setEditCollectionDialogOpen}>
         <DialogContent showCloseButton>
           <DialogHeader>
@@ -2206,7 +2288,7 @@ export function CollectionTemplate({
                 setConfirmDropoffDialogOpen(false)
                 try {
                   await onConfirmDropoffDelivery?.("negatives_dropoff", false)
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Delivery confirmed.")
                 } catch {
                   /* Error already surfaced by handler */
@@ -2222,7 +2304,7 @@ export function CollectionTemplate({
                 setConfirmDropoffDialogOpen(false)
                 try {
                   await onConfirmDropoffDelivery?.("negatives_dropoff", true)
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Delivery confirmed.")
                 } catch {
                   /* Error already surfaced by handler */

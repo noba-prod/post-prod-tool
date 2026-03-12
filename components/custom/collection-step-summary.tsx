@@ -28,7 +28,7 @@ interface CollectionStepSummaryProps {
   deadlineTime?: string
   /** Forward-compat: when true, layout may switch to vertical when title truncates (optional). */
   switchToVerticalWhenTitleTruncates?: boolean
-  /** Shows an unread activity red dot for completed steps. */
+  /** Shows an unread activity red dot for active or completed steps (linked to notifications). */
   showAttentionDot?: boolean
   className?: string
 }
@@ -104,7 +104,7 @@ export function CollectionStepSummary({
           </div>
         )}
       </div>
-      {isCompleted && showAttentionDot && (
+      {(isActive || isCompleted) && showAttentionDot && (
         <span
           className="pointer-events-none absolute left-2 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-rose-500"
           aria-hidden="true"

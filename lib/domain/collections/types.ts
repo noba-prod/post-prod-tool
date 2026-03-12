@@ -262,6 +262,8 @@ export interface Collection {
   photographerLastCheckUrl?: string[]
   /** When the last photographer last check URL was uploaded (ISO timestamp). */
   photographerLastCheckUploadedAt?: string
+  /** URLs from material (finals/high-res) that photographer selected to share with client in step 10. */
+  photographerApprovedMaterialUrls?: string[]
   /** Step notes conversations (JSONB arrays per step). */
   stepNotesLowRes?: StepNoteEntry[]
   stepNotesPhotographerSelection?: StepNoteEntry[]

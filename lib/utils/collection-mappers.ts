@@ -480,6 +480,9 @@ export function mapDbCollectionToDomain(
   const finalsSelectionUploadedAt = (r.finals_selection_uploaded_at as string | null) ?? null
   const photographerLastCheckUrl = parseJsonbStringArray(r.photographer_last_check_url)
   const photographerLastCheckUploadedAt = (r.photographer_last_check_uploaded_at as string | null) ?? null
+  const photographerApprovedMaterialUrls = parseJsonbStringArray(
+    (r as { photographer_approved_material_urls?: unknown }).photographer_approved_material_urls
+  )
   // Step notes conversations (JSONB arrays — migration 034)
   const stepNotesLowRes = parseJsonbNoteArray(r.step_notes_low_res)
   const stepNotesPhotographerSelection = parseJsonbNoteArray(r.step_notes_photographer_selection)
@@ -523,6 +526,8 @@ export function mapDbCollectionToDomain(
     finalsSelectionUploadedAt: finalsSelectionUploadedAt ?? undefined,
     photographerLastCheckUrl: photographerLastCheckUrl.length > 0 ? photographerLastCheckUrl : undefined,
     photographerLastCheckUploadedAt: photographerLastCheckUploadedAt ?? undefined,
+    photographerApprovedMaterialUrls:
+      photographerApprovedMaterialUrls.length > 0 ? photographerApprovedMaterialUrls : undefined,
     stepNotesLowRes: stepNotesLowRes.length > 0 ? stepNotesLowRes : undefined,
     stepNotesPhotographerSelection: stepNotesPhotographerSelection.length > 0 ? stepNotesPhotographerSelection : undefined,
     stepNotesClientSelection: stepNotesClientSelection.length > 0 ? stepNotesClientSelection : undefined,

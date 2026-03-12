@@ -239,6 +239,21 @@ export default function CollectionViewPage({
     }
   }, [id, collection?.id, refetchCollection])
 
+  // Check missed deadlines when viewing an in-progress collection (fires *_deadline_missed events
+  // so dropoff_delayed etc. notifications are sent even without cron, e.g. in dev)
+  React.useEffect(() => {
+    if (!id || !collection?.id || collection.status !== "in_progress" || !isViewPage) return
+    fetch(`/api/collections/${id}/check-missed-deadlines`, { method: "POST" })
+      .then((res) => res.ok && res.json())
+      .then((data) => {
+        if (data?.fired && data.fired > 0) {
+          refetchCollection()
+          window.dispatchEvent(new Event(NOTIFICATIONS_REFRESH_EVENT))
+        }
+      })
+      .catch(() => {})
+  }, [id, collection?.id, collection?.status, isViewPage, refetchCollection])
+
   // Steps, progress, and handler — must run on every render (Rules of Hooks)
   const steps = React.useMemo(() => {
     if (!collection || collection.status === "draft") return []
@@ -560,10 +575,14 @@ export default function CollectionViewPage({
 
   /** Step 6: Photographer approves client selection directly — copy client URLs to photographer_review, advance to step 7. */
   const handleValidateClientSelectionDirect = React.useCallback(
-    async () => {
+    async (selectedUrls?: string[]) => {
       if (!id) return
       try {
-        await patchCollection({ photographer_review_copy_from_client_selection: true })
+        const body: Record<string, unknown> = { photographer_review_copy_from_client_selection: true }
+        if (selectedUrls && selectedUrls.length > 0) {
+          body.photographer_review_selected_urls = selectedUrls
+        }
+        await patchCollection(body)
         await fireEvent("photographer_check_approved", {})
         await refetchCollection()
       } catch (err) {
@@ -725,9 +744,12 @@ export default function CollectionViewPage({
   // STEP 10: Share final edits url with client (photographer last check approved)
   // =============================================================================
   const handleValidateFinals = React.useCallback(
-    async () => {
+    async (selectedUrls?: string[]) => {
       if (!id) return
       try {
+        if (selectedUrls && selectedUrls.length > 0) {
+          await patchCollection({ photographer_approved_material_urls: selectedUrls })
+        }
         await fireEvent("photographer_edits_approved")
         await refetchCollection()
       } catch (err) {
@@ -735,7 +757,7 @@ export default function CollectionViewPage({
         toast.error("Failed to validate finals")
       }
     },
-    [id, fireEvent, refetchCollection]
+    [id, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================
@@ -1028,6 +1050,7 @@ export default function CollectionViewPage({
       finalsSelectionUrl={collection.finalsSelectionUrl ?? undefined}
       photographerLastCheckUrl={collection.photographerLastCheckUrl ?? undefined}
       photographerLastCheckUploadedAt={collection.photographerLastCheckUploadedAt ?? undefined}
+      photographerApprovedMaterialUrls={collection.photographerApprovedMaterialUrls ?? undefined}
       finalsUploadedAt={collection.finalsSelectionUploadedAt ?? undefined}
       finalsUploadedByName={undefined}
       stepNotesFinalEdits={collection.stepNotesFinalEdits}

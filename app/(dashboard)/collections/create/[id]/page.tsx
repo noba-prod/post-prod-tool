@@ -287,7 +287,13 @@ export default function CollectionCreatePage({
       return
     }
     const relevant = draft.participants.filter((p) => p.role !== "producer")
-    if (relevant.length === 0) {
+    // When Handprint lab = Photo lab (handprintIsDifferentLab false), don't show Hand Print Lab
+    // as a separate row — Photo Lab already covers both.
+    const filtered =
+      draft.config.handprintIsDifferentLab === false
+        ? relevant.filter((p) => p.role !== "handprint_lab")
+        : relevant
+    if (filtered.length === 0) {
       setParticipantSummaries([])
       return
     }
@@ -313,13 +319,18 @@ export default function CollectionCreatePage({
       }
       if (cancelled) return
 
-      const list = relevant.map((p, i) => {
+      const isSameLab = draft.config.handprintIsDifferentLab === false && draft.config.hasHandprint
+      const list = filtered.map((p, i) => {
         const dbRole = toDbRoleFromDomainRole(p.role)
         const roleHandle = data.handleByRole?.[dbRole] ?? "—"
         const roleCount = data.memberCountByRole?.[dbRole]
         const fallbackCount = p.userIds?.length ?? 1
+        const roleLabel =
+          p.role === "photo_lab" && isSameLab
+            ? "Photo lab & Handprint"
+            : (ROLE_DISPLAY[p.role] ?? p.role)
         return {
-          role: ROLE_DISPLAY[p.role] ?? p.role,
+          role: roleLabel,
           name: roleHandle,
           count: typeof roleCount === "number" && roleCount > 0 ? roleCount : fallbackCount,
         }
@@ -331,7 +342,7 @@ export default function CollectionCreatePage({
     return () => {
       cancelled = true
     }
-  }, [draft?.id, draft?.participants, draft?.config?.clientEntityId])
+  }, [draft?.id, draft?.participants, draft?.config?.clientEntityId, draft?.config?.handprintIsDifferentLab])
 
   const steps = React.useMemo(() => {
     if (!draft?.config) return []

@@ -22,10 +22,14 @@ interface PatchBody {
   photographer_review_url?: string
   /** When true, replace photographer_review_url with client_selection_url (direct approval). */
   photographer_review_copy_from_client_selection?: boolean
+  /** When photographer_review_copy_from_client_selection is true, only copy these URLs (subset of client_selection_url). */
+  photographer_review_selected_urls?: string[]
   highres_selection_url?: string
   edition_instructions_url?: string
   finals_selection_url?: string
   photographer_last_check_url?: string
+  /** Step 10: URLs from material (finals/high-res) that photographer approved to share with client. Replaces column. */
+  photographer_approved_material_urls?: string[]
   // Step note appends (single entry → appended to conversation). url links comment to a specific link.
   step_note_low_res?: { from: string; text: string; url?: string }
   step_note_photographer_selection?: { from: string; text: string; url?: string }
@@ -155,6 +159,7 @@ export async function PATCH(
         edition_instructions_url,
         finals_selection_url,
         photographer_last_check_url,
+        photographer_approved_material_urls,
         step_notes_low_res,
         step_notes_photographer_selection,
         step_notes_client_selection,
@@ -202,7 +207,11 @@ export async function PATCH(
     }
     if (body.photographer_review_copy_from_client_selection) {
       const clientUrls = parseStoredStringArray(raw.client_selection_url)
-      dbUpdate.photographer_review_url = toColumnCompatibleArrayValue(raw.photographer_review_url, clientUrls)
+      const selectedUrls =
+        Array.isArray(body.photographer_review_selected_urls) && body.photographer_review_selected_urls.length > 0
+          ? body.photographer_review_selected_urls.filter((u) => typeof u === "string" && clientUrls.includes(u.trim()))
+          : clientUrls
+      dbUpdate.photographer_review_url = toColumnCompatibleArrayValue(raw.photographer_review_url, selectedUrls)
       dbUpdate.photographer_review_uploaded_at = now
     } else if (body.photographer_review_url !== undefined) {
       const next = appendToUrlArray(
@@ -246,6 +255,15 @@ export async function PATCH(
       )
       dbUpdate.photographer_last_check_url = toColumnCompatibleArrayValue(raw.photographer_last_check_url, next)
       dbUpdate.photographer_last_check_uploaded_at = now
+    }
+    if (body.photographer_approved_material_urls !== undefined) {
+      const urls = Array.isArray(body.photographer_approved_material_urls)
+        ? body.photographer_approved_material_urls.filter((u) => typeof u === "string" && u.trim().length > 0)
+        : []
+      dbUpdate.photographer_approved_material_urls = toColumnCompatibleArrayValue(
+        (raw as { photographer_approved_material_urls?: unknown }).photographer_approved_material_urls,
+        urls
+      )
     }
 
     // --- Step note appends (single entry → appended to conversation array) ---
