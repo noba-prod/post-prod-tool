@@ -354,7 +354,7 @@ export interface CollectionTemplateProps {
   /** Step 10: entity name for notes block (e.g. "Retouch studio"). */
   finalsUploadedByEntityName?: string
   /** Step 10: called when photographer adds a new link and/or comments (secondary action). */
-  onAddPhotographerLastCheckLink?: (payload: { url?: string; comments?: string }) => void | Promise<void>
+  onAddPhotographerLastCheckLink?: (payload: { url?: string; comments?: string; from?: string }) => void | Promise<void>
   /** Step 10: called when photographer shares final edits url with client (primary action). Receives selected URLs when multiple links exist. */
   onValidateFinals?: (selectedUrls?: string[]) => void | Promise<void>
   /** When false (Analog HPy no retouches): photographer_last_check shows high-res to validate; when true: shows final edits from retouch studio. */
@@ -740,10 +740,11 @@ export function CollectionTemplate({
       const fallbackEntityName = uploaderDisplay?.name?.trim() || (expectedNoteFrom ? expectedNoteFrom.charAt(0).toUpperCase() + expectedNoteFrom.slice(1).replace(/_/g, " ") : "Unknown")
       const resolveAuthor = (n: { from: string; userId?: string }) => {
         const author = n?.userId ? noteAuthorsByUserId?.[n.userId] : undefined
-        const fromLabel = n.from === "lab" ? "Lab" : n.from === "photographer" ? "Photographer" : n.from === "client" ? "Client" : n.from === "edition_studio" ? "Edition studio" : n.from === "noba" ? "noba" : n.from
+        const fromLabel = n.from === "lab" ? "Lab" : n.from === "photographer" ? "Photographer" : n.from === "client" ? "Client" : n.from === "edition_studio" ? "Edition studio" : n.from === "noba" ? "noba*" : n.from
         // Photographer is their own entity; show type "Photographer" instead of entity name (which would repeat their name).
+        // noba/producer: show "noba*" as entity label when acting on behalf of noba.
         const entityName =
-          n.from === "photographer" ? "Photographer" : author?.entityName?.trim()
+          n.from === "photographer" ? "Photographer" : n.from === "noba" ? (author?.entityName?.trim() || "noba*") : author?.entityName?.trim()
         return {
           name: author?.name?.trim() || author?.entityName?.trim() || fromLabel,
           // Avatar: only use user profile image (profiles.image). If null, StepDetails shows initials.
@@ -1826,7 +1827,7 @@ export function CollectionTemplate({
                               setAddNewLinkDialogOpen(true)
                             }}
                           >
-                            Upload more photos
+                            Upload additional link
                           </Button>
                         </>
                       ) : (
@@ -3004,12 +3005,12 @@ export function CollectionTemplate({
           <DialogHeader>
             <DialogTitle>Upload improvement details</DialogTitle>
             <DialogDescription>
-              Upload all the necessary information for the retouch studio to make edits and prepare finals
+              Upload all the necessary information for the retouch studio to make edits and prepare finals. Both fields are optional.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="give-instructions-url">Link or URL (optional)</Label>
+              <Label htmlFor="give-instructions-url">Link or URL</Label>
               <Input
                 id="give-instructions-url"
                 type="url"
@@ -3020,7 +3021,7 @@ export function CollectionTemplate({
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="give-instructions-details">Notes and comments (optional)</Label>
+              <Label htmlFor="give-instructions-details">Notes and comments</Label>
               <Textarea
                 id="give-instructions-details"
                 placeholder="Write here comments and notes"
@@ -3146,7 +3147,7 @@ export function CollectionTemplate({
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="add-new-link-url">Link (optional)</Label>
+              <Label htmlFor="add-new-link-url">Link</Label>
               <Input
                 id="add-new-link-url"
                 type="url"
@@ -3157,7 +3158,7 @@ export function CollectionTemplate({
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="add-new-link-comments">Comments (optional)</Label>
+              <Label htmlFor="add-new-link-comments">Comments</Label>
               <Textarea
                 id="add-new-link-comments"
                 placeholder="Write here comments and notes"
@@ -3178,10 +3179,12 @@ export function CollectionTemplate({
                   await onAddPhotographerLastCheckLink?.({
                     url: addNewLinkUrl.trim() || undefined,
                     comments: addNewLinkComments.trim() || undefined,
+                    from: getStepNoteFromForCurrentUser(),
                   })
                   setAddNewLinkDialogOpen(false)
                   setAddNewLinkUrl("")
                   setAddNewLinkComments("")
+                  setOpenStepId(null)
                   toast.success(addNewLinkUrl.trim() ? "Link and comment saved." : "Comment saved.")
                 } catch {
                   // Error surfaced by page if any

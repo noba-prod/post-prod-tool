@@ -106,9 +106,6 @@ export function getViewStepDefinitions(
       case "edition_request":
       case "final_edits":
         inactive = !hasEditionStudio
-        if (id === "edition_request" && !inactive) {
-          attention = true
-        }
         break
       case "photographer_last_check":
         // Active when: (a) hasEditionStudio — photographer checks retouches; or (b) hasHandprint — photographer checks high-res before client (Analog HPy without retouches)
@@ -123,7 +120,7 @@ export function getViewStepDefinitions(
       title,
       inactive,
       ...(annotation && { annotation }),
-      ...(attention && { attention }),
+      ...(attention ? { attention } : {}),
     }
   })
 

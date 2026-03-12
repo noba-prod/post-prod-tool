@@ -714,7 +714,7 @@ export default function CollectionViewPage({
   // STEP 10: Add new link (photographer shares additional URL and/or comments)
   // =============================================================================
   const handleAddPhotographerLastCheckLink = React.useCallback(
-    async (payload: { url?: string; comments?: string }) => {
+    async (payload: { url?: string; comments?: string; from?: string }) => {
       if (!id) return
       try {
         const body: Record<string, unknown> = {}
@@ -723,13 +723,17 @@ export default function CollectionViewPage({
         }
         if (payload.comments?.trim()) {
           body.step_note_photographer_last_check = {
-            from: "photographer",
+            from: payload.from ?? "photographer",
             text: payload.comments.trim(),
             ...(payload.url?.trim() ? { url: payload.url.trim() } : {}),
           }
         }
         if (Object.keys(body).length > 0) {
+          const step10AlreadyDone = collection?.stepStatuses?.["photographer_last_check"]?.stage === "done"
           await patchCollection(body)
+          if ((payload.url?.trim() || payload.comments?.trim()) && !step10AlreadyDone) {
+            await fireEvent("photographer_edits_approved")
+          }
           await refetchCollection()
         }
       } catch (err) {
@@ -737,7 +741,7 @@ export default function CollectionViewPage({
         toast.error("Failed to save link or comment")
       }
     },
-    [id, patchCollection, refetchCollection]
+    [id, collection?.stepStatuses, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================

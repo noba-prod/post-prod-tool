@@ -367,6 +367,36 @@ const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
   retouch_studio_shared_additional_materials: {
     photographer: "photographer_last_check",
   },
+  photographer_check_ready_for_hr: {
+    handprint_lab: "handprint_high_res",
+  },
+  edition_request_ready: {
+    retouch_studio: "final_edits",
+  },
+  photographer_edits_approved: {
+    client: "client_confirmation",
+    producer: "client_confirmation",
+  },
+  final_edits_completed: {
+    photographer: "photographer_last_check",
+  },
+}
+
+/** Step name override per template+recipient when STEP_NAME_BY_SLUG is not appropriate. */
+const TEMPLATE_STEP_NAME_BY_RECIPIENT: Record<string, Partial<Record<RecipientType, string>>> = {
+  photographer_check_ready_for_hr: {
+    handprint_lab: "Handprint to high-res",
+  },
+  edition_request_ready: {
+    retouch_studio: "Final edits",
+  },
+  photographer_edits_approved: {
+    client: "Client confirmation",
+    producer: "Client confirmation",
+  },
+  final_edits_completed: {
+    photographer: "Photographer last check",
+  },
 }
 
 const USER_ACTOR_TITLE_TEMPLATE_CODES = new Set([
@@ -1704,8 +1734,20 @@ export class NotificationsService implements INotificationsService {
     collectionId: string,
     workflowOptions?: CollectionWorkflowStepOptions | null
   ): { ctaUrl: string | null; stepName: string } {
-    const overriddenStepSlugRaw =
+    // highres_ready: photographer redirect depends on collection config
+    // - hasEditionStudio: step 8 (Retouch request) — photographer gives instructions for retouch
+    // - !hasEditionStudio: step 10 (Photographer last check) — steps 8–9 are skipped
+    let overriddenStepSlugRaw =
       recipientType ? TEMPLATE_STEP_SLUG_BY_RECIPIENT[template.code]?.[recipientType] : undefined
+    if (
+      template.code === "highres_ready" &&
+      recipientType === "photographer" &&
+      workflowOptions
+    ) {
+      overriddenStepSlugRaw = workflowOptions.hasEditionStudio
+        ? "edition_request"
+        : "photographer_last_check"
+    }
 
     if (overriddenStepSlugRaw) {
       const overriddenStepSlug = NotificationsService.getNearestNavigableStepSlug(
@@ -1716,9 +1758,11 @@ export class NotificationsService implements INotificationsService {
         `/collections/{collectionId}?step=${overriddenStepSlug}`,
         collectionId
       )
+      const stepNameOverride =
+        recipientType && TEMPLATE_STEP_NAME_BY_RECIPIENT[template.code]?.[recipientType]
       return {
         ctaUrl,
-        stepName: STEP_NAME_BY_SLUG[overriddenStepSlug] ?? template.step_name,
+        stepName: stepNameOverride ?? STEP_NAME_BY_SLUG[overriddenStepSlug] ?? template.step_name,
       }
     }
 
