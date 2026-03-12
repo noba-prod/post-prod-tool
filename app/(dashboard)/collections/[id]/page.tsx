@@ -152,6 +152,7 @@ export default function CollectionViewPage({
   const [participantsMainPlayersIndividuals, setParticipantsMainPlayersIndividuals] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersEntities, setParticipantsMainPlayersEntities] = React.useState<ParticipantsModalEntity[]>([])
   const [noteAuthorsByUserId, setNoteAuthorsByUserId] = React.useState<Record<string, { name: string; userImageUrl?: string; entityName?: string; entityImageUrl?: string }>>({})
+  const inFlightEventKeysRef = React.useRef<Set<string>>(new Set())
 
   const service = React.useMemo(() => createCollectionsService(), [])
 
@@ -276,14 +277,28 @@ export default function CollectionViewPage({
   const fireEvent = React.useCallback(
     async (eventType: string, metadata?: Record<string, unknown>) => {
       if (!id) return
-      const res = await fetch(`/api/collections/${id}/events`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventType, metadata }),
-      })
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data?.error ?? "Failed to trigger event")
+      const eventLockKey = `${eventType}:${JSON.stringify(metadata ?? {})}`
+      if (inFlightEventKeysRef.current.has(eventLockKey)) {
+        return
+      }
+      inFlightEventKeysRef.current.add(eventLockKey)
+
+      try {
+        const idempotencyKey =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+        const res = await fetch(`/api/collections/${id}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventType, metadata, idempotencyKey }),
+        })
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(data?.error ?? "Failed to trigger event")
+        }
+      } finally {
+        inFlightEventKeysRef.current.delete(eventLockKey)
       }
       // Notify navbar bell to refresh immediately after event-triggered notifications
       // are potentially created.

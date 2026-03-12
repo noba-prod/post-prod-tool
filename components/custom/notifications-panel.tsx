@@ -57,14 +57,14 @@ function NotificationItem({
   onMarkAsRead,
 }: {
   notification: UserNotification
-  onClick?: () => void
+  onClick?: (notification: UserNotification) => void
   onMarkAsRead?: () => void
 }) {
   const handleClick = () => {
     if (!notification.isRead && onMarkAsRead) {
       onMarkAsRead()
     }
-    onClick?.()
+    onClick?.(notification)
   }
 
   const handleCtaClick = (e: React.MouseEvent) => {
@@ -72,9 +72,7 @@ function NotificationItem({
     if (!notification.isRead && onMarkAsRead) {
       onMarkAsRead()
     }
-    if (notification.ctaUrl) {
-      window.location.href = notification.ctaUrl
-    }
+    onClick?.(notification)
   }
 
   return (

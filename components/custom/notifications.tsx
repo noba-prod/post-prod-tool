@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import { NotificationsPanel } from "./notifications-panel"
 import { useNotifications } from "@/hooks/use-notifications"
 import type { UserNotification } from "@/lib/services/notifications"
+import { buildNotificationNavigationUrl } from "@/lib/notifications/navigation"
 
 type NotificationStatus = "default" | "hover" | "active"
 
@@ -71,10 +72,8 @@ export function Notifications({
   }
 
   const handleNotificationClick = (notification: UserNotification) => {
-    // Navigate to CTA URL if present
-    if (notification.ctaUrl) {
-      window.location.href = notification.ctaUrl
-    }
+    const targetUrl = buildNotificationNavigationUrl(notification)
+    if (targetUrl) window.location.href = targetUrl
   }
 
   const handleOpenChange = (open: boolean) => {

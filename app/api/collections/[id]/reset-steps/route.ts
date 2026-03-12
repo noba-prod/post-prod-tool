@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 
 const STEP_FIELDS_TO_RESET: Record<string, unknown> = {
   // URL arrays (JSONB — migration 034)
@@ -57,6 +58,14 @@ export async function POST(
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const scope = await checkInternalUserCollectionMutationScope(user.id, collectionId)
+    if (!scope.canMutate) {
+      return NextResponse.json(
+        { error: "Forbidden: internal users must be invited to edit this collection." },
+        { status: 403 }
+      )
     }
 
     const admin = createAdminClient()

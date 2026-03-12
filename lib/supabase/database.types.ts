@@ -31,7 +31,7 @@ export type CollectionMemberRole =
 
 // Notifications (migration 016)
 export type NotificationTriggerType = 'before' | 'after' | 'on' | 'if' | 'first_time'
-export type NotificationStatus = 'pending' | 'sent' | 'read' | 'failed'
+export type NotificationStatus = 'pending' | 'processing' | 'sent' | 'read' | 'failed'
 export type NotificationChannel = 'email' | 'in_app'
 export type NotificationRecipientType =
   | 'producer'
@@ -640,6 +640,9 @@ export interface Notification {
   read_at: string | null
   error_message: string | null
   retry_count: number
+  dedupe_key: string | null
+  processing_started_at: string | null
+  processing_by: string | null
   created_at: string
 }
 
@@ -659,6 +662,9 @@ export interface NotificationInsert {
   read_at?: string | null
   error_message?: string | null
   retry_count?: number
+  dedupe_key?: string | null
+  processing_started_at?: string | null
+  processing_by?: string | null
   created_at?: string
 }
 
@@ -677,6 +683,9 @@ export interface NotificationUpdate {
   read_at?: string | null
   error_message?: string | null
   retry_count?: number
+  dedupe_key?: string | null
+  processing_started_at?: string | null
+  processing_by?: string | null
 }
 
 export interface CollectionEvent {
@@ -685,6 +694,8 @@ export interface CollectionEvent {
   triggered_by_user_id: string | null
   event_type: CollectionEventType
   metadata: Record<string, unknown>
+  idempotency_key: string | null
+  metadata_hash: string | null
   notifications_processed: boolean
   processed_at: string | null
   created_at: string
@@ -696,6 +707,8 @@ export interface CollectionEventInsert {
   triggered_by_user_id?: string | null
   event_type: CollectionEventType
   metadata?: Record<string, unknown>
+  idempotency_key?: string | null
+  metadata_hash?: string | null
   notifications_processed?: boolean
   processed_at?: string | null
   created_at?: string
@@ -706,6 +719,8 @@ export interface CollectionEventUpdate {
   triggered_by_user_id?: string | null
   event_type?: CollectionEventType
   metadata?: Record<string, unknown>
+  idempotency_key?: string | null
+  metadata_hash?: string | null
   notifications_processed?: boolean
   processed_at?: string | null
 }
@@ -717,7 +732,10 @@ export interface ScheduledNotificationTracking {
   deadline_value: string
   scheduled_for: string
   is_sent: boolean
+  is_processing: boolean
   sent_at: string | null
+  processing_started_at: string | null
+  processing_by: string | null
   created_at: string
 }
 
@@ -728,7 +746,10 @@ export interface ScheduledNotificationTrackingInsert {
   deadline_value: string
   scheduled_for: string
   is_sent?: boolean
+  is_processing?: boolean
   sent_at?: string | null
+  processing_started_at?: string | null
+  processing_by?: string | null
   created_at?: string
 }
 
@@ -738,7 +759,10 @@ export interface ScheduledNotificationTrackingUpdate {
   deadline_value?: string
   scheduled_for?: string
   is_sent?: boolean
+  is_processing?: boolean
   sent_at?: string | null
+  processing_started_at?: string | null
+  processing_by?: string | null
 }
 
 // ============================================================================

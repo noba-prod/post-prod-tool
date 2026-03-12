@@ -200,7 +200,7 @@ export type CollectionStatus =
   | "completed"
   | "canceled"
 
-/** Substatus when status = in_progress; order: shooting → … → client_confirmation (then status→completed). */
+/** Substatus when status = in_progress; order: shooting → … → client_confirmation (completion is explicit via event). */
 export type CollectionSubstatus =
   | "shooting"
   | "negatives_drop_off"

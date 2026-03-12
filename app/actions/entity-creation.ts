@@ -218,6 +218,9 @@ export async function createOrganizationFromDraft({
     .single()
 
   if (error || !organization) {
+    if (error?.code === "23505") {
+      throw new Error("An organization with this name already exists")
+    }
     throw new Error(error?.message || "Failed to create organization")
   }
 

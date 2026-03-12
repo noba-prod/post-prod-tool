@@ -4,7 +4,7 @@ import * as React from "react"
 import { ModalWindow } from "./modal-window"
 import { Layout, LayoutSection } from "./layout"
 import { RowVariants } from "./row-variants"
-import { Field, FieldGroup, FieldLabel, FieldContent, FieldDescription } from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel, FieldContent, FieldError } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { PhoneInput } from "./phone-input"
@@ -429,11 +429,7 @@ export function UserCreationForm({
                     disabled={disabled}
                     aria-invalid={emailAlreadyExists}
                   />
-                  {emailAlreadyExists && (
-                    <FieldDescription className="text-xs text-destructive">
-                      A user with this email already exists.
-                    </FieldDescription>
-                  )}
+                  <FieldError>{emailAlreadyExists ? "A user with this email already exists" : null}</FieldError>
                 </FieldContent>
               </Field>
 

@@ -44,6 +44,10 @@ export async function triggerCollectionEvent(
   options?: TriggerEventOptions
 ): Promise<TriggerEventResult> {
   try {
+    const idempotencyKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     const response = await fetch(`/api/collections/${collectionId}/events`, {
       method: "POST",
       headers: {
@@ -52,6 +56,7 @@ export async function triggerCollectionEvent(
       body: JSON.stringify({
         eventType,
         metadata: options?.metadata,
+        idempotencyKey,
       }),
     })
 

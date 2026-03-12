@@ -171,7 +171,7 @@ export default function CollectionCreatePage({
   const [isSavingSettings, setIsSavingSettings] = React.useState(false)
   const [saveChangesDialogOpen, setSaveChangesDialogOpen] = React.useState(false)
   const [isSavingChanges, setIsSavingChanges] = React.useState(false)
-  const { user } = useUserContext()
+  const { user, isNobaUser } = useUserContext()
   const [participantSummaries, setParticipantSummaries] = React.useState<
     { role: string; name: string; count: number }[]
   >([])
@@ -189,13 +189,28 @@ export default function CollectionCreatePage({
         setDraft(d)
         if (d) {
           const steps = computeCreationTemplate(d.config)
+          const isNobaAdmin = (user?.role ?? "").toLowerCase() === "admin"
+          const isReadOnlyForInternalNonMember =
+            isNobaUser &&
+            !isNobaAdmin &&
+            !!user?.id &&
+            !d.participants.some((p) => p.userIds?.includes(user.id))
           const nextIncomplete = steps.find((step) =>
             !isCreationStepComplete(step, d.creationData.completedBlockIds)
           )
           const validStepIds = new Set<string>(steps.map((s) => s.stepId))
+          const completedStepIds = new Set<string>(
+            steps
+              .filter((step) => isCreationStepComplete(step, d.creationData.completedBlockIds))
+              .map((step) => step.stepId)
+          )
           const initialStep =
-            stepFromUrl && validStepIds.has(stepFromUrl)
+            stepFromUrl &&
+            validStepIds.has(stepFromUrl) &&
+            (!isReadOnlyForInternalNonMember || completedStepIds.has(stepFromUrl))
               ? stepFromUrl
+              : isReadOnlyForInternalNonMember
+                ? (steps.find((step) => completedStepIds.has(step.stepId))?.stepId ?? steps[0]?.stepId ?? "participants")
               : nextIncomplete?.stepId ?? steps[0]?.stepId ?? "participants"
           setActiveStep(initialStep as CreationBlockId)
         }
@@ -205,10 +220,18 @@ export default function CollectionCreatePage({
     return () => {
       cancelled = true
     }
-  }, [id, service, stepFromUrl])
+  }, [id, service, stepFromUrl, isNobaUser, user?.id])
+
+  const isInternalNonInvitedViewer = React.useMemo(() => {
+    if (!draft || !user?.id || !isNobaUser) return false
+    const isNobaAdmin = (user.role ?? "").toLowerCase() === "admin"
+    if (isNobaAdmin) return false
+    return !draft.participants.some((p) => p.userIds?.includes(user.id))
+  }, [draft, user?.id, user?.role, isNobaUser])
 
   React.useEffect(() => {
     if (!draft || !id) return
+    if (isInternalNonInvitedViewer) return
     const hasClient = draft.participants.some((p) => p.role === "client")
     const hasProducer = draft.participants.some((p) => p.role === "producer")
     if (hasClient && hasProducer) return
@@ -241,7 +264,7 @@ export default function CollectionCreatePage({
         if (updated) setDraft(updated)
       })
     }
-  }, [draft?.id, id, draft?.participants, draft?.config?.clientEntityId, draft?.config?.ownerUserId, service])
+  }, [draft?.id, id, draft?.participants, draft?.config?.clientEntityId, draft?.config?.ownerUserId, service, isInternalNonInvitedViewer])
 
   // Persist "point of origin" for breadcrumb when user opens Create new (e.g. Photo Lab) from this collection
   React.useEffect(() => {
@@ -322,12 +345,13 @@ export default function CollectionCreatePage({
 
   React.useEffect(() => {
     if (!draft || !id) return
+    if (isInternalNonInvitedViewer) return
     const { suggestedCorrection } = getChronologyConstraints(draft)
     if (!suggestedCorrection || Object.keys(suggestedCorrection).length === 0) return
     service.updateCollection(id, { config: suggestedCorrection }).then((updated) => {
       if (updated) setDraft(updated)
     })
-  }, [draft, id, service])
+  }, [draft, id, service, isInternalNonInvitedViewer])
 
   const sidebarItems = React.useMemo(
     () => steps.map((s) => ({ id: s.stepId, label: stepLabel(s.stepId, draft?.config) })),
@@ -759,11 +783,14 @@ export default function CollectionCreatePage({
       const isLast = index === steps.length - 1
       const isActive = stepId === currentActive
       const isCompleted = isCreationStepComplete(step, completedBlockIds)
-      const variant: "active" | "completed" | "disabled" = isActive
-        ? "active"
-        : isCompleted
-          ? "completed"
-          : "disabled"
+      const variant: "active" | "completed" | "disabled" =
+        isInternalNonInvitedViewer && !isCompleted
+          ? "disabled"
+          : isActive
+            ? "active"
+            : isCompleted
+              ? "completed"
+              : "disabled"
       const nextStepId = steps[index + 1]?.stepId
       const prevStepId = steps[index - 1]?.stepId
       const isParticipants = stepId === "participants"
@@ -840,23 +867,28 @@ export default function CollectionCreatePage({
         variant,
         showParticipants: showParticipantsForBlock,
         participants: participantsForBlock,
-        onEditParticipants: showParticipantsForBlock
+        onEditParticipants: showParticipantsForBlock && !isInternalNonInvitedViewer
           ? () => setActiveStepHandler("participants")
           : undefined,
         content:
           stepId === "participants" ? (
+            <div className={isInternalNonInvitedViewer ? "pointer-events-none opacity-60" : undefined}>
             <ParticipantsStepContent
               draft={draft}
               onParticipantsChange={handleParticipantsChange}
               onConfigChange={handleConfigChange}
             />
+            </div>
           ) : isShootingSetup ? (
+            <div className={isInternalNonInvitedViewer ? "pointer-events-none opacity-60" : undefined}>
             <ShootingSetupStepContent
               draft={draft}
               onShootingSetupChange={handleShootingSetupChange}
               chronologyConstraints={chronology.byBlockId}
             />
+            </div>
           ) : isDropoffPlan ? (
+            <div className={isInternalNonInvitedViewer ? "pointer-events-none opacity-60" : undefined}>
             <DropoffPlanStepContent
               draft={draft}
               onDropoffPlanChange={handleDropoffPlanChange}
@@ -868,7 +900,9 @@ export default function CollectionCreatePage({
                 { value: "noba", label: "noba*" },
               ]}
             />
+            </div>
           ) : isLowResConfig ? (
+            <div className={isInternalNonInvitedViewer ? "pointer-events-none opacity-60" : undefined}>
             <LowResConfigStepContent
               draft={draft}
               onLowResConfigChange={handleLowResConfigChange}
@@ -883,14 +917,17 @@ export default function CollectionCreatePage({
                 { value: "noba", label: "noba*" },
               ]}
             />
+            </div>
           ) : isPhotoSelection ? (
+            <div className={isInternalNonInvitedViewer ? "pointer-events-none opacity-60" : undefined}>
             <PhotoSelectionStepContent
               draft={draft}
               onPhotoSelectionChange={handlePhotoSelectionChange}
               chronologyConstraints={chronology.byBlockId}
             />
+            </div>
           ) : isLrToHrStep ? (
-            <div className="flex flex-col gap-5 w-full">
+            <div className={`flex flex-col gap-5 w-full${isInternalNonInvitedViewer ? " pointer-events-none opacity-60" : ""}`}>
               {draft.config.hasHandprint && (
                 <PhotographerCheckClientSelectionStepContent
                   draft={draft}
@@ -905,27 +942,35 @@ export default function CollectionCreatePage({
               />
             </div>
           ) : isEditionConfig ? (
+            <div className={isInternalNonInvitedViewer ? "pointer-events-none opacity-60" : undefined}>
             <EditionConfigStepContent
               draft={draft}
               onEditionConfigChange={handleEditionConfigChange}
               chronologyConstraints={chronology.byBlockId}
             />
+            </div>
           ) : isCheckFinals ? (
+            <div className={isInternalNonInvitedViewer ? "pointer-events-none opacity-60" : undefined}>
             <CheckFinalsStepContent
               draft={draft}
               onCheckFinalsChange={handleCheckFinalsChange}
               chronologyConstraints={chronology.byBlockId}
             />
+            </div>
           ) : (
             PLACEHOLDER
           ),
         primaryLabel: isLast ? (isEditionMode ? "Save changes" : "Publish collection") : "Next",
-        onPrimaryClick: isLast
+        onPrimaryClick: isInternalNonInvitedViewer
+          ? undefined
+          : isLast
           ? (isEditionMode ? handleSaveChanges : handlePublish)
           : nextStepId
             ? () => handleNextClick(stepId, nextStepId)
             : undefined,
-        primaryDisabled: isLast
+        primaryDisabled: isInternalNonInvitedViewer
+          ? true
+          : isLast
           ? isEditionMode
             ? false
             : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
@@ -936,10 +981,10 @@ export default function CollectionCreatePage({
           : prevStepId
             ? () => setActiveStepHandler(prevStepId)
             : undefined,
-        onEdit: () => setActiveStepHandler(stepId),
+        onEdit: isInternalNonInvitedViewer ? undefined : () => setActiveStepHandler(stepId),
       }
     })
-  }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleSaveChanges, isEditionMode, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handlePhotographerCheckChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries])
+  }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleSaveChanges, isEditionMode, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handlePhotographerCheckChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries, isInternalNonInvitedViewer])
 
   // Map domain status to UI status for sidebar badge (draft | upcoming | in-progress | completed | canceled)
   const collectionStatusForUI = React.useMemo((): "draft" | "upcoming" | "in-progress" | "completed" | "canceled" => {
@@ -1052,12 +1097,25 @@ export default function CollectionCreatePage({
         completedStepIds={steps
           .filter((s) => isCreationStepComplete(s, draft.creationData.completedBlockIds))
           .map((s) => s.stepId)}
-        onSidebarItemClick={(stepId) => setActiveStep(stepId as CreationBlockId)}
-        onDeleteCollection={handleDeleteCollection}
-        onSettingsCollection={handleSettingsCollection}
-        onPublishCollection={isEditionMode ? handleSaveChanges : handlePublish}
+        onSidebarItemClick={(stepId) => {
+          if (!isInternalNonInvitedViewer) {
+            setActiveStep(stepId as CreationBlockId)
+            return
+          }
+          const selected = steps.find((s) => s.stepId === stepId)
+          if (!selected) return
+          const canOpen = isCreationStepComplete(selected, draft.creationData.completedBlockIds)
+          if (canOpen) setActiveStep(stepId as CreationBlockId)
+        }}
+        onDeleteCollection={isInternalNonInvitedViewer ? undefined : handleDeleteCollection}
+        onSettingsCollection={isInternalNonInvitedViewer ? undefined : handleSettingsCollection}
+        onPublishCollection={isInternalNonInvitedViewer ? undefined : (isEditionMode ? handleSaveChanges : handlePublish)}
         publishCollectionDisabled={
-          isEditionMode ? false : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
+          isInternalNonInvitedViewer
+            ? true
+            : isEditionMode
+              ? false
+              : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
         }
         publishCollectionLabel={isEditionMode ? "Save changes" : "Publish"}
         blocks={blocks}
@@ -1069,10 +1127,12 @@ export default function CollectionCreatePage({
         cardRight={publishCardRight}
         participants={publishParticipants}
         onEditParticipants={() => {
+          if (isInternalNonInvitedViewer) return
           setPublishDialogOpen(false)
           setActiveStep("participants")
         }}
         publishDisabled={
+          isInternalNonInvitedViewer ||
           !isDraftComplete(draft) ||
           !isCreationStepContentComplete(draft, "check_finals") ||
           isPublishing

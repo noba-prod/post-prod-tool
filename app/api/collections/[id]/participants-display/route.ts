@@ -28,6 +28,12 @@ type ParticipantsModalEntity = {
   entityTypeLabel?: string
 }
 
+type EntityDisplayTarget = {
+  entityId: string
+  entityTypeLabel: string
+  memberRoles: string[]
+}
+
 function combinePhone(prefix: string | null, phone: string | null): string | undefined {
   if (phone && prefix) return `${prefix} ${phone}`.trim()
   if (phone) return phone
@@ -103,28 +109,48 @@ export async function GET(
     const labParticipant = participants.find((p) => p.role === "photo_lab")
     const handprintLabParticipant = participants.find((p) => p.role === "handprint_lab")
     const retouchStudioParticipant = participants.find((p) => p.role === "retouch_studio")
+    const isSharedPhotoAndHandprintLab =
+      config.hasHandprint === true && config.handprintIsDifferentLab === false
 
-    const entityIds: string[] = []
-    const entityTypeLabels: string[] = []
+    const entityDisplayTargets: EntityDisplayTarget[] = []
     if (clientId) {
-      entityIds.push(clientId)
-      entityTypeLabels.push("Client")
+      entityDisplayTargets.push({
+        entityId: clientId,
+        entityTypeLabel: "Client",
+        memberRoles: ["client"],
+      })
     }
     if (agencyId) {
-      entityIds.push(agencyId)
-      entityTypeLabels.push("Agency")
+      entityDisplayTargets.push({
+        entityId: agencyId,
+        entityTypeLabel: "Agency",
+        memberRoles: ["agency"],
+      })
     }
     if (labParticipant?.entityId) {
-      entityIds.push(labParticipant.entityId)
-      entityTypeLabels.push("Photo Lab")
+      entityDisplayTargets.push({
+        entityId: labParticipant.entityId,
+        entityTypeLabel: isSharedPhotoAndHandprintLab
+          ? "Photo lab & Handprint"
+          : "Photo Lab",
+        memberRoles: isSharedPhotoAndHandprintLab
+          ? ["handprint_lab", "photo_lab"]
+          : ["photo_lab"],
+      })
     }
-    if (handprintLabParticipant?.entityId) {
-      entityIds.push(handprintLabParticipant.entityId)
-      entityTypeLabels.push("Hand Print Lab")
+    if (!isSharedPhotoAndHandprintLab && handprintLabParticipant?.entityId) {
+      entityDisplayTargets.push({
+        entityId: handprintLabParticipant.entityId,
+        entityTypeLabel: "Hand Print Lab",
+        memberRoles: ["handprint_lab"],
+      })
     }
     if (retouchStudioParticipant?.entityId) {
-      entityIds.push(retouchStudioParticipant.entityId)
-      entityTypeLabels.push("Retouch studio")
+      entityDisplayTargets.push({
+        entityId: retouchStudioParticipant.entityId,
+        entityTypeLabel: "Retouch studio",
+        memberRoles: ["retouch_studio"],
+      })
     }
 
     const ownerUserId = config.ownerUserId?.trim()
@@ -169,18 +195,45 @@ export async function GET(
       }
     }
 
-    // Map entity id → collection_member_role for responsible (can_edit) lookup
-    const entityIdToRole: Record<string, string> = {}
-    if (clientId) entityIdToRole[clientId] = "client"
-    if (agencyId) entityIdToRole[agencyId] = "agency"
-    if (labParticipant?.entityId) entityIdToRole[labParticipant.entityId] = "photo_lab"
-    if (handprintLabParticipant?.entityId) entityIdToRole[handprintLabParticipant.entityId] = "handprint_lab"
-    if (retouchStudioParticipant?.entityId) entityIdToRole[retouchStudioParticipant.entityId] = "retouch_studio"
+    const participantRoles = Array.from(
+      new Set(entityDisplayTargets.flatMap((target) => target.memberRoles))
+    )
+    const { data: participantMembers } = participantRoles.length > 0
+      ? await admin
+        .from("collection_members")
+        .select("role, user_id, can_edit")
+        .eq("collection_id", id)
+        .in("role", participantRoles)
+      : { data: [] as Array<{ role: string; user_id: string; can_edit: boolean | null }> }
+
+    const membersByRole = new Map<string, Array<{ user_id: string; can_edit: boolean | null }>>()
+    for (const row of (participantMembers ?? []) as Array<{ role: string; user_id: string; can_edit: boolean | null }>) {
+      const existing = membersByRole.get(row.role) ?? []
+      existing.push({ user_id: row.user_id, can_edit: row.can_edit })
+      membersByRole.set(row.role, existing)
+    }
+
+    const participantUserIds = Array.from(
+      new Set(
+        (participantMembers ?? []).map((row: { user_id: string }) => row.user_id).filter(Boolean)
+      )
+    )
+    const { data: participantProfiles } = participantUserIds.length
+      ? await admin
+        .from("profiles")
+        .select("id, first_name, last_name")
+        .in("id", participantUserIds)
+      : { data: [] as Array<{ id: string; first_name: string | null; last_name: string | null }> }
+
+    const participantProfileById = new Map<string, { first_name: string | null; last_name: string | null }>()
+    for (const p of (participantProfiles ?? []) as Array<{ id: string; first_name: string | null; last_name: string | null }>) {
+      participantProfileById.set(p.id, { first_name: p.first_name, last_name: p.last_name })
+    }
 
     // Resolve entities (client, agency, lab, handprint, retouch)
     const entities: ParticipantsModalEntity[] = []
-    for (let i = 0; i < entityIds.length; i++) {
-      const eid = entityIds[i]
+    for (const target of entityDisplayTargets) {
+      const eid = target.entityId
       const { data: org, error: orgErr } = await admin
         .from("organizations")
         .select("*")
@@ -189,45 +242,31 @@ export async function GET(
       if (orgErr || !org) continue
       const organization = org as Organization
 
-      // Responsible: user(s) with edit permission (can_edit = true). If multiple: "UserName + N more"
-      const dbRole = entityIdToRole[eid]
+      // Responsible + total members use invited collection members from display role(s).
+      // In shared Photo/Handprint flows we prioritize handprint_lab ownership (step 7),
+      // then fallback to photo_lab if needed.
       let managerName: string | undefined
-      if (dbRole) {
-        const { data: membersWithEdit } = await admin
-          .from("collection_members")
-          .select("user_id")
-          .eq("collection_id", id)
-          .eq("role", dbRole)
-          .eq("can_edit", true)
-        const editUserIds = (membersWithEdit ?? []).map((r: { user_id: string }) => r.user_id)
+      let teamCount = 0
+      for (const dbRole of target.memberRoles) {
+        const roleMembers = membersByRole.get(dbRole) ?? []
+        const roleMemberIds = Array.from(new Set(roleMembers.map((m) => m.user_id).filter(Boolean)))
+        if (roleMemberIds.length === 0) continue
+        teamCount = roleMemberIds.length
+        const editUserIds = Array.from(
+          new Set(roleMembers.filter((m) => m.can_edit === true).map((m) => m.user_id).filter(Boolean))
+        )
         if (editUserIds.length > 0) {
-          const { data: editProfiles } = await admin
-            .from("profiles")
-            .select("first_name, last_name")
-            .in("id", editUserIds)
-          const profilesList = (editProfiles ?? []) as Array<{ first_name?: string; last_name?: string }>
-          const firstUserName = [profilesList[0]?.first_name, profilesList[0]?.last_name].filter(Boolean).join(" ").trim()
-          if (editUserIds.length === 1) {
-            managerName = firstUserName || undefined
-          } else {
-            const moreCount = editUserIds.length - 1
-            managerName = firstUserName
-              ? `${firstUserName} + ${moreCount} more`
-              : `${moreCount} more`
-          }
+          const firstProfile = participantProfileById.get(editUserIds[0])
+          const firstUserName = [firstProfile?.first_name, firstProfile?.last_name].filter(Boolean).join(" ").trim()
+          managerName = editUserIds.length === 1
+            ? (firstUserName || undefined)
+            : (firstUserName ? `${firstUserName} + ${editUserIds.length - 1} more` : `${editUserIds.length - 1} more`)
+        } else if (roleMemberIds.length > 0) {
+          const firstProfile = participantProfileById.get(roleMemberIds[0])
+          const fallbackName = [firstProfile?.first_name, firstProfile?.last_name].filter(Boolean).join(" ").trim()
+          managerName = fallbackName || undefined
         }
-      }
-      const { data: orgProfiles } = await admin
-        .from("profiles")
-        .select("first_name, last_name, role")
-        .eq("organization_id", eid)
-      const profilesList = (orgProfiles ?? []) as Array<{ first_name?: string; last_name?: string; role?: string }>
-      const teamCount = profilesList.length
-      if (managerName == null) {
-        const firstAdmin = profilesList.find((p) => p.role === "admin")
-        managerName = firstAdmin
-          ? [firstAdmin.first_name, firstAdmin.last_name].filter(Boolean).join(" ").trim() || undefined
-          : undefined
+        break
       }
 
       const imageUrl =
@@ -239,7 +278,7 @@ export async function GET(
         managerName: managerName ?? undefined,
         teamMembersCount: teamCount,
         imageUrl,
-        entityTypeLabel: entityTypeLabels[i] ?? "Entity",
+        entityTypeLabel: target.entityTypeLabel,
       })
     }
 
@@ -247,7 +286,7 @@ export async function GET(
     const photographerName =
       mainIndividuals.length > 0 ? mainIndividuals[0].name : undefined
     const clientEntity = entities.find(
-      (e, i) => (entityTypeLabels[i] ?? "").toLowerCase() === "client"
+      (e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"
     )
     const clientDisplayName = clientEntity?.entityName
 

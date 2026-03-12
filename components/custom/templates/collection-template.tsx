@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { cn, ensureAbsoluteUrl } from "@/lib/utils"
+import { normalizeStepIdFromQuery } from "@/lib/notifications/navigation"
 import { NavBar } from "../nav-bar"
 import { CollectionHeading } from "../collection-heading"
 import { CollectionStepper } from "../collection-stepper"
@@ -22,6 +23,9 @@ function getMainContextualPlayers(
   individuals: ParticipantsModalIndividual[],
   entities: ParticipantsModalEntity[]
 ): { individuals: ParticipantsModalIndividual[]; entities: ParticipantsModalEntity[] } {
+  const isPhotoLabEntity = (entity: ParticipantsModalEntity): boolean =>
+    (entity.entityTypeLabel ?? "").toLowerCase().includes("photo lab")
+
   if (!stepId) return { individuals, entities }
   if (stepId === "shooting") {
     return {
@@ -32,13 +36,13 @@ function getMainContextualPlayers(
   if (stepId === "negatives_dropoff" || stepId === "low_res_scanning") {
     return {
       individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
-      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"),
+      entities: entities.filter((e) => isPhotoLabEntity(e)),
     }
   }
   if (stepId === "photographer_selection") {
     return {
       individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
-      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"),
+      entities: entities.filter((e) => isPhotoLabEntity(e)),
     }
   }
   if (stepId === "client_selection") {
@@ -162,6 +166,8 @@ import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
 import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
 import { InformativeToast } from "@/components/custom/informative-toast"
 import type { CollectionMemberRole } from "@/lib/supabase/database.types"
+
+const NOTIFICATIONS_REFRESH_EVENT = "noba:notifications:refresh"
 
 // =============================================================================
 // STEP CONFIGURATION (aligned with collections-logic.md §10)
@@ -503,6 +509,8 @@ export function CollectionTemplate({
   className,
 }: CollectionTemplateProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const authAdapter = useAuthAdapter()
 
   const userContext = useUserContext()
@@ -583,7 +591,7 @@ export function CollectionTemplate({
       }
       if (expectedNoteFrom === "photo_lab" || expectedNoteFrom === "lab") {
         const e = (participantsMainPlayersEntities ?? []).find(
-          (e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab"
+          (e) => (e.entityTypeLabel ?? "").toLowerCase().includes("photo lab")
         )
         return e ? { name: e.entityName, imageUrl: e.imageUrl } : null
       }
@@ -789,6 +797,9 @@ export function CollectionTemplate({
 
   const [isSearchOpen, setIsSearchOpen] = React.useState(false)
   const [openStepId, setOpenStepId] = React.useState<string | null>(null)
+  const [stepsWithUnreadActivity, setStepsWithUnreadActivity] = React.useState<Set<string>>(
+    () => new Set()
+  )
   const [confirmDropoffDialogOpen, setConfirmDropoffDialogOpen] = React.useState(false)
   const [uploadLowResDialogOpen, setUploadLowResDialogOpen] = React.useState(false)
   const [uploadLowResUrl, setUploadLowResUrl] = React.useState("")
@@ -1033,6 +1044,87 @@ export function CollectionTemplate({
     () => steps.filter((step) => !step.inactive),
     [steps]
   )
+
+  const refreshStepAttention = React.useCallback(async () => {
+    if (!collectionId) {
+      setStepsWithUnreadActivity(new Set())
+      return
+    }
+    try {
+      const response = await fetch(
+        `/api/notifications/step-attention?collectionId=${encodeURIComponent(collectionId)}`
+      )
+      if (!response.ok) return
+      const data = (await response.json().catch(() => ({}))) as { stepIds?: string[] }
+      setStepsWithUnreadActivity(new Set(data.stepIds ?? []))
+    } catch {
+      // Best-effort only: attention indicator should never block UI.
+    }
+  }, [collectionId])
+
+  React.useEffect(() => {
+    void refreshStepAttention()
+  }, [refreshStepAttention])
+
+  React.useEffect(() => {
+    const handler = () => {
+      void refreshStepAttention()
+    }
+    window.addEventListener(NOTIFICATIONS_REFRESH_EVENT, handler)
+    return () => window.removeEventListener(NOTIFICATIONS_REFRESH_EVENT, handler)
+  }, [refreshStepAttention])
+
+  React.useEffect(() => {
+    const targetStepId = normalizeStepIdFromQuery(searchParams.get("step"))
+    if (!targetStepId) return
+
+    const canOpenStep = visibleSteps.some((step) => step.id === targetStepId)
+    if (!canOpenStep) return
+
+    setOpenStepId((prev) => prev ?? targetStepId)
+  }, [searchParams, visibleSteps])
+
+  React.useEffect(() => {
+    if (!collectionId || !openStepId) return
+    let cancelled = false
+
+    const markContextRead = async () => {
+      try {
+        const response = await fetch("/api/notifications/read-by-context", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            collectionId,
+            stepId: openStepId,
+          }),
+        })
+        if (!response.ok) return
+        if (!cancelled) {
+          window.dispatchEvent(new Event(NOTIFICATIONS_REFRESH_EVENT))
+        }
+      } catch {
+        // Best-effort UX improvement; ignore failures silently.
+      }
+    }
+
+    void markContextRead()
+    return () => {
+      cancelled = true
+    }
+  }, [collectionId, openStepId])
+
+  const handleStepModalOpenChange = React.useCallback((open: boolean) => {
+    if (open) return
+
+    setOpenStepId(null)
+
+    if (!searchParams.get("step")) return
+    const nextParams = new URLSearchParams(searchParams.toString())
+    nextParams.delete("step")
+    const nextQuery = nextParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false })
+  }, [pathname, router, searchParams])
+
   const openStep = React.useMemo(
     () => steps.find((s) => s.id === openStepId) ?? null,
     [steps, openStepId]
@@ -1105,6 +1197,7 @@ export function CollectionTemplate({
                 deadlineLabel={step.deadlineLabel ?? "Deadline:"}
                 deadlineDate={step.deadlineDate ?? "Dec 4, 2025"}
                 deadlineTime={step.deadlineTime ?? "End of day (5:00pm)"}
+                showAttentionDot={Boolean(step.attention) || stepsWithUnreadActivity.has(step.id)}
                 onStepClick={() => setOpenStepId(step.id)}
                 showExpandButton
                   isFirst={index === 0}
@@ -1117,7 +1210,7 @@ export function CollectionTemplate({
 
       <ModalWindow
         open={openStepId !== null}
-        onOpenChange={(open) => !open && setOpenStepId(null)}
+        onOpenChange={handleStepModalOpenChange}
         title={openStep?.title ?? "Step"}
         headerContent={
           openStep ? (
@@ -1236,7 +1329,9 @@ export function CollectionTemplate({
                     subtitle="Lab has to digitize negatives to low-res and share with photographer."
                     additionalInfo={
                       (() => {
-                        const photoLab = (participantsMainPlayersEntities ?? []).find((e) => (e.entityTypeLabel ?? "").toLowerCase() === "photo lab")
+                        const photoLab = (participantsMainPlayersEntities ?? []).find(
+                          (e) => (e.entityTypeLabel ?? "").toLowerCase().includes("photo lab")
+                        )
                         const handprintLab = (participantsMainPlayersEntities ?? []).find(
                           (e) =>
                             (e.entityTypeLabel ?? "").toLowerCase().includes("handprint") ||
@@ -1817,38 +1912,54 @@ export function CollectionTemplate({
                       </div>
                     </div>
                   </div>
-                  {/* UrlHistory blocks: finals from step 9 + photographer-added links from step 10 */}
-                  {canShowModalActions && (() => {
-                    const finalsUrls = allUrls(finalsSelectionUrl)
-                    const validatedNotesForFinals = (stepNotesPhotographerLastCheck ?? []).filter((n) => {
+                  {/* UrlHistory blocks: previous-step material validated by photographer + optional links added in step 10 */}
+                  {(() => {
+                    // When there's no edition studio, photographer validates High-res (step 7) in step 10.
+                    // In that scenario client confirmation must show High-res history, not Final edits.
+                    const materialUrls = hasEditionStudio ? finalsSelectionUrl : highResSelectionUrl
+                    const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
+                    const materialUrlsList = allUrls(materialUrls)
+                    const validatedNotesForMaterial = (stepNotesPhotographerLastCheck ?? []).filter((n) => {
                       const u = (n as { url?: string }).url?.trim()
                       if (!u) return true
-                      return finalsUrls.includes(u)
+                      return materialUrlsList.includes(u)
                     })
                     return [
-                    ...buildUrlHistoryItems(
-                      finalsSelectionUrl,
-                      validatedNotesForFinals,
-                      "photographer",
-                      resolveUploaderDisplay("photographer"),
-                      undefined,
-                      "photographer_last_check",
-                      undefined,
-                      (_url, idx) =>
-                        idx === 0
-                          ? "Final edits (validated by photographer)"
-                          : `Final edits (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
-                    ),
-                    ...buildUrlHistoryItems(photographerLastCheckUrl, stepNotesPhotographerLastCheck, "photographer", resolveUploaderDisplay("photographer"), photographerLastCheckUploadedAt, "photographer_last_check", "Finals"),
-                  ].map((item, idx) => (
-                    <UrlHistory
-                      key={`client-confirmation-${idx}-${item.url}`}
-                      title={item.title}
-                      comments={item.comments}
-                      onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                      onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                    />
-                  ))
+                      ...buildUrlHistoryItems(
+                        materialUrls,
+                        validatedNotesForMaterial,
+                        "photographer",
+                        resolveUploaderDisplay("photographer"),
+                        undefined,
+                        "photographer_last_check",
+                        undefined,
+                        (_url, idx) =>
+                          idx === 0
+                            ? `${materialLabel} (validated by photographer)`
+                            : `${materialLabel} (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
+                      ),
+                      ...buildUrlHistoryItems(
+                        photographerLastCheckUrl,
+                        stepNotesPhotographerLastCheck,
+                        "photographer",
+                        resolveUploaderDisplay("photographer"),
+                        photographerLastCheckUploadedAt,
+                        "photographer_last_check",
+                        "Finals"
+                      ),
+                    ].map((item, idx) => (
+                      <UrlHistory
+                        key={`client-confirmation-${idx}-${item.url}`}
+                        title={item.title}
+                        comments={item.comments}
+                        onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
+                        onAddComment={
+                          canShowModalActions && onAddStepNote && item.stepId
+                            ? () => openAddCommentDialog(item.stepId, item.url)
+                            : undefined
+                        }
+                      />
+                    ))
                   })()}
                   {/* Action block: Complete collection */}
                   {canShowModalActions && (

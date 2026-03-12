@@ -31,11 +31,11 @@ interface CollectionWithAssignments {
  * 
  * Recipient mapping:
  * - producer: collection_members with role='noba'
- * - photo_lab: collection_members with role='photo_lab' + all users from photo_lab_id org
+ * - photo_lab: collection_members with role='photo_lab'
  * - photographer: collection_members with role='photographer'
- * - client: collection_members with role='client' + all users from client_id org
- * - handprint_lab: all users from handprint_lab_id org
- * - retouch_studio: all users from retouch_studio_id org
+ * - client: collection_members with role='client'
+ * - handprint_lab: collection_members with role='handprint_lab' (or photo_lab when shared)
+ * - retouch_studio: collection_members with role='retouch_studio'
  */
 export async function resolveRecipients(
   supabase: SupabaseClient<Database>,
@@ -86,9 +86,15 @@ export async function resolveRecipients(
 
   const userIds = new Set<string>()
   const orgIds = new Set<string>()
+  const producerSeedUserIds = new Set<string>()
+  const wantsProducerRecipients = recipientTypes.includes("producer")
 
   // Collect member roles and org IDs to query
   const memberRoles: string[] = []
+  const sameHandprintAndPhotoLab =
+    Boolean(collectionData.handprint_lab_id) &&
+    Boolean(collectionData.photo_lab_id) &&
+    collectionData.handprint_lab_id === collectionData.photo_lab_id
 
   for (const type of recipientTypes) {
     switch (type) {
@@ -98,7 +104,10 @@ export async function resolveRecipients(
         // collections.noba_user_ids is maintained by the collection workflow and
         // prevents missing recipients when collection_members is stale or restricted.
         for (const uid of collectionData.noba_user_ids ?? []) {
-          if (uid?.trim()) userIds.add(uid)
+          if (uid?.trim()) {
+            userIds.add(uid)
+            producerSeedUserIds.add(uid)
+          }
         }
         break
       
@@ -111,6 +120,9 @@ export async function resolveRecipients(
       
       case "photographer":
         memberRoles.push("photographer")
+        if (collectionData.photographer_id) {
+          orgIds.add(collectionData.photographer_id)
+        }
         break
       
       case "client":
@@ -122,14 +134,21 @@ export async function resolveRecipients(
       
       case "handprint_lab":
         if (collectionData.handprint_lab_id) {
+          memberRoles.push("handprint_lab")
           orgIds.add(collectionData.handprint_lab_id)
+          // When handprint uses the same organization as photo lab, notifications
+          // must reach photo_lab members too (they are the effective owners in UI).
+          if (sameHandprintAndPhotoLab) {
+            memberRoles.push("photo_lab")
+          }
         } else if (collectionData.photo_lab_id) {
-          orgIds.add(collectionData.photo_lab_id)
           memberRoles.push("photo_lab")
+          orgIds.add(collectionData.photo_lab_id)
         }
         break
       
       case "retouch_studio":
+        memberRoles.push("retouch_studio")
         if (collectionData.retouch_studio_id) {
           orgIds.add(collectionData.retouch_studio_id)
         }
@@ -155,7 +174,37 @@ export async function resolveRecipients(
     }
   }
 
-  // Query users from assigned organizations
+  // For producer notifications, infer producer organizations from explicit noba members
+  // and include all profiles from those orgs as a robust fallback.
+  if (wantsProducerRecipients) {
+    const { data: producerMembers } = await supabase
+      .from("collection_members")
+      .select("user_id")
+      .eq("collection_id", collectionId)
+      .eq("role", "noba")
+    for (const row of (producerMembers ?? []) as { user_id: string }[]) {
+      if (row.user_id?.trim()) producerSeedUserIds.add(row.user_id)
+    }
+
+    if (producerSeedUserIds.size > 0) {
+      const { data: producerProfiles, error: producerProfilesError } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .in("id", Array.from(producerSeedUserIds))
+
+      if (producerProfilesError) {
+        console.error("[resolveRecipients] Error fetching producer organizations:", producerProfilesError)
+      } else {
+        for (const profile of (producerProfiles ?? []) as { organization_id: string | null }[]) {
+          const orgId = profile.organization_id?.trim()
+          if (orgId) orgIds.add(orgId)
+        }
+      }
+    }
+  }
+
+  // Fallback/source of truth by org assignments: include all users from mapped orgs.
+  // This prevents notification misses when collection_members role rows are stale or absent.
   if (orgIds.size > 0) {
     const { data: orgUsers, error: orgUsersError } = await supabase
       .from("profiles")
@@ -163,7 +212,7 @@ export async function resolveRecipients(
       .in("organization_id", Array.from(orgIds))
 
     if (orgUsersError) {
-      console.error("[resolveRecipients] Error fetching org users:", orgUsersError)
+      console.error("[resolveRecipients] Error fetching organization users:", orgUsersError)
     } else if (orgUsers) {
       const orgUserList = orgUsers as { id: string }[]
       for (const user of orgUserList) {

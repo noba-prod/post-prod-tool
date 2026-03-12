@@ -563,11 +563,20 @@ export function resolveUserForPermission(
   nobaUserRole?: Role
 ): UserForPermission {
   if (isInternal) {
-    // noba* team members: Admin = edit all; Editor = edit only if owner granted (nobaEditPermissionByUserId)
-    const hasEdit =
-      nobaUserRole === "admin"
-        ? true
-        : (draft.config.nobaEditPermissionByUserId?.[userId] ?? false)
+    // noba admin is omnipotent: can view/edit all collections.
+    if (nobaUserRole === "admin") {
+      return { role: "producer", hasEditPermission: true }
+    }
+    const isInvitedToCollection = draft.participants.some((p) =>
+      p.userIds?.includes(userId)
+    )
+    // Internal users that are not explicitly invited in collection_members
+    // can only access as viewer (no edits).
+    if (!isInvitedToCollection) {
+      return { role: "client", hasEditPermission: false }
+    }
+    // Remaining internal users here are non-admin; edit requires owner grant.
+    const hasEdit = draft.config.nobaEditPermissionByUserId?.[userId] ?? false
     return { role: "producer", hasEditPermission: hasEdit }
   }
   for (const p of draft.participants) {

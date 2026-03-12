@@ -66,6 +66,17 @@ export function CollectionStepperDemo() {
               deadlineDate="Dec 4, 2025"
             />
           </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Completed + unread activity</p>
+            <CollectionStepSummary
+              status="completed"
+              title="Shooting"
+              stageStatus="done"
+              timeStampStatus="on-track"
+              deadlineDate="Dec 4, 2025"
+              showAttentionDot
+            />
+          </div>
         </div>
       </div>
 
@@ -96,6 +107,7 @@ export function CollectionStepperDemo() {
             stageStatus="done"
             timeStampStatus="on-track"
             deadlineDate="Dec 4, 2025"
+            showAttentionDot
             onStepClick={() => {}}
             showExpandButton
           />

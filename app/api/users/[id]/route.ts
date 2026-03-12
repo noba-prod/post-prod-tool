@@ -137,10 +137,10 @@ export async function PATCH(
   if (payload.lastName !== undefined) {
     update.last_name = payload.lastName?.trim() || null
   }
-  if (newEmail !== undefined) {
+  if (newEmail !== undefined && !canEditSelf) {
     update.email = newEmail
   }
-  if (payload.role !== undefined) {
+  if (payload.role !== undefined && !canEditSelf) {
     update.role = payload.role
   }
   if (payload.profilePictureUrl !== undefined) {

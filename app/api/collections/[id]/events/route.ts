@@ -14,6 +14,7 @@ import { NotificationsService, type CollectionEventType } from "@/lib/services/n
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
 import { CollectionsServiceError } from "@/lib/services/collections"
 import { getSubstatusAdvanceForEvent } from "@/lib/services/collections/event-substatus-mapping"
+import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 
 const VALID_EVENT_TYPES: CollectionEventType[] = [
   "shooting_started",
@@ -66,11 +67,20 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const scope = await checkInternalUserCollectionMutationScope(user.id, collectionId)
+    if (!scope.canMutate) {
+      return NextResponse.json(
+        { error: "Forbidden: internal users must be invited to edit this collection." },
+        { status: 403 }
+      )
+    }
+
     // Parse request body
     const body = await request.json()
-    const { eventType, metadata } = body as {
+    const { eventType, metadata, idempotencyKey } = body as {
       eventType: string
       metadata?: Record<string, unknown>
+      idempotencyKey?: string
     }
 
     // Validate event type
@@ -101,8 +111,15 @@ export async function POST(
       collectionId,
       eventType as CollectionEventType,
       user.id,
-      metadata
+      metadata,
+      { idempotencyKey }
     )
+    console.log("[POST /api/collections/[id]/events] event processed", {
+      collectionId,
+      eventType,
+      userId: user.id,
+      idempotencyKey: idempotencyKey ?? null,
+    })
 
     // Update collection substatus (or status for complete/cancel/revert) per linear workflow.
     // For photographer_requested_additional_photos we support multiple revert targets
@@ -182,7 +199,7 @@ export async function POST(
       console.error("[POST /api/collections/[id]/events] Progress recomputation failed:", err)
     }
 
-    return NextResponse.json({ success: true, eventType })
+    return NextResponse.json({ success: true, eventType, idempotencyKey: idempotencyKey ?? null })
   } catch (error) {
     console.error("[POST /api/collections/[id]/events] Error:", error)
     return NextResponse.json(

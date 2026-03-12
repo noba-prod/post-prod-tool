@@ -10,12 +10,10 @@ import type {
   ICollectionsRepository,
   ListCollectionsFilters,
 } from "@/lib/domain/collections"
+import { generateUuidV4 } from "@/lib/utils/uuid"
 
 function generateId(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID()
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+  return generateUuidV4()
 }
 
 const store = new Map<string, Collection>()

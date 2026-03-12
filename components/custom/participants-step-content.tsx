@@ -418,7 +418,6 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
     }
     return out
   }, [ownerId, extraIds])
-  const editByUserId = config.nobaEditPermissionByUserId ?? {}
   const usersById = useUsersByIds(nobaUserIds)
   const memberUsers = React.useMemo(
     () =>
@@ -451,16 +450,6 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
       onConfigChange({ nobaUserIds: next, nobaEditPermissionByUserId: nextEdit })
     },
     [onConfigChange, config.nobaUserIds, config.nobaEditPermissionByUserId, ownerId]
-  )
-
-  const handleEditPermission = React.useCallback(
-    (userId: string, value: boolean) => {
-      if (!onConfigChange) return
-      onConfigChange({
-        nobaEditPermissionByUserId: { ...(config.nobaEditPermissionByUserId ?? {}), [userId]: value },
-      })
-    },
-    [onConfigChange, config.nobaEditPermissionByUserId]
   )
 
   return (
@@ -505,8 +494,8 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
                   </TableCell>
                   <TableCell>
                     <Switch
-                      checked={editByUserId[u.id] ?? (u.id === ownerId)}
-                      onCheckedChange={(v) => handleEditPermission(u.id, !!v)}
+                      checked
+                      disabled
                     />
                   </TableCell>
                   <TableCell className="text-center">

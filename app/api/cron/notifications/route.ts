@@ -54,6 +54,10 @@ function unauthorized(body: object) {
 
 export async function POST(request: NextRequest) {
   try {
+    const runId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const cronSecret = (process.env.CRON_SECRET ?? "").trim()
     const rawHeader = request.headers.get("authorization")
     const authHeader = rawHeader?.trim() ?? ""
@@ -125,7 +129,7 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime
 
     console.log(
-      `[Cron] Rescheduled ${rescheduleResult.rescheduled} collections, fired ${missedResult.fired} missed-deadline events, processed ${result.processed} notifications with ${result.errors} errors in ${duration}ms`
+      `[Cron:${runId}] Rescheduled ${rescheduleResult.rescheduled} collections, fired ${missedResult.fired} missed-deadline events, processed ${result.processed} notifications with ${result.errors} errors in ${duration}ms`
     )
 
     return NextResponse.json(
@@ -136,6 +140,7 @@ export async function POST(request: NextRequest) {
         processed: result.processed,
         errors: result.errors,
         duration,
+        runId,
       },
       { headers: NO_CACHE_HEADERS }
     )

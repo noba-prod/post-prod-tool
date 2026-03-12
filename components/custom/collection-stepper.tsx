@@ -34,6 +34,8 @@ interface CollectionStepperProps {
   isFirst?: boolean
   /** When true, step is last in list – bottom progress segment is hidden. */
   isLast?: boolean
+  /** Shows unread activity marker for completed variant. */
+  showAttentionDot?: boolean
   className?: string
 }
 
@@ -55,6 +57,7 @@ export function CollectionStepper({
   inactive = false,
   isFirst = false,
   isLast = false,
+  showAttentionDot = false,
   className,
 }: CollectionStepperProps) {
   const isLocked = status === "locked"
@@ -93,6 +96,7 @@ export function CollectionStepper({
               deadlineLabel={deadlineLabel}
               deadlineDate={deadlineDate}
               deadlineTime={deadlineTime}
+              showAttentionDot={showAttentionDot}
               className="flex-1 min-w-0"
             />
           </div>

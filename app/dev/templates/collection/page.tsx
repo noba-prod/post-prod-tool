@@ -121,31 +121,33 @@ export default function CollectionTemplatePage() {
         ))}
       </div>
 
-      <CollectionTemplate
-        collectionName="Kids Summer'25"
-        clientName="@zara"
-        progress={42}
-        stageStatus="in-progress"
-        shootingType={scenario.config.hasHandprint ? (scenario.config.handprintVariant === "hr" ? "handprint_hr" : "handprint_hp") : "digital"}
-        photographerName="Tom Haser"
-        showPhotographerName
-        showParticipantsButton
-        showSettingsButton
-        onParticipants={() => {}}
-        onSettings={() => {}}
-        steps={steps}
-        navBarProps={
-          process.env.NODE_ENV !== "test"
-            ? {
-                variant: "noba",
-                userName: "Martin Becerra",
-                organization: "noba",
-                role: "admin",
-                isAdmin: true,
-              }
-            : undefined
-        }
-      />
+      <React.Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading template...</div>}>
+        <CollectionTemplate
+          collectionName="Kids Summer'25"
+          clientName="@zara"
+          progress={42}
+          stageStatus="in-progress"
+          shootingType={scenario.config.hasHandprint ? (scenario.config.handprintVariant === "hr" ? "handprint_hr" : "handprint_hp") : "digital"}
+          photographerName="Tom Haser"
+          showPhotographerName
+          showParticipantsButton
+          showSettingsButton
+          onParticipants={() => {}}
+          onSettings={() => {}}
+          steps={steps}
+          navBarProps={
+            process.env.NODE_ENV !== "test"
+              ? {
+                  variant: "noba",
+                  userName: "Martin Becerra",
+                  organization: "noba",
+                  role: "admin",
+                  isAdmin: true,
+                }
+              : undefined
+          }
+        />
+      </React.Suspense>
     </div>
   )
 }

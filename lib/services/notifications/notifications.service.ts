@@ -21,6 +21,11 @@ import {
 } from "./recipient-resolver"
 import type { CollectionContext } from "./recipient-resolver"
 import { sendNotificationEmail } from "@/lib/email/send-notification"
+import {
+  inferStepIdFromNotificationBody,
+  inferStepIdFromNotificationCtaUrl,
+  normalizeStepIdFromQuery,
+} from "@/lib/notifications/navigation"
 
 // Database type aliases
 type NotificationTemplate = Database["public"]["Tables"]["notification_templates"]["Row"]
@@ -249,8 +254,147 @@ const STEP_TO_COMPLETED_MIN_SUBSTATUS: Record<number, (typeof SUBSTATUS_ORDER)[n
   10: "client_confirmation",
 }
 
+/** Map a workflow step slug to the next actionable step slug. */
+const NEXT_STEP_BY_SLUG: Record<string, string> = {
+  shooting: "negatives_dropoff",
+  negatives_dropoff: "low_res_scanning",
+  low_res_scanning: "photographer_selection",
+  photographer_selection: "client_selection",
+  client_selection: "photographer_check",
+  photographer_check: "handprint_high_res",
+  handprint_high_res: "edition_request",
+  edition_request: "final_edits",
+  final_edits: "photographer_last_check",
+  photographer_last_check: "client_confirmation",
+}
+
+const WORKFLOW_STEP_SEQUENCE = [
+  "shooting",
+  "negatives_dropoff",
+  "low_res_scanning",
+  "photographer_selection",
+  "client_selection",
+  "photographer_check",
+  "handprint_high_res",
+  "edition_request",
+  "final_edits",
+  "photographer_last_check",
+  "client_confirmation",
+] as const
+
+interface CollectionWorkflowStepOptions {
+  hasHandprint: boolean
+  hasEditionStudio: boolean
+}
+
+/** User-facing step names by URL slug (matches notification copy style). */
+const STEP_NAME_BY_SLUG: Record<string, string> = {
+  shooting: "Shooting",
+  negatives_dropoff: "Negatives drop off",
+  low_res_scanning: "Low-res scanning",
+  photographer_selection: "Photographer selection",
+  client_selection: "Client selection",
+  photographer_check: "Photographer review",
+  handprint_high_res: "Low-res to high-res",
+  edition_request: "Retouch request",
+  final_edits: "Final edits",
+  photographer_last_check: "Photographer last check",
+  client_confirmation: "Client confirmation",
+}
+
+/** Comment threads can be visible in different steps depending on recipient role. */
+const COMMENT_STEP_SLUG_BY_NOTE_AND_RECIPIENT: Record<string, Partial<Record<RecipientType, string>>> = {
+  step_note_low_res: {
+    photo_lab: "low_res_scanning",
+    photographer: "photographer_selection",
+  },
+  step_note_photographer_selection: {
+    photographer: "photographer_selection",
+    client: "client_selection",
+  },
+  step_note_client_selection: {
+    client: "client_selection",
+    photographer: "photographer_check",
+  },
+  step_note_photographer_review: {
+    photographer: "photographer_check",
+    handprint_lab: "handprint_high_res",
+  },
+  step_note_high_res: {
+    handprint_lab: "handprint_high_res",
+    photographer: "edition_request",
+  },
+  step_note_edition_request: {
+    photographer: "edition_request",
+    retouch_studio: "final_edits",
+  },
+  step_note_final_edits: {
+    retouch_studio: "final_edits",
+    photographer: "photographer_last_check",
+  },
+  step_note_photographer_last_check: {
+    photographer: "photographer_last_check",
+    retouch_studio: "final_edits",
+  },
+  step_note_client_confirmation: {
+    client: "client_confirmation",
+  },
+}
+
+/**
+ * Per-template navigation overrides for "shared additional link" notifications.
+ * These should open the step where each recipient can actually see the UrlHistory block.
+ */
+const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientType, string>>> = {
+  lab_shared_additional_materials: {
+    photographer: "photographer_selection",
+  },
+  photographer_shared_additional_materials: {
+    client: "client_selection",
+  },
+  retouch_studio_shared_additional_materials: {
+    photographer: "photographer_last_check",
+  },
+}
+
+const USER_ACTOR_TITLE_TEMPLATE_CODES = new Set([
+  "lab_shared_additional_materials",
+  "photographer_shared_additional_materials",
+  "retouch_studio_shared_additional_materials",
+])
+
+/** Additional-material templates must notify even if their original step is completed. */
+function isAdditionalMaterialsTemplateCode(templateCode: string): boolean {
+  return templateCode.endsWith("_shared_additional_materials")
+}
+
 export class NotificationsService implements INotificationsService {
   constructor(private readonly supabase: SupabaseClient<Database>) {}
+
+  private async getCollectionWorkflowStepOptions(
+    collectionId: string
+  ): Promise<CollectionWorkflowStepOptions | null> {
+    const { data, error } = await this.supabase
+      .from("collections")
+      .select("low_res_to_high_res_hand_print, photographer_request_edition")
+      .eq("id", collectionId)
+      .single()
+    if (error || !data) {
+      console.warn("[NotificationsService] Failed to load workflow options for notification navigation:", {
+        collectionId,
+        error,
+      })
+      return null
+    }
+    const row = data as {
+      low_res_to_high_res_hand_print: boolean
+      photographer_request_edition: boolean
+    }
+    return {
+      hasHandprint: !!row.low_res_to_high_res_hand_print,
+      hasEditionStudio: !!row.photographer_request_edition,
+    }
+  }
 
   /**
    * Called when a collection is published
@@ -272,7 +416,8 @@ export class NotificationsService implements INotificationsService {
     collectionId: string,
     eventType: CollectionEventType,
     triggeredByUserId?: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    options?: { idempotencyKey?: string }
   ): Promise<void> {
     // Resolve triggered-by user name so templates can use {commentorName}
     if (triggeredByUserId && !metadata?.commentorName) {
@@ -291,6 +436,17 @@ export class NotificationsService implements INotificationsService {
     }
 
     let eventId: string | null = null
+    const idempotencyKey = options?.idempotencyKey?.trim() || null
+    if (idempotencyKey) {
+      const { data: existingByKey } = await this.supabase
+        .from("collection_events")
+        .select("id")
+        .eq("idempotency_key", idempotencyKey)
+        .limit(1)
+      if (existingByKey && existingByKey.length > 0) {
+        return
+      }
+    }
     // Idempotent: at most one shooting_started per collection (multiple code paths can call this)
     if (eventType === "shooting_started") {
       const { data: existing } = await this.supabase
@@ -308,6 +464,8 @@ export class NotificationsService implements INotificationsService {
       event_type: eventType,
       triggered_by_user_id: triggeredByUserId || null,
       metadata: metadata || {},
+      idempotency_key: idempotencyKey,
+      metadata_hash: NotificationsService.buildMetadataHash(metadata),
       notifications_processed: false,
     }
 
@@ -320,6 +478,10 @@ export class NotificationsService implements INotificationsService {
     const eventError = insertResult.error
 
     if (eventError) {
+      if ((eventError as { code?: string }).code === "23505") {
+        // Unique idempotency key or singleton event constraint hit.
+        return
+      }
       console.error("[NotificationsService] Failed to record event:", eventError)
       // Continue anyway to send notifications
     } else {
@@ -333,7 +495,8 @@ export class NotificationsService implements INotificationsService {
         const recipients = await resolveRecipients(this.supabase, collectionId, ["producer", "photo_lab"])
         const title = formatNotificationTitle("Missing photos requested", context.name, context.reference)
         const body = "The photographer has requested additional footage. Please upload a new selection in step 3."
-        const ctaUrl = buildCtaUrl("/collections/{collectionId}", collectionId)
+        const ctaUrl = buildCtaUrl("/collections/{collectionId}?step=low_res_scanning", collectionId)
+        const dedupeSource = eventId ? `event:${eventId}` : null
         for (const recipient of recipients) {
           try {
             await this.createNotification({
@@ -347,6 +510,9 @@ export class NotificationsService implements INotificationsService {
               cta_text: "View collection",
               cta_url: ctaUrl,
               sent_at: new Date().toISOString(),
+              dedupe_key: dedupeSource
+                ? `${dedupeSource}:manual:photographer_requested_additional_photos:user:${recipient.userId}:channel:in_app`
+                : null,
             })
           } catch (err) {
             console.error("[NotificationsService] Failed creating additional photos notification:", err)
@@ -386,7 +552,14 @@ export class NotificationsService implements INotificationsService {
         // 4. Process each template (pass metadata for dynamic description interpolation)
         for (const template of templates as NotificationTemplate[]) {
           try {
-            await this.processTemplate(template, collectionId, context, metadata, collectionStatus ?? undefined)
+            await this.processTemplate(
+              template,
+              collectionId,
+              context,
+              metadata,
+              collectionStatus ?? undefined,
+              eventId ? `event:${eventId}` : null
+            )
           } catch (err) {
             // Keep processing remaining templates for this event
             console.error(
@@ -421,6 +594,11 @@ export class NotificationsService implements INotificationsService {
    */
   async processScheduledNotifications(): Promise<{ processed: number; errors: number }> {
     const now = new Date().toISOString()
+    const runId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const staleProcessingIso = new Date(Date.now() - 15 * 60_000).toISOString()
     let processed = 0
     let errors = 0
 
@@ -440,6 +618,24 @@ export class NotificationsService implements INotificationsService {
     const scheduledList = (pendingScheduled ?? []) as ScheduledWithTemplate[]
     for (const scheduled of scheduledList) {
       try {
+        // Claim row to prevent concurrent cron workers from processing it twice.
+        const claimResult = await this.supabase
+          .from("scheduled_notification_tracking")
+          .update({
+            is_processing: true,
+            processing_started_at: now,
+            processing_by: runId,
+          } as never)
+          .eq("id", scheduled.id)
+          .eq("is_sent", false)
+          .or(`is_processing.eq.false,processing_started_at.lt.${staleProcessingIso}`)
+          .select("id")
+          .limit(1)
+        const claimed = (claimResult.data as { id: string }[] | null) ?? []
+        if (claimed.length === 0) {
+          continue
+        }
+
         const template = scheduled.notification_templates
         if (!template) continue
 
@@ -461,7 +657,13 @@ export class NotificationsService implements INotificationsService {
             // Mark as sent (skipped) to avoid re-checking
             await this.supabase
               .from("scheduled_notification_tracking")
-              .update({ is_sent: true, sent_at: now } as never)
+              .update({
+                is_sent: true,
+                sent_at: now,
+                is_processing: false,
+                processing_started_at: null,
+                processing_by: null,
+              } as never)
               .eq("id", scheduled.id)
             continue
           }
@@ -476,7 +678,13 @@ export class NotificationsService implements INotificationsService {
         if (milestoneCompleted) {
           await this.supabase
             .from("scheduled_notification_tracking")
-            .update({ is_sent: true, sent_at: now } as never)
+            .update({
+              is_sent: true,
+              sent_at: now,
+              is_processing: false,
+              processing_started_at: null,
+              processing_by: null,
+            } as never)
             .eq("id", scheduled.id)
           continue
         }
@@ -496,17 +704,38 @@ export class NotificationsService implements INotificationsService {
           }
         }
 
-        await this.processTemplate(template, scheduled.collection_id, context, scheduledMetadata, collectionStatus ?? undefined)
+        await this.processTemplate(
+          template,
+          scheduled.collection_id,
+          context,
+          scheduledMetadata,
+          collectionStatus ?? undefined,
+          `scheduled:${scheduled.id}`
+        )
 
         // Mark as sent
         await this.supabase
           .from("scheduled_notification_tracking")
-          .update({ is_sent: true, sent_at: now } as never)
+          .update({
+            is_sent: true,
+            sent_at: now,
+            is_processing: false,
+            processing_started_at: null,
+            processing_by: null,
+          } as never)
           .eq("id", scheduled.id)
 
         processed++
       } catch (err) {
         console.error("[NotificationsService] Error processing scheduled:", err)
+        await this.supabase
+          .from("scheduled_notification_tracking")
+          .update({
+            is_processing: false,
+            processing_started_at: null,
+            processing_by: null,
+          } as never)
+          .eq("id", scheduled.id)
         errors++
       }
     }
@@ -515,7 +744,7 @@ export class NotificationsService implements INotificationsService {
     const { data: pendingNotifications, error: notifError } = await this.supabase
       .from("notifications")
       .select("*")
-      .eq("status", "pending")
+      .in("status", ["pending", "processing"])
       .or(`scheduled_for.is.null,scheduled_for.lte.${now}`)
       .limit(100)
 
@@ -527,6 +756,23 @@ export class NotificationsService implements INotificationsService {
     const notificationList = (pendingNotifications ?? []) as NotificationRow[]
     for (const notification of notificationList) {
       try {
+        // Claim row atomically so only one worker can send it.
+        const claimNotifResult = await this.supabase
+          .from("notifications")
+          .update({
+            status: "processing",
+            processing_started_at: now,
+            processing_by: runId,
+          } as never)
+          .eq("id", notification.id)
+          .or(`status.eq.pending,and(status.eq.processing,processing_started_at.lt.${staleProcessingIso})`)
+          .select("id")
+          .limit(1)
+        const claimedNotification = (claimNotifResult.data as { id: string }[] | null) ?? []
+        if (claimedNotification.length === 0) {
+          continue
+        }
+
         if (notification.channel === "email") {
           // Get user email
           const { data: userData } = await this.supabase
@@ -567,7 +813,12 @@ export class NotificationsService implements INotificationsService {
             if (result.sent) {
               await this.supabase
                 .from("notifications")
-                .update({ status: "sent", sent_at: now } as never)
+                .update({
+                  status: "sent",
+                  sent_at: now,
+                  processing_started_at: null,
+                  processing_by: null,
+                } as never)
                 .eq("id", notification.id)
               processed++
             } else {
@@ -577,6 +828,8 @@ export class NotificationsService implements INotificationsService {
                   status: "failed",
                   error_message: result.error,
                   retry_count: notification.retry_count + 1,
+                  processing_started_at: null,
+                  processing_by: null,
                 } as never)
                 .eq("id", notification.id)
               errors++
@@ -586,12 +839,27 @@ export class NotificationsService implements INotificationsService {
           // In-app notifications are immediately "sent"
           await this.supabase
             .from("notifications")
-            .update({ status: "sent", sent_at: now } as never)
+            .update({
+              status: "sent",
+              sent_at: now,
+              processing_started_at: null,
+              processing_by: null,
+            } as never)
             .eq("id", notification.id)
           processed++
         }
       } catch (err) {
         console.error("[NotificationsService] Error sending notification:", err)
+        await this.supabase
+          .from("notifications")
+          .update({
+            status: "failed",
+            error_message: "Unexpected processing error",
+            retry_count: notification.retry_count + 1,
+            processing_started_at: null,
+            processing_by: null,
+          } as never)
+          .eq("id", notification.id)
         errors++
       }
     }
@@ -661,6 +929,21 @@ export class NotificationsService implements INotificationsService {
       // Skip if already in the past
       if (scheduledFor < now) continue
 
+      // If deadline changed, invalidate previous pending rows for the same collection+template.
+      await this.supabase
+        .from("scheduled_notification_tracking")
+        .update({
+          is_sent: true,
+          sent_at: now.toISOString(),
+          is_processing: false,
+          processing_started_at: null,
+          processing_by: null,
+        } as never)
+        .eq("collection_id", collectionId)
+        .eq("template_id", template.id)
+        .eq("is_sent", false)
+        .neq("deadline_value", deadlineDate.toISOString())
+
       // Insert tracking entry (upsert to avoid duplicates)
       const { error: insertError } = await this.supabase
         .from("scheduled_notification_tracking")
@@ -671,6 +954,9 @@ export class NotificationsService implements INotificationsService {
             deadline_value: deadlineDate.toISOString(),
             scheduled_for: scheduledFor.toISOString(),
             is_sent: false,
+            is_processing: false,
+            processing_started_at: null,
+            processing_by: null,
           } as never,
           { onConflict: "collection_id,template_id,deadline_value" }
         )
@@ -705,6 +991,58 @@ export class NotificationsService implements INotificationsService {
       console.error("[NotificationsService] Failed to mark as read:", error)
       throw error
     }
+  }
+
+  /**
+   * Mark unread in-app notifications as read using collection + optional step context.
+   * This is used when users reach step details from outside the notification panel
+   * (e.g. email CTA or direct stepper click).
+   */
+  async markAsReadByContext(userId: string, collectionId: string, stepId?: string): Promise<number> {
+    const hasStepFilter = typeof stepId === "string" && stepId.trim().length > 0
+    const normalizedStepId = normalizeStepIdFromQuery(stepId ?? null)
+    if (hasStepFilter && !normalizedStepId) {
+      return 0
+    }
+    const { data, error } = await this.supabase
+      .from("notifications")
+      .select("id, cta_url, body")
+      .eq("user_id", userId)
+      .eq("collection_id", collectionId)
+      .eq("channel", "in_app")
+      .eq("status", "sent")
+
+    if (error) {
+      console.error("[NotificationsService] Failed to fetch notifications for context read:", error)
+      throw error
+    }
+
+    const rows = (data ?? []) as Array<{ id: string; cta_url: string | null; body: string }>
+    const idsToMark = rows
+      .filter((row) => {
+        if (!hasStepFilter) return true
+        const stepFromCta = inferStepIdFromNotificationCtaUrl(row.cta_url)
+        const stepFromBody = inferStepIdFromNotificationBody(row.body)
+        return stepFromCta === normalizedStepId || stepFromBody === normalizedStepId
+      })
+      .map((row) => row.id)
+
+    if (idsToMark.length === 0) return 0
+
+    const { error: updateError } = await this.supabase
+      .from("notifications")
+      .update({ status: "read", read_at: new Date().toISOString() } as never)
+      .in("id", idsToMark)
+      .eq("user_id", userId)
+      .eq("channel", "in_app")
+      .eq("status", "sent")
+
+    if (updateError) {
+      console.error("[NotificationsService] Failed to mark context notifications as read:", updateError)
+      throw updateError
+    }
+
+    return idsToMark.length
   }
 
   /**
@@ -782,6 +1120,35 @@ export class NotificationsService implements INotificationsService {
     }
 
     return count || 0
+  }
+
+  /**
+   * Return unique step IDs with unread in-app notifications for a collection.
+   */
+  async getUnreadStepIdsForCollection(userId: string, collectionId: string): Promise<string[]> {
+    const { data, error } = await this.supabase
+      .from("notifications")
+      .select("cta_url, body")
+      .eq("user_id", userId)
+      .eq("collection_id", collectionId)
+      .eq("channel", "in_app")
+      .eq("status", "sent")
+
+    if (error) {
+      console.error("[NotificationsService] Failed to fetch unread steps:", error)
+      return []
+    }
+
+    const rows = (data ?? []) as Array<{ cta_url: string | null; body: string }>
+    const stepIds = new Set<string>()
+    for (const row of rows) {
+      const stepFromCta = inferStepIdFromNotificationCtaUrl(row.cta_url)
+      const stepFromBody = inferStepIdFromNotificationBody(row.body)
+      const stepId = stepFromCta ?? stepFromBody
+      if (stepId) stepIds.add(stepId)
+    }
+
+    return Array.from(stepIds)
   }
 
   /**
@@ -889,8 +1256,20 @@ export class NotificationsService implements INotificationsService {
       return
     }
 
+    const { data: commenterProfile } = await this.supabase
+      .from("profiles")
+      .select("first_name, last_name, email")
+      .eq("id", commentUserId)
+      .single()
+    const commenter = commenterProfile as {
+      first_name: string | null
+      last_name: string | null
+      email: string | null
+    } | null
+    const commenterHandle = NotificationsService.buildCommenterHandle(commenter)
+
     // Record the event
-    await this.supabase
+    const commentEventInsert = await this.supabase
       .from("collection_events")
       .insert({
         collection_id: collectionId,
@@ -899,26 +1278,44 @@ export class NotificationsService implements INotificationsService {
         metadata: { stepNoteKey, stepName: config.stepName, commentText },
         notifications_processed: true,
       } as never)
+      .select("id")
+      .single()
+    const commentEventId = (commentEventInsert.data as { id: string } | null)?.id ?? null
 
-    const allRecipients = await resolveRecipients(
-      this.supabase,
-      collectionId,
-      config.recipients
-    )
+    const recipientsByUserId = new Map<string, {
+      userId: string
+      email: string
+      firstName: string | null
+      lastName: string | null
+      recipientType?: RecipientType
+    }>()
+    for (const recipientType of config.recipients) {
+      const typedRecipients = await resolveRecipients(this.supabase, collectionId, [recipientType])
+      for (const recipient of typedRecipients) {
+        if (!recipientsByUserId.has(recipient.userId)) {
+          recipientsByUserId.set(recipient.userId, { ...recipient, recipientType })
+        }
+      }
+    }
 
-    const recipients = allRecipients.filter((r) => r.userId !== commentUserId)
+    const recipients = Array.from(recipientsByUserId.values()).filter((r) => r.userId !== commentUserId)
     if (recipients.length === 0) return
 
     const title = formatNotificationTitle("New comment", context.name, context.reference)
     const body = `You have a new comment on ${config.stepName}`
-    const ctaUrl = buildCtaUrl(
-      `/collections/{collectionId}?step=${config.stepSlug}`,
-      collectionId
-    )
 
     const emailSubject = `💬 New comment on ${config.stepName} - ${context.name} by ${context.clientName || "—"} - ${context.photographerName || "—"}`
+    const workflowOptions = await this.getCollectionWorkflowStepOptions(collectionId)
 
     for (const recipient of recipients) {
+      const navigation = NotificationsService.getCommentStepNavigation(
+        stepNoteKey,
+        recipient.recipientType,
+        collectionId,
+        config.stepSlug,
+        config.stepName,
+        workflowOptions
+      )
       try {
         await this.createNotification({
           collection_id: collectionId,
@@ -938,18 +1335,28 @@ export class NotificationsService implements INotificationsService {
             shootingCity: context.shootingCity,
             shootingCountry: context.shootingCountry,
             stepStatus: "In progress",
-            stepName: config.stepName,
+            stepName: navigation.stepName,
           }),
           cta_text: "Check comment",
-          cta_url: ctaUrl,
+          cta_url: navigation.ctaUrl,
+          dedupe_key: commentEventId
+            ? `comment:${commentEventId}:user:${recipient.userId}:channel:email`
+            : null,
         })
       } catch (err) {
         console.error("[NotificationsService] Failed creating comment email notification:", err)
       }
     }
 
-    const inappBody = `${body}\n${context.name} · ${config.stepName}`
     for (const recipient of recipients) {
+      const navigation = NotificationsService.getCommentStepNavigation(
+        stepNoteKey,
+        recipient.recipientType,
+        collectionId,
+        config.stepSlug,
+        config.stepName,
+        workflowOptions
+      )
       try {
         await this.createNotification({
           collection_id: collectionId,
@@ -957,11 +1364,14 @@ export class NotificationsService implements INotificationsService {
           user_id: recipient.userId,
           channel: "in_app",
           status: "sent",
-          title,
-          body: inappBody,
+          title: `${title} from @${commenterHandle}`,
+          body: `${commentText.trim() || body}\n${context.name} · ${navigation.stepName}`,
           cta_text: "Check comment",
-          cta_url: ctaUrl,
+          cta_url: navigation.ctaUrl,
           sent_at: new Date().toISOString(),
+          dedupe_key: commentEventId
+            ? `comment:${commentEventId}:user:${recipient.userId}:channel:in_app`
+            : null,
         })
       } catch (err) {
         console.error("[NotificationsService] Failed creating comment in-app notification:", err)
@@ -1031,6 +1441,23 @@ export class NotificationsService implements INotificationsService {
     }
   }
 
+  private static buildMetadataHash(metadata?: Record<string, unknown>): string | null {
+    if (!metadata) return null
+    try {
+      const normalized = JSON.stringify(
+        Object.keys(metadata)
+          .sort()
+          .reduce<Record<string, unknown>>((acc, key) => {
+            acc[key] = metadata[key]
+            return acc
+          }, {})
+      )
+      return normalized
+    } catch {
+      return null
+    }
+  }
+
   /**
    * Interpolate dynamic placeholders in template text.
    * Supports:
@@ -1097,6 +1524,23 @@ export class NotificationsService implements INotificationsService {
     return result
   }
 
+  private static getEffectiveTitleTemplate(
+    template: NotificationTemplate,
+    metadata?: Record<string, unknown>
+  ): string {
+    const hasCommentorName =
+      typeof metadata?.commentorName === "string" && metadata.commentorName.trim().length > 0
+    if (!hasCommentorName || !USER_ACTOR_TITLE_TEMPLATE_CODES.has(template.code)) {
+      return template.title
+    }
+
+    // For "shared additional link" notifications, always show the user actor in title.
+    return template.title.replace(
+      /\{photographerName\}|\{photoLabName\}|\{retouchStudioName\}/g,
+      "{commentorName}"
+    )
+  }
+
   /**
    * Interpolate email subject template with collection context values.
    * Replaces {collectionName}, {clientName}, {photographerName}, {stepName}.
@@ -1113,6 +1557,167 @@ export class NotificationsService implements INotificationsService {
       .replace(/\{photoLabName\}/g, context.photoLabName || "Photo lab")
       .replace(/\{retouchStudioName\}/g, context.retouchStudioName || "Retouch studio")
       .replace(/\{stepName\}/g, stepName)
+  }
+
+  private static getUpcomingStepNavigation(
+    ctaUrlTemplate: string | null,
+    collectionId: string,
+    fallbackStepName: string,
+    workflowOptions?: CollectionWorkflowStepOptions | null
+  ): { ctaUrl: string | null; upcomingStepName: string } {
+    const rawUrl = buildCtaUrl(ctaUrlTemplate, collectionId)
+    if (!rawUrl) {
+      return { ctaUrl: null, upcomingStepName: fallbackStepName }
+    }
+
+    try {
+      const parsed = new URL(rawUrl, "http://localhost")
+      const stepSlug = parsed.searchParams.get("step")
+      if (!stepSlug) {
+        return { ctaUrl: rawUrl, upcomingStepName: fallbackStepName }
+      }
+      const nextStepSlug = NotificationsService.getNextNavigableStepSlug(stepSlug, workflowOptions)
+      parsed.searchParams.set("step", nextStepSlug)
+      const ctaUrl = `${parsed.pathname}${parsed.search}${parsed.hash}`
+      return {
+        ctaUrl,
+        upcomingStepName: STEP_NAME_BY_SLUG[nextStepSlug] ?? fallbackStepName,
+      }
+    } catch {
+      return { ctaUrl: rawUrl, upcomingStepName: fallbackStepName }
+    }
+  }
+
+  private static getCommentStepNavigation(
+    stepNoteKey: string,
+    recipientType: RecipientType | undefined,
+    collectionId: string,
+    fallbackStepSlug: string,
+    fallbackStepName: string,
+    workflowOptions?: CollectionWorkflowStepOptions | null
+  ): { ctaUrl: string; stepName: string } {
+    const mappedStepSlugRaw =
+      (recipientType && COMMENT_STEP_SLUG_BY_NOTE_AND_RECIPIENT[stepNoteKey]?.[recipientType]) ||
+      fallbackStepSlug
+    const mappedStepSlug = NotificationsService.getNearestNavigableStepSlug(mappedStepSlugRaw, workflowOptions)
+    const ctaUrl = buildCtaUrl(`/collections/{collectionId}?step=${mappedStepSlug}`, collectionId)
+      || `/collections/${collectionId}?step=${mappedStepSlug}`
+    return {
+      ctaUrl,
+      stepName: STEP_NAME_BY_SLUG[mappedStepSlug] ?? fallbackStepName,
+    }
+  }
+
+  private static getTemplateNavigation(
+    template: NotificationTemplate,
+    recipientType: RecipientType | undefined,
+    collectionId: string,
+    workflowOptions?: CollectionWorkflowStepOptions | null
+  ): { ctaUrl: string | null; stepName: string } {
+    const overriddenStepSlugRaw =
+      recipientType ? TEMPLATE_STEP_SLUG_BY_RECIPIENT[template.code]?.[recipientType] : undefined
+
+    if (overriddenStepSlugRaw) {
+      const overriddenStepSlug = NotificationsService.getNearestNavigableStepSlug(
+        overriddenStepSlugRaw,
+        workflowOptions
+      )
+      const ctaUrl = buildCtaUrl(
+        `/collections/{collectionId}?step=${overriddenStepSlug}`,
+        collectionId
+      )
+      return {
+        ctaUrl,
+        stepName: STEP_NAME_BY_SLUG[overriddenStepSlug] ?? template.step_name,
+      }
+    }
+
+    const { ctaUrl, upcomingStepName } = NotificationsService.getUpcomingStepNavigation(
+      template.cta_url_template,
+      collectionId,
+      template.step_name,
+      workflowOptions
+    )
+    return { ctaUrl, stepName: upcomingStepName }
+  }
+
+  private static normalizeWorkflowStepSlug(stepSlug: string): string {
+    const raw = stepSlug.trim().toLowerCase()
+    if (raw === "negatives_drop_off") return "negatives_dropoff"
+    if (raw === "photographer_check_client_selection") return "photographer_check"
+    return raw
+  }
+
+  private static isStepNavigable(
+    stepSlug: string,
+    workflowOptions?: CollectionWorkflowStepOptions | null
+  ): boolean {
+    if (!workflowOptions) return true
+    switch (stepSlug) {
+      case "negatives_dropoff":
+      case "low_res_scanning":
+      case "photographer_check":
+        return workflowOptions.hasHandprint
+      case "edition_request":
+      case "final_edits":
+        return workflowOptions.hasEditionStudio
+      case "photographer_last_check":
+        return workflowOptions.hasEditionStudio || workflowOptions.hasHandprint
+      default:
+        return true
+    }
+  }
+
+  private static getNearestNavigableStepSlug(
+    stepSlug: string,
+    workflowOptions?: CollectionWorkflowStepOptions | null
+  ): string {
+    const normalized = NotificationsService.normalizeWorkflowStepSlug(stepSlug)
+    if (!workflowOptions) return normalized
+    if (NotificationsService.isStepNavigable(normalized, workflowOptions)) return normalized
+
+    const currentIdx = WORKFLOW_STEP_SEQUENCE.indexOf(normalized as (typeof WORKFLOW_STEP_SEQUENCE)[number])
+    if (currentIdx < 0) return normalized
+    for (let idx = currentIdx + 1; idx < WORKFLOW_STEP_SEQUENCE.length; idx++) {
+      const candidate = WORKFLOW_STEP_SEQUENCE[idx]
+      if (NotificationsService.isStepNavigable(candidate, workflowOptions)) {
+        return candidate
+      }
+    }
+    return normalized
+  }
+
+  private static getNextNavigableStepSlug(
+    stepSlug: string,
+    workflowOptions?: CollectionWorkflowStepOptions | null
+  ): string {
+    const normalized = NotificationsService.normalizeWorkflowStepSlug(stepSlug)
+    if (!workflowOptions) return NEXT_STEP_BY_SLUG[normalized] ?? normalized
+
+    const currentIdx = WORKFLOW_STEP_SEQUENCE.indexOf(normalized as (typeof WORKFLOW_STEP_SEQUENCE)[number])
+    if (currentIdx < 0) return NEXT_STEP_BY_SLUG[normalized] ?? normalized
+    for (let idx = currentIdx + 1; idx < WORKFLOW_STEP_SEQUENCE.length; idx++) {
+      const candidate = WORKFLOW_STEP_SEQUENCE[idx]
+      if (NotificationsService.isStepNavigable(candidate, workflowOptions)) {
+        return candidate
+      }
+    }
+    return normalized
+  }
+
+  private static buildCommenterHandle(commenter: {
+    first_name: string | null
+    last_name: string | null
+    email: string | null
+  } | null): string {
+    const fullName = [commenter?.first_name, commenter?.last_name]
+      .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+      .join(" ")
+      .trim()
+    if (fullName) return fullName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+    const emailPrefix = commenter?.email?.split("@")[0]?.trim()
+    if (emailPrefix) return emailPrefix.toLowerCase().replace(/[^a-z0-9._-]+/g, "")
+    return "someone"
   }
 
   /**
@@ -1136,7 +1741,8 @@ export class NotificationsService implements INotificationsService {
     collectionId: string,
     context: CollectionContext,
     metadata?: Record<string, unknown>,
-    collectionStatus?: { status: string; substatus: string | null }
+    collectionStatus?: { status: string; substatus: string | null },
+    sourceDedupePrefix?: string | null
   ): Promise<void> {
     let statusInfo = collectionStatus
     if (!statusInfo) {
@@ -1149,6 +1755,7 @@ export class NotificationsService implements INotificationsService {
     }
     if (
       statusInfo &&
+      !isAdditionalMaterialsTemplateCode(template.code) &&
       NotificationsService.isStepCompleted(statusInfo.status, statusInfo.substatus, template.step)
     ) {
       console.log(
@@ -1158,34 +1765,60 @@ export class NotificationsService implements INotificationsService {
       return
     }
 
-    // Resolve email recipients
-    const emailRecipients = await resolveRecipients(
-      this.supabase,
-      collectionId,
+    const resolveRecipientsWithType = async (types: RecipientType[]) => {
+      const recipientsByUserId = new Map<string, {
+        userId: string
+        email: string
+        firstName: string | null
+        lastName: string | null
+        recipientType?: RecipientType
+      }>()
+      for (const recipientType of types) {
+        const typedRecipients = await resolveRecipients(this.supabase, collectionId, [recipientType])
+        for (const recipient of typedRecipients) {
+          if (!recipientsByUserId.has(recipient.userId)) {
+            recipientsByUserId.set(recipient.userId, { ...recipient, recipientType })
+          }
+        }
+      }
+      return Array.from(recipientsByUserId.values())
+    }
+
+    // Resolve recipients preserving recipient role/type for per-role navigation.
+    const emailRecipients = await resolveRecipientsWithType(
       (template.email_recipients || []) as RecipientType[]
     )
-
-    // Resolve in-app recipients
-    const inappRecipients = await resolveRecipients(
-      this.supabase,
-      collectionId,
+    const inappRecipients = await resolveRecipientsWithType(
       (template.inapp_recipients || []) as RecipientType[]
     )
 
-    const interpolatedTitle = NotificationsService.interpolateText(template.title, metadata, context)
+    const effectiveTitleTemplate = NotificationsService.getEffectiveTitleTemplate(template, metadata)
+    const interpolatedTitle = NotificationsService.interpolateText(effectiveTitleTemplate, metadata, context)
     const title = formatNotificationTitle(interpolatedTitle, context.name, context.reference)
-    const ctaUrl = buildCtaUrl(template.cta_url_template, collectionId)
     const body = NotificationsService.interpolateText(template.description, metadata, context)
+    const workflowOptions = await this.getCollectionWorkflowStepOptions(collectionId)
 
     // Build email subject from template's email_subject column
+    const defaultNavigation = NotificationsService.getTemplateNavigation(
+      template,
+      undefined,
+      collectionId,
+      workflowOptions
+    )
     const emailSubject = template.email_subject
-      ? NotificationsService.interpolateEmailSubject(template.email_subject, context, template.step_name)
+      ? NotificationsService.interpolateEmailSubject(template.email_subject, context, defaultNavigation.stepName)
       : title
 
     const stepStatus = NotificationsService.deriveStepStatus(template.code)
 
     // Create email notifications
     for (const recipient of emailRecipients) {
+      const navigation = NotificationsService.getTemplateNavigation(
+        template,
+        recipient.recipientType,
+        collectionId,
+        workflowOptions
+      )
       await this.createNotification({
         collection_id: collectionId,
         template_id: template.id,
@@ -1204,18 +1837,26 @@ export class NotificationsService implements INotificationsService {
           shootingCity: context.shootingCity,
           shootingCountry: context.shootingCountry,
           stepStatus,
-          stepName: template.step_name,
+          stepName: navigation.stepName,
         }),
         cta_text: template.cta_text,
-        cta_url: ctaUrl,
+        cta_url: navigation.ctaUrl,
+        dedupe_key: sourceDedupePrefix
+          ? `${sourceDedupePrefix}:template:${template.id}:user:${recipient.userId}:channel:email`
+          : null,
       })
     }
 
     // Build in-app body: description + collection name · step name
-    const inappBody = `${body}\n${context.name} · ${template.step_name}`
-
     // Create in-app notifications (immediately sent)
     for (const recipient of inappRecipients) {
+      const navigation = NotificationsService.getTemplateNavigation(
+        template,
+        recipient.recipientType,
+        collectionId,
+        workflowOptions
+      )
+      const inappBody = `${body}\n${context.name} · ${navigation.stepName}`
       await this.createNotification({
         collection_id: collectionId,
         template_id: template.id,
@@ -1225,8 +1866,11 @@ export class NotificationsService implements INotificationsService {
         title,
         body: inappBody,
         cta_text: template.cta_text,
-        cta_url: ctaUrl,
+        cta_url: navigation.ctaUrl,
         sent_at: new Date().toISOString(),
+        dedupe_key: sourceDedupePrefix
+          ? `${sourceDedupePrefix}:template:${template.id}:user:${recipient.userId}:channel:in_app`
+          : null,
       })
     }
   }
@@ -1238,6 +1882,10 @@ export class NotificationsService implements INotificationsService {
     const { error } = await this.supabase.from("notifications").insert(data as never)
 
     if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        // Duplicate notification for the same dedupe key; safe to ignore.
+        return
+      }
       console.error("[NotificationsService] Failed to create notification:", error)
     }
   }

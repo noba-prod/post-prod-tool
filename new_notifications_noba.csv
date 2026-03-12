@@ -1,0 +1,15 @@
+,,,,,,,
+Acción ,Step,Notification Title,Description,CTA,Notification Trigger,Email notification,In app notification
+Create new ,3 - Low-res scanning,Photographer is requesting missing photos,"""[note request]""",Review request,photographer:request:missing:photos,Lab,"Producer, Lab"
+Check because it's not been trigger correctly,4 - Photographer selection,Selection shared with client,The photographer has shared a first image selection with the client for review.,Review selection,on:photographer_selection_shared,Client,Client
+Create new ,4 - Photographer selection,Client is requesting missing photos,"""[note request]""",Review request,client:request:missing:photos,"Lab, Photographer","Producer, Photographer"
+Check because it's not been trigger correctly,4 - Photographer selection,Client selection reminder,The collection is delayed. Please coordinate with the client and photographer to update the timeline.,-,on:photographer_selection_deadline_missed,Producer,Producer
+Check because it's not been trigger correctly,5 - Client selection,Client selection reminder,Please complete the final image selection before the deadline.,Upload final selection,first time in the morning: reminder,Client,Client
+Check because it's not been trigger correctly,5 - Client selection,Client selection reminder,Please complete the final image selection before the deadline.,Upload final selection,if not completed: 1 hour before deadline,"Client, Producer","Client, Producer"
+Delete,5 - Client selection,Client final selection submitted,The client has submitted the final image selection. Review it and proceed with high-resolution processing.,Review client selection,on:client_selection_confirmed,"Hand Print Lab, Photographer","Hand Print Lab, Photographer"
+Create new ,5 - Client selection,Client final selection submitted,The client has submitted the final image selection. Review it and validate to proceed with high-resolution processing.,Validate client selection,on:client_selection_confirmed,Photographer,"Photographer, Producer"
+Create new ,6 - Photographer review,Photographer review at risk,The deadline for validating client selection is approaching. Please confirm everything is ok and add coments for high-res,Check HR,before:review_deadline:1h,"Photographer, Producer",Photographer
+Create new ,6 - Photographer review,Photographer review delayed for collection [ID],Photographer review is delayed. Please coordinate with the handprint lab to adjust timings.,Check collection,on:photographer:review_deadline_missed,Producer,Producer
+Create new ,6 - Photographer review,Client selection is ready for HR,Check photographer comments and validations before converting client selection to HR,Review comments,on:photographer:review_confirmed,Hand Print Lab,"Hand Print Lab, Producer"
+Create new ,9 - Final edits,Photographer is requesting new edits,"""[note request]""",Review request,client:request:missing:photos,"Lab, Photographer","Producer, Photographer"
+Create new ,11 - Client confirmation,Is collection finished?,Has the client recieved and confirmed finals?,Collection finished,1:hour:after:deadline:if:client:not: confirmed:completion,Producer,Producer

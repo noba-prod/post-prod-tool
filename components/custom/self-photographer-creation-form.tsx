@@ -4,7 +4,7 @@ import * as React from "react"
 import { ModalWindow } from "./modal-window"
 import { Layout, LayoutSection } from "./layout"
 import { RowVariants } from "./row-variants"
-import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel, FieldContent, FieldError } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { PhoneInput } from "./phone-input"
 import { Textarea } from "@/components/ui/textarea"
@@ -88,6 +88,9 @@ export function SelfPhotographerCreationForm({
     profilePicture: initialData?.profilePicture ?? null,
     notes: initialData?.notes || "",
   })
+  const [nameExistsError, setNameExistsError] = React.useState<string | null>(null)
+  const [isCheckingName, setIsCheckingName] = React.useState(false)
+  const latestNameRequestRef = React.useRef(0)
 
   // Reset form when modal closes
   React.useEffect(() => {
@@ -104,14 +107,64 @@ export function SelfPhotographerCreationForm({
     }
   }, [open, initialData])
 
+  React.useEffect(() => {
+    const trimmedFirstName = formData.firstName.trim()
+    const trimmedLastName = formData.lastName.trim()
+    const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim()
+
+    if (!open || !fullName || !trimmedLastName) {
+      setNameExistsError(null)
+      setIsCheckingName(false)
+      return
+    }
+
+    const requestId = latestNameRequestRef.current + 1
+    latestNameRequestRef.current = requestId
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(async () => {
+      setIsCheckingName(true)
+      try {
+        const searchParams = new URLSearchParams({ name: fullName })
+        const response = await fetch(`/api/organizations/check-name?${searchParams.toString()}`, {
+          method: "GET",
+          signal: controller.signal,
+          cache: "no-store",
+        })
+        const body = (await response.json().catch(() => ({}))) as { exists?: boolean }
+        if (!response.ok) throw new Error("Failed to validate photographer name")
+
+        if (latestNameRequestRef.current === requestId) {
+          setNameExistsError(body.exists ? "A player with this name already exists" : null)
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          if (latestNameRequestRef.current === requestId) {
+            setNameExistsError(null)
+          }
+        }
+      } finally {
+        if (latestNameRequestRef.current === requestId) {
+          setIsCheckingName(false)
+        }
+      }
+    }, 350)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeoutId)
+    }
+  }, [formData.firstName, formData.lastName, open])
+
   // Validation
   const isFormValid = React.useMemo(() => {
     return (
       formData.firstName.trim() !== "" &&
       formData.email.trim() !== "" &&
-      formData.phoneNumber.trim() !== ""
+      formData.phoneNumber.trim() !== "" &&
+      !nameExistsError &&
+      !isCheckingName
     )
-  }, [formData])
+  }, [formData, nameExistsError, isCheckingName])
 
   // Handlers
   const handleSubmit = () => {
@@ -170,7 +223,7 @@ export function SelfPhotographerCreationForm({
               </Field>
 
               {/* Last Name */}
-              <Field>
+              <Field data-invalid={nameExistsError ? "true" : undefined}>
                 <FieldLabel htmlFor="sp-last-name">Last name</FieldLabel>
                 <FieldContent>
                   <Input
@@ -184,7 +237,9 @@ export function SelfPhotographerCreationForm({
                       }))
                     }
                     placeholder="Write last name"
+                    aria-invalid={nameExistsError ? true : undefined}
                   />
+                  <FieldError>{nameExistsError}</FieldError>
                 </FieldContent>
               </Field>
             </RowVariants>

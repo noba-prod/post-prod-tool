@@ -26,6 +26,7 @@ import {
   computeStepHealth,
   getDeadlineForStep,
 } from "@/lib/domain/collections/step-health"
+import { generateUuidV4 } from "@/lib/utils/uuid"
 import {
   configToViewStepsInput,
   getViewStepDefinitions,
@@ -56,10 +57,7 @@ function validateCreateConfig(config: Partial<CollectionConfig>): void {
 }
 
 function generateId(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID()
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+  return generateUuidV4()
 }
 
 function mapParticipantRoleToCurrentOwnerRole(
@@ -294,7 +292,10 @@ export class CollectionsService {
 
   /**
    * Updates substatus for a collection with status = in_progress.
-   * When newSubstatus is 'client_confirmation', also sets status to 'completed' and substatus to null.
+   * Entering 'client_confirmation' keeps the collection in_progress.
+   * Completion only happens via explicit completion events:
+   * - client_confirmation_confirmed
+   * - collection_completed
    * Validates that the transition is allowed (next in sequence or initial).
    */
   async updateSubstatus(
@@ -321,19 +322,6 @@ export class CollectionsService {
         "Invalid substatus transition",
         "INVALID_TRANSITION"
       )
-    }
-    if (newSubstatus === "client_confirmation") {
-      const updated = await this.repository.update(collectionId, {
-        status: "completed",
-        substatus: null,
-      })
-      if (!updated) {
-        throw new CollectionsServiceError(
-          "Failed to complete collection",
-          "UPDATE_FAILED"
-        )
-      }
-      return updated
     }
     const updated = await this.repository.update(collectionId, {
       substatus: newSubstatus,

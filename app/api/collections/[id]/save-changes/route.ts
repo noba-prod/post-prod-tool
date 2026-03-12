@@ -10,6 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
 import { createInvitationsForNewMembers } from "@/lib/invitations"
 import { CollectionsServiceError } from "@/lib/services/collections"
+import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 import type { CollectionConfig, CollectionParticipant } from "@/lib/domain/collections"
 import type { CollectionMember } from "@/lib/supabase/database.types"
 
@@ -28,6 +29,14 @@ export async function POST(
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const scope = await checkInternalUserCollectionMutationScope(user.id, id)
+    if (!scope.canMutate) {
+      return NextResponse.json(
+        { error: "Forbidden: internal users must be invited to edit this collection." },
+        { status: 403 }
+      )
     }
 
     const body = await request.json().catch(() => null) as {
@@ -72,21 +81,54 @@ export async function POST(
       .select("user_id, role")
       .eq("collection_id", id)
     const newMembers = (newMembersData ?? []) as { user_id: string; role: string }[]
-    const newMembersToInvite = newMembers.filter((m) => !oldUserIds.has(m.user_id)) as Pick<
+    const newMembersFromThisSave = newMembers.filter((m) => !oldUserIds.has(m.user_id)) as Pick<
       CollectionMember,
       "user_id" | "role"
     >[]
+    let membersToInvite = [...newMembersFromThisSave]
+
+    // Edition mode autosaves participants while editing. In that case, "old vs new" on this endpoint
+    // may not detect additions. Fallback: invite members that still have no invitation for this collection.
+    if (membersToInvite.length === 0 && newMembers.length > 0) {
+      const allUserIds = [...new Set(newMembers.map((m) => m.user_id))]
+      const { data: profileRows } = await (admin.from("profiles") as ReturnType<typeof admin.from>)
+        .select("id, email")
+        .in("id", allUserIds)
+      const profiles = (profileRows ?? []) as Array<{ id: string; email: string | null }>
+      const emailByUserId = new Map(
+        profiles
+          .filter((p) => typeof p.email === "string" && p.email.trim().length > 0)
+          .map((p) => [p.id, p.email!.trim().toLowerCase()])
+      )
+
+      const candidateEmails = [...new Set(Array.from(emailByUserId.values()))]
+      if (candidateEmails.length > 0) {
+        const { data: invitationRows } = await (admin.from("invitations") as ReturnType<typeof admin.from>)
+          .select("email")
+          .eq("collection_id", id)
+          .in("email", candidateEmails)
+        const existingInvitationEmails = new Set(
+          ((invitationRows ?? []) as Array<{ email: string | null }>)
+            .map((row) => row.email?.trim().toLowerCase())
+            .filter((email): email is string => Boolean(email))
+        )
+        membersToInvite = newMembers.filter((member) => {
+          const email = emailByUserId.get(member.user_id)
+          return !!email && !existingInvitationEmails.has(email)
+        }) as Pick<CollectionMember, "user_id" | "role">[]
+      }
+    }
 
     let invitationsCreated = 0
     let invitationsSent = 0
-    if (newMembersToInvite.length > 0) {
-      const inviteResult = await createInvitationsForNewMembers(id, newMembersToInvite)
+    if (membersToInvite.length > 0) {
+      const inviteResult = await createInvitationsForNewMembers(id, membersToInvite)
       invitationsCreated = inviteResult.created ?? 0
       invitationsSent = inviteResult.sent ?? 0
     }
 
     const message =
-      newMembersToInvite.length > 0 && invitationsCreated > 0
+      membersToInvite.length > 0 && invitationsCreated > 0
         ? `Changes saved. ${invitationsCreated} invitation(s) sent to new participants.`
         : "Changes saved."
 

@@ -4,7 +4,7 @@ import * as React from "react"
 import { Layout, LayoutSection } from "./layout"
 import { RowVariants } from "./row-variants"
 import { Titles } from "./titles"
-import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel, FieldContent, FieldError } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { OptionPicker } from "./option-picker"
 import { PhoneInput } from "./phone-input"
@@ -70,6 +70,10 @@ interface EntityBasicInformationFormProps {
   disabled?: boolean
   /** Existing profile picture URL (when editing, for preview) */
   existingProfilePictureUrl?: string | null
+  /** Enables async duplicate name validation during creation */
+  validateNameUniqueness?: boolean
+  /** Optional organization id to exclude when checking duplicates */
+  excludeOrganizationId?: string
 }
 
 // ============================================================================
@@ -111,6 +115,8 @@ export function EntityBasicInformationForm({
   isValid: externalIsValid,
   disabled = false,
   existingProfilePictureUrl,
+  validateNameUniqueness = false,
+  excludeOrganizationId,
 }: EntityBasicInformationFormProps) {
   // Form state
   const [formData, setFormData] = React.useState<EntityBasicInformationFormData>({
@@ -136,6 +142,9 @@ export function EntityBasicInformationForm({
   // Ref to capture selection on close (onOpenChange can run before setState from onValueChange commits)
   const selectedCountryRef = React.useRef<string | null>(null)
   const selectedCityRef = React.useRef<string | null>(null)
+  const [nameExistsError, setNameExistsError] = React.useState<string | null>(null)
+  const [isCheckingName, setIsCheckingName] = React.useState(false)
+  const latestNameRequestRef = React.useRef(0)
 
   // When popup is closed, show saved country/city from form (so loaded Supabase data displays correctly)
   React.useEffect(() => {
@@ -156,21 +165,88 @@ export function EntityBasicInformationForm({
     onValidationChangeRef.current = onValidationChange
   })
 
+  React.useEffect(() => {
+    if (!validateNameUniqueness || disabled) {
+      setNameExistsError(null)
+      setIsCheckingName(false)
+      return
+    }
+
+    const trimmedName = formData.entityName.trim()
+    if (!trimmedName) {
+      setNameExistsError(null)
+      setIsCheckingName(false)
+      return
+    }
+
+    const requestId = latestNameRequestRef.current + 1
+    latestNameRequestRef.current = requestId
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(async () => {
+      setIsCheckingName(true)
+      try {
+        const searchParams = new URLSearchParams({ name: trimmedName })
+        if (excludeOrganizationId?.trim()) {
+          searchParams.set("excludeOrganizationId", excludeOrganizationId.trim())
+        }
+
+        const response = await fetch(`/api/organizations/check-name?${searchParams.toString()}`, {
+          method: "GET",
+          signal: controller.signal,
+          cache: "no-store",
+        })
+        const body = (await response.json().catch(() => ({}))) as { exists?: boolean }
+        if (!response.ok) throw new Error("Failed to validate organization name")
+
+        if (latestNameRequestRef.current === requestId) {
+          setNameExistsError(body.exists ? "A player with this name already exists" : null)
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          if (latestNameRequestRef.current === requestId) {
+            setNameExistsError(null)
+          }
+        }
+      } finally {
+        if (latestNameRequestRef.current === requestId) {
+          setIsCheckingName(false)
+        }
+      }
+    }, 350)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeoutId)
+    }
+  }, [formData.entityName, validateNameUniqueness, disabled, excludeOrganizationId])
+
   // Validation - computed from form data
   const isFormValid = React.useMemo(() => {
     if (externalIsValid !== undefined) return externalIsValid
     const baseValid = formData.entityName.trim() !== ""
+    const noNameCollision = !nameExistsError && !isCheckingName
     if (showLocation) {
       return (
         baseValid &&
+        noNameCollision &&
         formData.streetAddress.trim() !== "" &&
         formData.zipCode.trim() !== "" &&
         formData.city.trim() !== "" &&
         formData.country.trim() !== ""
       )
     }
-    return baseValid
-  }, [formData.entityName, formData.streetAddress, formData.zipCode, formData.city, formData.country, showLocation, externalIsValid])
+    return baseValid && noNameCollision
+  }, [
+    formData.entityName,
+    formData.streetAddress,
+    formData.zipCode,
+    formData.city,
+    formData.country,
+    showLocation,
+    externalIsValid,
+    nameExistsError,
+    isCheckingName,
+  ])
 
   // Track previous validation state to avoid redundant calls
   const prevIsFormValidRef = React.useRef<boolean | undefined>(undefined)
@@ -265,7 +341,7 @@ export function EntityBasicInformationForm({
               </Field>
 
               {/* Entity Name */}
-              <Field>
+              <Field data-invalid={nameExistsError ? "true" : undefined}>
                 <FieldLabel htmlFor="entity-name" disabled={disabled}>
                   Name
                 </FieldLabel>
@@ -279,7 +355,9 @@ export function EntityBasicInformationForm({
                     required
                     disabled={disabled}
                     readOnly={disabled}
+                    aria-invalid={nameExistsError ? true : undefined}
                   />
+                  <FieldError>{nameExistsError}</FieldError>
                 </FieldContent>
               </Field>
             </RowVariants>

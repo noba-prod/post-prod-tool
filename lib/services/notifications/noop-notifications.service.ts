@@ -23,7 +23,8 @@ export class NoopNotificationsService implements INotificationsService {
     _collectionId: string,
     _eventType: CollectionEventType,
     _triggeredByUserId?: string,
-    _metadata?: Record<string, unknown>
+    _metadata?: Record<string, unknown>,
+    _options?: { idempotencyKey?: string }
   ): Promise<void> {
     // No-op
   }
@@ -40,6 +41,10 @@ export class NoopNotificationsService implements INotificationsService {
     // No-op
   }
 
+  async markAsReadByContext(_userId: string, _collectionId: string, _stepId?: string): Promise<number> {
+    return 0
+  }
+
   async getUserNotifications(
     _userId: string,
     _options?: { unreadOnly?: boolean; limit?: number }
@@ -49,6 +54,10 @@ export class NoopNotificationsService implements INotificationsService {
 
   async getUnreadCount(_userId: string): Promise<number> {
     return 0
+  }
+
+  async getUnreadStepIdsForCollection(_userId: string, _collectionId: string): Promise<string[]> {
+    return []
   }
 
   async detectAndFireMissedDeadlines(): Promise<{ fired: number }> {

@@ -64,7 +64,7 @@ export interface NotificationPayload {
   body: string
   ctaText: string | null
   ctaUrl: string | null
-  status: "pending" | "sent" | "read" | "failed"
+  status: "pending" | "processing" | "sent" | "read" | "failed"
   scheduledFor: string | null
   sentAt: string | null
   readAt: string | null
@@ -104,7 +104,8 @@ export interface INotificationsService {
     collectionId: string,
     eventType: CollectionEventType,
     triggeredByUserId?: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    options?: { idempotencyKey?: string }
   ): Promise<void>
 
   /**
@@ -125,6 +126,12 @@ export interface INotificationsService {
   markAsRead(notificationId: string, userId: string): Promise<void>
 
   /**
+   * Mark in-app notifications as read by collection/step context.
+   * Returns the number of notifications marked as read.
+   */
+  markAsReadByContext(userId: string, collectionId: string, stepId?: string): Promise<number>
+
+  /**
    * Get user's in-app notifications.
    */
   getUserNotifications(
@@ -136,6 +143,11 @@ export interface INotificationsService {
    * Get count of unread notifications for a user.
    */
   getUnreadCount(userId: string): Promise<number>
+
+  /**
+   * Get step IDs in a collection with unread in-app activity for a user.
+   */
+  getUnreadStepIdsForCollection(userId: string, collectionId: string): Promise<string[]>
 
   /**
    * Detect missed deadlines in active collections and fire *_deadline_missed events.

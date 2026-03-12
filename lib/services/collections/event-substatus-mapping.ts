@@ -89,7 +89,7 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
 /**
  * Returns the substatus action to apply when this event is triggered.
  * - advance: update collection substatus to the given value (validated as next in sequence).
- * - complete: set status to completed and substatus to null (same as advancing to client_confirmation).
+ * - complete: set status to completed and substatus to null (explicit completion only).
  * - cancel: set status to canceled and substatus to null.
  * - none: do not change substatus.
  */

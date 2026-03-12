@@ -128,6 +128,8 @@ export default function PhotoLabCreationPage() {
                 showLocation={entityRequiresLocation(creation.entityType)}
                 initialData={creation.basicFormData ?? undefined}
                 existingProfilePictureUrl={creation.entity?.profilePictureUrl}
+                validateNameUniqueness={creation.entityId === null}
+                excludeOrganizationId={creation.entityId ?? undefined}
                 onDataChange={creation.handleFormDataChange}
                 onValidationChange={creation.handleValidationChange}
               />

@@ -20,6 +20,16 @@ type EntityUpdatePayload = {
   }
 }
 
+function splitFullName(fullName: string): { firstName: string; lastName: string | null } {
+  const normalized = fullName.trim().replace(/\s+/g, " ")
+  if (!normalized) return { firstName: "", lastName: null }
+  const [firstName, ...rest] = normalized.split(" ")
+  return {
+    firstName,
+    lastName: rest.length > 0 ? rest.join(" ") : null,
+  }
+}
+
 async function getSessionProfile() {
   const supabase = await createClient()
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
@@ -297,6 +307,86 @@ export async function PATCH(
   }
 
   const updatedOrg = organizationData as Organization
+  if (updatedOrg.type === "self_photographer") {
+    const { data: adminProfileRow, error: adminProfileError } = await adminClient
+      .from("profiles")
+      .select("id,email")
+      .eq("organization_id", organizationId)
+      .eq("role", "admin")
+      .maybeSingle()
+
+    if (adminProfileError) {
+      return NextResponse.json({ error: adminProfileError.message }, { status: 500 })
+    }
+
+    if (adminProfileRow) {
+      const profileUpdate: {
+        first_name?: string
+        last_name?: string | null
+        email?: string
+        phone?: string | null
+        prefix?: string | null
+        image?: string | null
+      } = {}
+
+      if (payload.name !== undefined) {
+        const { firstName, lastName } = splitFullName(payload.name)
+        if (firstName) {
+          profileUpdate.first_name = firstName
+          profileUpdate.last_name = lastName
+        }
+      }
+      if (payload.email !== undefined) {
+        const normalizedEmail = payload.email?.trim().toLowerCase() || null
+        if (normalizedEmail) {
+          profileUpdate.email = normalizedEmail
+        }
+      }
+      if (payload.phoneNumber !== undefined || payload.countryCode !== undefined) {
+        if (payload.phoneNumber && payload.countryCode) {
+          profileUpdate.prefix = payload.countryCode.trim()
+          profileUpdate.phone = payload.phoneNumber.trim()
+        } else if (payload.phoneNumber) {
+          const parsed = parsePhoneNumber(payload.phoneNumber)
+          profileUpdate.prefix = parsed.countryCode?.trim() || null
+          profileUpdate.phone = parsed.phoneNumber?.trim() || null
+        } else if (payload.countryCode) {
+          profileUpdate.prefix = payload.countryCode.trim()
+          profileUpdate.phone = null
+        }
+      }
+      if (payload.profilePictureUrl !== undefined) {
+        profileUpdate.image = payload.profilePictureUrl || null
+      }
+
+      const nextEmail = profileUpdate.email
+      const prevEmail = (adminProfileRow as { email?: string | null }).email?.trim().toLowerCase()
+      if (nextEmail && nextEmail !== prevEmail) {
+        const { error: authError } = await adminClient.auth.admin.updateUserById(
+          (adminProfileRow as { id: string }).id,
+          { email: nextEmail }
+        )
+        if (authError) {
+          return NextResponse.json(
+            { error: authError.message || "Failed to update admin user email" },
+            { status: 500 }
+          )
+        }
+      }
+
+      if (Object.keys(profileUpdate).length > 0) {
+        const { error: profileUpdateError } = await adminClient
+          .from("profiles")
+          .update(profileUpdate as never)
+          .eq("id", (adminProfileRow as { id: string }).id)
+
+        if (profileUpdateError) {
+          return NextResponse.json({ error: profileUpdateError.message }, { status: 500 })
+        }
+      }
+    }
+  }
+
   return NextResponse.json({ entity: mapOrganizationToEntity(updatedOrg) })
 }
 

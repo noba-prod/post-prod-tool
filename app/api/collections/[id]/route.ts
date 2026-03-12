@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
 import { NotificationsService } from "@/lib/services/notifications/notifications.service"
+import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 import type { StepNoteEntry } from "@/lib/domain/collections"
 import { appendToUrlArray, appendNote, isDuplicateNote } from "@/lib/utils/collection-mappers"
 
@@ -35,6 +36,24 @@ interface PatchBody {
   step_note_final_edits?: { from: string; text: string; url?: string }
   step_note_photographer_last_check?: { from: string; text: string; url?: string }
   step_note_client_confirmation?: { from: string; text: string; url?: string }
+}
+
+const NOTE_KEY_TO_URL_FIELD: Partial<Record<keyof PatchBody, keyof PatchBody>> = {
+  step_note_low_res: "lowres_selection_url",
+  step_note_photographer_selection: "photographer_selection_url",
+  step_note_client_selection: "client_selection_url",
+  step_note_photographer_review: "photographer_review_url",
+  step_note_high_res: "highres_selection_url",
+  step_note_edition_request: "edition_instructions_url",
+  step_note_final_edits: "finals_selection_url",
+  step_note_photographer_last_check: "photographer_last_check_url",
+}
+
+function hasStepUrlInSameRequest(body: PatchBody, noteKey: string): boolean {
+  const mappedUrlField = NOTE_KEY_TO_URL_FIELD[noteKey as keyof PatchBody]
+  if (!mappedUrlField) return false
+  const urlValue = body[mappedUrlField]
+  return typeof urlValue === "string" && urlValue.trim().length > 0
 }
 
 function parseStoredStringArray(raw: unknown): string[] {
@@ -105,6 +124,14 @@ export async function PATCH(
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const scope = await checkInternalUserCollectionMutationScope(user.id, id)
+    if (!scope.canMutate) {
+      return NextResponse.json(
+        { error: "Forbidden: internal users must be invited to edit this collection." },
+        { status: 403 }
+      )
     }
 
     const body = (await request.json()) as PatchBody
@@ -305,7 +332,10 @@ export async function PATCH(
       const notifService = new NotificationsService(admin)
       for (const noteKey of appendedNoteKeys) {
         const noteInput = body[noteKey as keyof PatchBody] as { from: string; text: string } | undefined
-        if (noteInput) {
+        // When a step upload submits URL + comment in the same CTA, the main step event
+        // already creates the user-facing notification. Skip duplicate "New comment".
+        const shouldSkipCommentNotification = hasStepUrlInSameRequest(body, noteKey)
+        if (noteInput && !shouldSkipCommentNotification) {
           notifService
             .handleCommentAdded(id, noteKey, user.id, noteInput.text.trim())
             .catch((err) =>

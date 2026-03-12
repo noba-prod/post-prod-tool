@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
 import { createInvitationsForPublishedCollection } from "@/lib/invitations"
 import { CollectionsServiceError } from "@/lib/services/collections"
+import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 
 export async function POST(
   _request: NextRequest,
@@ -25,6 +26,14 @@ export async function POST(
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const scope = await checkInternalUserCollectionMutationScope(user.id, id)
+    if (!scope.canMutate) {
+      return NextResponse.json(
+        { error: "Forbidden: internal users must be invited to edit this collection." },
+        { status: 403 }
+      )
     }
 
     // Publish collection and run notifications (scheduled_notification_tracking) with admin client.
