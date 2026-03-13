@@ -413,6 +413,57 @@ function isAdditionalMaterialsTemplateCode(templateCode: string): boolean {
 export class NotificationsService implements INotificationsService {
   constructor(private readonly supabase: SupabaseClient<Database>) {}
 
+  private static isMissingScheduledProcessingColumnsError(error: unknown): boolean {
+    const code = (error as { code?: string } | null)?.code
+    const message = String((error as { message?: string } | null)?.message ?? "")
+    return (
+      code === "42703" &&
+      /scheduled_notification_tracking\.(is_processing|processing_started_at|processing_by)/i.test(message)
+    )
+  }
+
+  private async markScheduledTrackingAsSent(id: string, nowIso: string): Promise<void> {
+    const fullUpdate = await this.supabase
+      .from("scheduled_notification_tracking")
+      .update({
+        is_sent: true,
+        sent_at: nowIso,
+        is_processing: false,
+        processing_started_at: null,
+        processing_by: null,
+      } as never)
+      .eq("id", id)
+    if (!fullUpdate.error) return
+
+    if (!NotificationsService.isMissingScheduledProcessingColumnsError(fullUpdate.error)) {
+      throw fullUpdate.error
+    }
+
+    // Backward-compatible fallback for environments that still miss lock columns.
+    const fallbackUpdate = await this.supabase
+      .from("scheduled_notification_tracking")
+      .update({
+        is_sent: true,
+        sent_at: nowIso,
+      } as never)
+      .eq("id", id)
+    if (fallbackUpdate.error) throw fallbackUpdate.error
+  }
+
+  private async clearScheduledTrackingProcessing(id: string): Promise<void> {
+    const clearUpdate = await this.supabase
+      .from("scheduled_notification_tracking")
+      .update({
+        is_processing: false,
+        processing_started_at: null,
+        processing_by: null,
+      } as never)
+      .eq("id", id)
+    if (!clearUpdate.error) return
+    if (NotificationsService.isMissingScheduledProcessingColumnsError(clearUpdate.error)) return
+    throw clearUpdate.error
+  }
+
   private async getCollectionWorkflowStepOptions(
     collectionId: string
   ): Promise<CollectionWorkflowStepOptions | null> {
@@ -682,7 +733,7 @@ export class NotificationsService implements INotificationsService {
           .or(`is_processing.eq.false,processing_started_at.lt."${staleProcessingIso}"`)
           .select("id")
           .limit(1)
-        if (claimResult.error) {
+        if (claimResult.error && !NotificationsService.isMissingScheduledProcessingColumnsError(claimResult.error)) {
           console.error("[NotificationsService] Failed to claim scheduled tracking row:", {
             scheduledId: scheduled.id,
             runId,
@@ -690,7 +741,17 @@ export class NotificationsService implements INotificationsService {
           })
           continue
         }
-        const claimed = (claimResult.data as { id: string }[] | null) ?? []
+
+        if (claimResult.error && NotificationsService.isMissingScheduledProcessingColumnsError(claimResult.error)) {
+          console.warn("[NotificationsService] Claim lock columns missing; falling back to no-lock scheduled processing.", {
+            scheduledId: scheduled.id,
+            runId,
+          })
+        }
+
+        const claimed = claimResult.error
+          ? [{ id: scheduled.id }]
+          : ((claimResult.data as { id: string }[] | null) ?? [])
         if (claimed.length === 0) {
           continue
         }
@@ -714,16 +775,7 @@ export class NotificationsService implements INotificationsService {
           )
           if (!conditionMet) {
             // Mark as sent (skipped) to avoid re-checking
-            await this.supabase
-              .from("scheduled_notification_tracking")
-              .update({
-                is_sent: true,
-                sent_at: now,
-                is_processing: false,
-                processing_started_at: null,
-                processing_by: null,
-              } as never)
-              .eq("id", scheduled.id)
+            await this.markScheduledTrackingAsSent(scheduled.id, now)
             continue
           }
         }
@@ -735,16 +787,7 @@ export class NotificationsService implements INotificationsService {
           collectionStatus
         )
         if (milestoneCompleted) {
-          await this.supabase
-            .from("scheduled_notification_tracking")
-            .update({
-              is_sent: true,
-              sent_at: now,
-              is_processing: false,
-              processing_started_at: null,
-              processing_by: null,
-            } as never)
-            .eq("id", scheduled.id)
+          await this.markScheduledTrackingAsSent(scheduled.id, now)
           continue
         }
 
@@ -773,28 +816,19 @@ export class NotificationsService implements INotificationsService {
         )
 
         // Mark as sent
-        await this.supabase
-          .from("scheduled_notification_tracking")
-          .update({
-            is_sent: true,
-            sent_at: now,
-            is_processing: false,
-            processing_started_at: null,
-            processing_by: null,
-          } as never)
-          .eq("id", scheduled.id)
+        await this.markScheduledTrackingAsSent(scheduled.id, now)
 
         processed++
       } catch (err) {
         console.error("[NotificationsService] Error processing scheduled:", err)
-        await this.supabase
-          .from("scheduled_notification_tracking")
-          .update({
-            is_processing: false,
-            processing_started_at: null,
-            processing_by: null,
-          } as never)
-          .eq("id", scheduled.id)
+        try {
+          await this.clearScheduledTrackingProcessing(scheduled.id)
+        } catch (releaseErr) {
+          console.error("[NotificationsService] Failed to clear scheduled processing lock:", {
+            scheduledId: scheduled.id,
+            releaseErr,
+          })
+        }
         errors++
       }
     }
