@@ -867,7 +867,8 @@ export class NotificationsService implements INotificationsService {
     const notificationList = (pendingNotifications ?? []) as NotificationRow[]
     for (const notification of notificationList) {
       try {
-        const claimNotifResult = await this.supabase
+        // Claim in two steps instead of a complex OR filter to avoid PostgREST parser issues.
+        const claimPendingResult = await this.supabase
           .from("notifications")
           .update({
             status: "processing",
@@ -875,20 +876,51 @@ export class NotificationsService implements INotificationsService {
             processing_by: runId,
           } as never)
           .eq("id", notification.id)
-          .or(`status.eq.pending,and(status.eq.processing,processing_started_at.lt."${stale}")`)
+          .eq("status", "pending")
           .select("id")
           .limit(1)
-        if (claimNotifResult.error) {
-          console.error("[NotificationsService] Failed to claim notification row:", {
+
+        if (claimPendingResult.error) {
+          console.error("[NotificationsService] Failed to claim pending notification row:", {
             notificationId: notification.id,
             runId,
-            claimError: claimNotifResult.error,
+            claimError: claimPendingResult.error,
           })
           errors++
           continue
         }
-        const claimedNotification = (claimNotifResult.data as { id: string }[] | null) ?? []
-        if (claimedNotification.length === 0) continue
+
+        let claimedNotification = (claimPendingResult.data as { id: string }[] | null) ?? []
+        if (claimedNotification.length === 0) {
+          const claimStaleProcessingResult = await this.supabase
+            .from("notifications")
+            .update({
+              status: "processing",
+              processing_started_at: now,
+              processing_by: runId,
+            } as never)
+            .eq("id", notification.id)
+            .eq("status", "processing")
+            .lt("processing_started_at", stale)
+            .select("id")
+            .limit(1)
+
+          if (claimStaleProcessingResult.error) {
+            console.error("[NotificationsService] Failed to claim stale-processing notification row:", {
+              notificationId: notification.id,
+              runId,
+              claimError: claimStaleProcessingResult.error,
+            })
+            errors++
+            continue
+          }
+
+          claimedNotification = (claimStaleProcessingResult.data as { id: string }[] | null) ?? []
+        }
+
+        if (claimedNotification.length === 0) {
+          continue
+        }
 
         if (notification.channel === "email") {
           const { data: userData } = await this.supabase
