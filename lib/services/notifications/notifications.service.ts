@@ -679,9 +679,17 @@ export class NotificationsService implements INotificationsService {
           } as never)
           .eq("id", scheduled.id)
           .eq("is_sent", false)
-          .or(`is_processing.eq.false,processing_started_at.lt.${staleProcessingIso}`)
+          .or(`is_processing.eq.false,processing_started_at.lt."${staleProcessingIso}"`)
           .select("id")
           .limit(1)
+        if (claimResult.error) {
+          console.error("[NotificationsService] Failed to claim scheduled tracking row:", {
+            scheduledId: scheduled.id,
+            runId,
+            claimError: claimResult.error,
+          })
+          continue
+        }
         const claimed = (claimResult.data as { id: string }[] | null) ?? []
         if (claimed.length === 0) {
           continue
@@ -833,9 +841,18 @@ export class NotificationsService implements INotificationsService {
             processing_by: runId,
           } as never)
           .eq("id", notification.id)
-          .or(`status.eq.pending,and(status.eq.processing,processing_started_at.lt.${stale})`)
+          .or(`status.eq.pending,and(status.eq.processing,processing_started_at.lt."${stale}")`)
           .select("id")
           .limit(1)
+        if (claimNotifResult.error) {
+          console.error("[NotificationsService] Failed to claim notification row:", {
+            notificationId: notification.id,
+            runId,
+            claimError: claimNotifResult.error,
+          })
+          errors++
+          continue
+        }
         const claimedNotification = (claimNotifResult.data as { id: string }[] | null) ?? []
         if (claimedNotification.length === 0) continue
 
