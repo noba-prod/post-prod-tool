@@ -76,6 +76,7 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   // Photographer last check
   photographer_review_started: { action: "none" },
   photographer_edits_approved: { action: "advance", substatus: "client_confirmation" },
+  photographer_last_check_shared_additional_materials: { action: "none" },
   photographer_review_deadline_missed: { action: "none" },
 
   // Client confirmation (step 11)

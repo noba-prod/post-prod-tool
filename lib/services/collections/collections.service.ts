@@ -81,6 +81,66 @@ function mapParticipantRoleToCurrentOwnerRole(
   }
 }
 
+const STEP_ID_TO_SUBSTATUS: Partial<Record<string, CollectionSubstatus>> = {
+  shooting: "shooting",
+  negatives_dropoff: "negatives_drop_off",
+  low_res_scanning: "low_res_scanning",
+  photographer_selection: "photographer_selection",
+  client_selection: "client_selection",
+  photographer_check_client_selection: "client_selection",
+  handprint_high_res: "low_res_to_high_res",
+  edition_request: "edition_request",
+  final_edits: "final_edits",
+  photographer_last_check: "photographer_last_check",
+  client_confirmation: "client_confirmation",
+}
+
+const STEP_IDS_ORDER: string[] = [
+  "shooting",
+  "negatives_dropoff",
+  "low_res_scanning",
+  "photographer_selection",
+  "client_selection",
+  "photographer_check_client_selection",
+  "handprint_high_res",
+  "edition_request",
+  "final_edits",
+  "photographer_last_check",
+  "client_confirmation",
+]
+
+/** Derives substatus from step_statuses when recovering from a wrong status overwrite. */
+function deriveSubstatusFromStepStatuses(
+  stepStatuses: Record<string, { stage?: string; health?: string | null }> | undefined
+): CollectionSubstatus {
+  if (!stepStatuses) return getInitialSubstatus()
+  const activeStepId = Object.entries(stepStatuses).find(
+    ([, entry]) => (entry as { stage?: string }).stage === "in-progress"
+  )?.[0]
+  if (activeStepId) {
+    const substatus = STEP_ID_TO_SUBSTATUS[activeStepId]
+    if (substatus) return substatus
+  }
+  // All steps done: find last done step
+  let lastDoneIdx = -1
+  for (let i = STEP_IDS_ORDER.length - 1; i >= 0; i--) {
+    const id = STEP_IDS_ORDER[i]
+    if ((stepStatuses[id] as { stage?: string } | undefined)?.stage === "done") {
+      lastDoneIdx = i
+      break
+    }
+  }
+  if (lastDoneIdx >= 0 && lastDoneIdx < STEP_IDS_ORDER.length - 1) {
+    const nextId = STEP_IDS_ORDER[lastDoneIdx + 1]
+    const next = nextId ? STEP_ID_TO_SUBSTATUS[nextId] : undefined
+    if (next) return next
+  }
+  if (lastDoneIdx === STEP_IDS_ORDER.length - 1) {
+    return "client_confirmation"
+  }
+  return getInitialSubstatus()
+}
+
 export class CollectionsService {
   constructor(
     private readonly repository: ICollectionsRepository,
@@ -132,21 +192,39 @@ export class CollectionsService {
   async getCollectionById(id: string): Promise<Collection | null> {
     const collection = await this.repository.getById(id)
     if (!collection) return null
+    const hasAnyStepDone = collection.stepStatuses
+      ? Object.values(collection.stepStatuses).some(
+          (e) => (e as { stage?: string }).stage === "done"
+        )
+      : false
     const canonical = deriveCanonicalCollectionStatus(
       collection.config,
       collection.publishedAt,
       collection.status,
-      new Date()
+      new Date(),
+      {
+        substatus: collection.substatus,
+        completionPercentage: collection.completionPercentage,
+        hasAnyStepDone,
+      }
     )
     if (canonical !== collection.status) {
+      const isRecovery =
+        canonical === "in_progress" &&
+        (collection.substatus == null || collection.substatus === "") &&
+        (collection.completionPercentage ?? 0) > 0
+      const substatusToSet =
+        canonical === "in_progress"
+          ? isRecovery
+            ? deriveSubstatusFromStepStatuses(collection.stepStatuses)
+            : getInitialSubstatus()
+          : null
       const updated = await this.repository.update(id, {
         status: canonical,
-        ...(canonical === "in_progress"
-          ? { substatus: getInitialSubstatus() }
-          : { substatus: null }),
+        substatus: substatusToSet,
       })
-      const result = updated ?? { ...collection, status: canonical }
-      if (canonical === "in_progress") {
+      const result = updated ?? { ...collection, status: canonical, substatus: substatusToSet }
+      if (canonical === "in_progress" && !isRecovery) {
         try {
           await this.notifications.triggerEvent(id, "shooting_started", undefined, undefined)
         } catch (err) {
@@ -197,21 +275,37 @@ export class CollectionsService {
     const now = new Date()
     const result: Collection[] = []
     for (const c of list) {
+      const hasAnyStepDone = c.stepStatuses
+        ? Object.values(c.stepStatuses).some((e) => (e as { stage?: string }).stage === "done")
+        : false
       const canonical = deriveCanonicalCollectionStatus(
         c.config,
         c.publishedAt,
         c.status,
-        now
+        now,
+        {
+          substatus: c.substatus,
+          completionPercentage: c.completionPercentage,
+          hasAnyStepDone,
+        }
       )
       if (canonical !== c.status) {
+        const isRecovery =
+          canonical === "in_progress" &&
+          (c.substatus == null || c.substatus === "") &&
+          (c.completionPercentage ?? 0) > 0
+        const substatusToSet =
+          canonical === "in_progress"
+            ? isRecovery
+              ? deriveSubstatusFromStepStatuses(c.stepStatuses)
+              : getInitialSubstatus()
+            : null
         const updated = await this.repository.update(c.id, {
           status: canonical,
-          ...(canonical === "in_progress"
-            ? { substatus: getInitialSubstatus() }
-            : { substatus: null }),
+          substatus: substatusToSet,
         })
-        result.push(updated ?? { ...c, status: canonical })
-        if (canonical === "in_progress") {
+        result.push(updated ?? { ...c, status: canonical, substatus: substatusToSet })
+        if (canonical === "in_progress" && !isRecovery) {
           try {
             await this.notifications.triggerEvent(c.id, "shooting_started", undefined, undefined)
           } catch (err) {
@@ -431,6 +525,11 @@ export class CollectionsService {
   /**
    * Recomputes and persists step_statuses and completion_percentage for a collection.
    * Called after an event is triggered or substatus is updated.
+   *
+   * IMPORTANT: This method NEVER updates collection status. Status "completed" is
+   * set ONLY when the user clicks "Complete collection" (collection_completed or
+   * client_confirmation_confirmed event). All steps may be "done" but the collection
+   * remains in_progress until explicit user confirmation.
    *
    * @param collectionId - The collection to update
    * @param events - Array of { event_type, created_at } from collection_events

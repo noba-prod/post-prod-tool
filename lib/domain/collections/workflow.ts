@@ -144,19 +144,36 @@ function parseDateTimeMs(
  * - canceled: keep as-is (manual)
  * - completed: only when explicitly set (client or producer clicked "Complete collection"
  *              in the last step); deadline alone does NOT mark as completed.
- * - in_progress: published AND shooting start has passed AND not completed
- * - upcoming: published AND shooting start not yet passed
+ * - in_progress: published AND (shooting start has passed OR workflow has progressed)
+ * - upcoming: published AND shooting start not yet passed AND no workflow progress
+ *
+ * IMPORTANT: If substatus is set or completionPercentage > 0, the collection has workflow
+ * progress (steps completed). We must return "in_progress" to avoid overwriting with
+ * "upcoming" and losing substatus. This applies to ALL collection types.
  */
 export function deriveCanonicalCollectionStatus(
   config: CollectionConfig,
   publishedAt: string | undefined,
   currentStatus: CollectionStatus,
-  now: Date = new Date()
+  now: Date = new Date(),
+  options?: {
+    substatus?: CollectionSubstatus | null
+    completionPercentage?: number
+    /** True when step_statuses has any entry with stage "done" (handles legacy data) */
+    hasAnyStepDone?: boolean
+  }
 ): CollectionStatus {
   if (!publishedAt?.trim()) return "draft"
   if (currentStatus === "canceled") return "canceled"
   // Completed only via explicit user action (last step confirmation), not by deadline.
   if (currentStatus === "completed") return "completed"
+
+  // If substatus is set or any step is done, we have workflow progress.
+  // Must stay in_progress — never downgrade to upcoming or we lose substatus.
+  if (options?.substatus?.trim()) return "in_progress"
+  if ((options?.completionPercentage ?? 0) > 0) return "in_progress"
+  // Legacy: step_statuses may have "done" entries even if completionPercentage is 0
+  if (options?.hasAnyStepDone) return "in_progress"
 
   const nowMs = now.getTime()
 

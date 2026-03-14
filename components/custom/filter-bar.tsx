@@ -47,8 +47,8 @@ interface FilterBarProps {
   clientOptions?: { id: string; name: string }[]
   /** Photographer options for collections variant (from registered entities). Enables Photographer filter. */
   photographerOptions?: { id: string; name: string }[]
-  /** Created-by user options for collections variant. When provided, enables "Created by" filter. */
-  createdByOptions?: { id: string; name: string }[]
+  /** Job reference options for collections variant (unique reference values from collections). Enables "Job reference" filter. */
+  jobReferenceOptions?: { value: string }[]
 }
 
 const COLLECTION_STATUSES = [
@@ -215,12 +215,12 @@ export function FilterBar({
   hideClientFilter = false,
   clientOptions,
   photographerOptions = [],
-  createdByOptions,
+  jobReferenceOptions = [],
 }: FilterBarProps) {
   // State for popover open/close
   const [clientOpen, setClientOpen] = React.useState(false)
   const [statusOpen, setStatusOpen] = React.useState(false)
-  const [createdByOpen, setCreatedByOpen] = React.useState(false)
+  const [jobReferenceOpen, setJobReferenceOpen] = React.useState(false)
   const [photographerOpen, setPhotographerOpen] = React.useState(false)
   const [roleOpen, setRoleOpen] = React.useState(false)
   const [typeOpen, setTypeOpen] = React.useState(false)
@@ -228,14 +228,14 @@ export function FilterBar({
   // State for selected values
   const [selectedClient, setSelectedClient] = React.useState<string | null>(null)
   const [selectedStatus, setSelectedStatus] = React.useState<string | null>(null)
-  const [selectedCreatedBy, setSelectedCreatedBy] = React.useState<string | null>(null)
+  const [selectedJobReference, setSelectedJobReference] = React.useState<string | null>(null)
   const [selectedPhotographer, setSelectedPhotographer] = React.useState<string | null>(null)
   const [selectedRole, setSelectedRole] = React.useState<string | null>(null)
   const [selectedType, setSelectedType] = React.useState<string | null>(null)
   const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">("desc")
 
   const clientsForFilter = clientOptions ?? []
-  const createdByForFilter = createdByOptions ?? []
+  const jobReferencesForFilter = jobReferenceOptions ?? []
 
   // Handlers
   const handleClientSelect = (clientId: string, clientName: string) => {
@@ -250,10 +250,10 @@ export function FilterBar({
     onFilterChange?.("status", status)
   }
 
-  const handleCreatedBySelect = (userId: string, userName: string) => {
-    setSelectedCreatedBy(userId === selectedCreatedBy ? null : userId)
-    setCreatedByOpen(false)
-    onFilterChange?.("createdBy", userId)
+  const handleJobReferenceSelect = (value: string) => {
+    setSelectedJobReference(value === selectedJobReference ? null : value)
+    setJobReferenceOpen(false)
+    onFilterChange?.("jobReference", value)
   }
 
   const handlePhotographerSelect = (photographerId: string, photographerName: string) => {
@@ -305,12 +305,11 @@ export function FilterBar({
     return "Status"
   }
 
-  const getCreatedByLabel = () => {
-    if (selectedCreatedBy) {
-      const user = createdByForFilter.find((u) => u.id === selectedCreatedBy)
-      return `Created by: ${user?.name || "all"}`
+  const getJobReferenceLabel = () => {
+    if (selectedJobReference) {
+      return `Job reference: ${selectedJobReference}`
     }
-    return "Created by: all"
+    return "Job reference: all"
   }
 
   const getRoleLabel = () => {
@@ -430,25 +429,25 @@ export function FilterBar({
               </Command>
             </FilterButtonWithPopover>
 
-            {/* Created By Filter */}
+            {/* Job Reference Filter */}
             <FilterButtonWithPopover
-              label={getCreatedByLabel()}
-              open={createdByOpen}
-              onOpenChange={setCreatedByOpen}
+              label={getJobReferenceLabel()}
+              open={jobReferenceOpen}
+              onOpenChange={setJobReferenceOpen}
             >
-              <Command>
-                <CommandInput placeholder="Search user..." />
+              <Command shouldFilter={true}>
+                <CommandInput placeholder="Search job reference..." />
                 <CommandList>
-                  <CommandEmpty>No user found.</CommandEmpty>
+                  <CommandEmpty>No job reference found.</CommandEmpty>
                   <CommandGroup>
-                    {createdByForFilter.map((user) => (
+                    {jobReferencesForFilter.map((opt) => (
                       <CommandItem
-                        key={user.id}
-                        value={user.name}
-                        onSelect={() => handleCreatedBySelect(user.id, user.name)}
-                        data-checked={selectedCreatedBy === user.id}
+                        key={opt.value}
+                        value={opt.value}
+                        onSelect={() => handleJobReferenceSelect(opt.value)}
+                        data-checked={selectedJobReference === opt.value}
                       >
-                        {user.name}
+                        {opt.value}
                       </CommandItem>
                     ))}
                   </CommandGroup>

@@ -155,6 +155,20 @@ Collection main states:
 - Completed
 - Canceled
 
+Status derivation: "In Progress" is set when (a) shooting start date has passed, OR (b) the
+workflow has progressed (substatus is set or completion_percentage > 0). This ensures that
+collections with completed steps never show "Upcoming" even if shooting dates were configured
+for the future. Applies to all collection types.
+
+CRITICAL – How "Completed" is reached:
+A collection becomes "Completed" ONLY when the Owner of the last step
+(Client Confirmation) explicitly confirms by clicking the "Complete collection"
+button in the step modal. This applies to ALL collection types regardless of
+configuration (Analog/Digital, same/different lab, with/without retouch,
+with/without agency). Step completion alone (all step_statuses = "done") does
+NOT mark the collection as completed. The deadline passing does NOT mark it
+as completed. Only the explicit user action does.
+
 Step-level statuses:
 - Locked
 - In progress
@@ -355,10 +369,12 @@ Feedback Loop:
 Owner:
 - Client
 - Producer
+- Any noba user with edit permissions on the collection
 
 Action:
 - Download finals
-- Confirm project completion
+- Confirm project completion by clicking the "Complete collection" button
+  (this is the ONLY way to mark the collection as completed)
 - Optionally request additional photos
 
 ------------------------------------------------------------

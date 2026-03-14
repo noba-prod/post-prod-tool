@@ -28,8 +28,8 @@ interface ValidateLinksDialogProps {
   singleSelect?: boolean
   /** Primary button label (e.g. "Validate", "Share with client") */
   confirmLabel: string
-  /** Called when user confirms with selected URLs. */
-  onConfirm: (selectedUrls: string[]) => void
+  /** Called when user confirms with selected URLs. May be async. Dialog closes after it resolves. */
+  onConfirm: (selectedUrls: string[]) => void | Promise<void>
 }
 
 /**
@@ -45,6 +45,7 @@ export function ValidateLinksDialog({
   onConfirm,
 }: ValidateLinksDialogProps) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set())
+  const [confirming, setConfirming] = React.useState(false)
 
   React.useEffect(() => {
     if (open && links.length > 0) {
@@ -66,15 +67,19 @@ export function ValidateLinksDialog({
     })
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const urls = links.filter((l) => selected.has(l.url)).map((l) => l.url)
-    if (urls.length > 0) {
-      onConfirm(urls)
+    if (urls.length === 0) return
+    setConfirming(true)
+    try {
+      await Promise.resolve(onConfirm(urls))
       onOpenChange(false)
+    } finally {
+      setConfirming(false)
     }
   }
 
-  const canConfirm = selected.size > 0
+  const canConfirm = selected.size > 0 && !confirming
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -118,7 +123,7 @@ export function ValidateLinksDialog({
             Cancel
           </Button>
           <Button onClick={handleConfirm} disabled={!canConfirm}>
-            {confirmLabel}
+            {confirming ? "Confirming…" : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

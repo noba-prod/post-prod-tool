@@ -70,6 +70,7 @@ export type CollectionEventType =
   | 'photographer_check_deadline_missed'
   | 'photographer_review_started'
   | 'photographer_edits_approved'
+  | 'photographer_last_check_shared_additional_materials'
   | 'photographer_review_deadline_missed'
   | 'client_confirmation_confirmed'
   | 'comment_added'

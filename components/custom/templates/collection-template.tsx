@@ -2286,13 +2286,14 @@ export function CollectionTemplate({
               type="button"
               variant="secondary"
               onClick={async () => {
-                setConfirmDropoffDialogOpen(false)
                 try {
                   await onConfirmDropoffDelivery?.("negatives_dropoff", false)
                   closeStepModalAndClearUrl()
                   toast.success("Delivery confirmed.")
                 } catch {
                   /* Error already surfaced by handler */
+                } finally {
+                  setConfirmDropoffDialogOpen(false)
                 }
               }}
             >
@@ -2302,13 +2303,14 @@ export function CollectionTemplate({
               type="button"
               variant="default"
               onClick={async () => {
-                setConfirmDropoffDialogOpen(false)
                 try {
                   await onConfirmDropoffDelivery?.("negatives_dropoff", true)
                   closeStepModalAndClearUrl()
                   toast.success("Delivery confirmed.")
                 } catch {
                   /* Error already surfaced by handler */
+                } finally {
+                  setConfirmDropoffDialogOpen(false)
                 }
               }}
             >

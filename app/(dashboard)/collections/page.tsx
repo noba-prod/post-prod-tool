@@ -87,7 +87,7 @@ async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: str
 interface Filters {
   client: string | null
   status: string | null
-  createdBy: string | null
+  jobReference: string | null
   photographer: string | null
   sortOrder: "asc" | "desc"
 }
@@ -180,6 +180,14 @@ export default function CollectionsPage() {
   const [clientNamesByEntityId, setClientNamesByEntityId] = useState<Record<string, string>>({})
   const [clientOptions, setClientOptions] = useState<{ id: string; name: string }[]>([])
   const [photographerOptions, setPhotographerOptions] = useState<{ id: string; name: string }[]>([])
+  const jobReferenceOptions = React.useMemo(() => {
+    const refs = new Set<string>()
+    collections.forEach((c) => {
+      const r = c.config.reference?.trim()
+      if (r) refs.add(r)
+    })
+    return Array.from(refs).sort().map((value) => ({ value }))
+  }, [collections])
 
   // View state (Gallery or List)
   const [activeView, setActiveView] = useState<string>("Gallery")
@@ -188,7 +196,7 @@ export default function CollectionsPage() {
   const [filters, setFilters] = useState<Filters>({
     client: null,
     status: null,
-    createdBy: null,
+    jobReference: null,
     photographer: null,
     sortOrder: "desc",
   })
@@ -316,8 +324,10 @@ export default function CollectionsPage() {
         )
       )
     }
-    if (filters.createdBy) {
-      result = result.filter((c) => c.config.managerUserId === filters.createdBy)
+    if (filters.jobReference) {
+      result = result.filter(
+        (c) => (c.config.reference?.trim() ?? "") === filters.jobReference
+      )
     }
     result.sort((a, b) => {
       const tA = new Date(a.updatedAt).getTime()
@@ -325,7 +335,7 @@ export default function CollectionsPage() {
       return filters.sortOrder === "desc" ? tB - tA : tA - tB
     })
     return result
-  }, [collections, isNobaUser, filters.client, filters.status, filters.photographer, filters.createdBy, filters.sortOrder])
+  }, [collections, isNobaUser, filters.client, filters.status, filters.photographer, filters.jobReference, filters.sortOrder])
 
   /** Navigate to collection: draft → setup flow, published → view flow */
   const handleCollectionClick = React.useCallback(
@@ -347,15 +357,17 @@ export default function CollectionsPage() {
         : "—"
       const baseUI = mapStatusToUI(c.status)
       const displayStatus =
-        c.status === "upcoming" || c.status === "in_progress"
-          ? deriveStageStatusFromShootingStart(
-              {
-                shootingStartDate: c.config.shootingStartDate ?? c.config.shootingDate,
-                shootingStartTime: c.config.shootingStartTime,
-              },
-              baseUI as "upcoming" | "in-progress"
-            )
-          : baseUI
+        c.status === "in_progress"
+          ? "in-progress"
+          : c.status === "upcoming"
+            ? deriveStageStatusFromShootingStart(
+                {
+                  shootingStartDate: c.config.shootingStartDate ?? c.config.shootingDate,
+                  shootingStartTime: c.config.shootingStartTime,
+                },
+                "upcoming"
+              )
+            : baseUI
       const showProgressTag = displayStatus === "in-progress"
       return {
         id: c.id,
@@ -384,15 +396,17 @@ export default function CollectionsPage() {
         : "—"
       const baseUI = mapStatusToUI(c.status)
       const displayStatus =
-        c.status === "upcoming" || c.status === "in_progress"
-          ? deriveStageStatusFromShootingStart(
-              {
-                shootingStartDate: c.config.shootingStartDate ?? c.config.shootingDate,
-                shootingStartTime: c.config.shootingStartTime,
-              },
-              baseUI as "upcoming" | "in-progress"
-            )
-          : baseUI
+        c.status === "in_progress"
+          ? "in-progress"
+          : c.status === "upcoming"
+            ? deriveStageStatusFromShootingStart(
+                {
+                  shootingStartDate: c.config.shootingStartDate ?? c.config.shootingDate,
+                  shootingStartTime: c.config.shootingStartTime,
+                },
+                "upcoming"
+              )
+            : baseUI
       return {
         id: c.id,
         name: c.config.name || "—",
@@ -446,7 +460,7 @@ export default function CollectionsPage() {
             showAction={false}
             clientOptions={clientOptions}
             photographerOptions={photographerOptions}
-            createdByOptions={[]}
+            jobReferenceOptions={jobReferenceOptions}
           />
         </LayoutSection>
         <LayoutSection>

@@ -46,6 +46,7 @@ const VALID_EVENT_TYPES: CollectionEventType[] = [
   "retouch_studio_shared_additional_materials",
   "photographer_review_started",
   "photographer_edits_approved",
+  "photographer_last_check_shared_additional_materials",
   "photographer_review_deadline_missed",
   "client_confirmation_confirmed",
   "collection_completed",

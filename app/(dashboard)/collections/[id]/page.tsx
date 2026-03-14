@@ -733,6 +733,11 @@ export default function CollectionViewPage({
           await patchCollection(body)
           if ((payload.url?.trim() || payload.comments?.trim()) && !step10AlreadyDone) {
             await fireEvent("photographer_edits_approved")
+          } else if (payload.url?.trim() && step10AlreadyDone) {
+            await fireEvent("photographer_last_check_shared_additional_materials", {
+              url: payload.url.trim(),
+              notes: payload.comments?.trim() || undefined,
+            })
           }
           await refetchCollection()
         }
@@ -960,13 +965,15 @@ export default function CollectionViewPage({
     ? "done" as const
     : collection.status === "canceled"
       ? "done" as const
-      : deriveStageStatusFromShootingStart(
-          {
-            shootingStartDate: collection.config.shootingStartDate ?? collection.config.shootingDate,
-            shootingStartTime: collection.config.shootingStartTime,
-          },
-          collection.status === "in_progress" ? "in-progress" : "upcoming"
-        )
+      : collection.status === "in_progress"
+        ? ("in-progress" as const)
+        : deriveStageStatusFromShootingStart(
+            {
+              shootingStartDate: collection.config.shootingStartDate ?? collection.config.shootingDate,
+              shootingStartTime: collection.config.shootingStartTime,
+            },
+            "upcoming"
+          )
   const shootingType = collection.config.hasHandprint
     ? (collection.config.handprintVariant === "hr" ? "handprint_hr" : "handprint_hp")
     : "digital"

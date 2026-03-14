@@ -377,6 +377,9 @@ const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
     client: "client_confirmation",
     producer: "client_confirmation",
   },
+  photographer_last_check_shared_additional_materials: {
+    client: "client_confirmation",
+  },
   final_edits_completed: {
     photographer: "photographer_last_check",
   },
@@ -394,6 +397,9 @@ const TEMPLATE_STEP_NAME_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
     client: "Client confirmation",
     producer: "Client confirmation",
   },
+  photographer_last_check_shared_additional_materials: {
+    client: "Client confirmation",
+  },
   final_edits_completed: {
     photographer: "Photographer last check",
   },
@@ -403,6 +409,7 @@ const USER_ACTOR_TITLE_TEMPLATE_CODES = new Set([
   "lab_shared_additional_materials",
   "photographer_shared_additional_materials",
   "retouch_studio_shared_additional_materials",
+  "photographer_last_check_shared_additional_materials",
 ])
 
 /** Additional-material templates must notify even if their original step is completed. */

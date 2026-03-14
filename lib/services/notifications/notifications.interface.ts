@@ -45,6 +45,7 @@ export type CollectionEventType =
   // Photographer review events (last check — step 10)
   | "photographer_review_started"
   | "photographer_edits_approved"
+  | "photographer_last_check_shared_additional_materials"
   | "photographer_review_deadline_missed"
   // Client confirmation (step 11)
   | "client_confirmation_confirmed"

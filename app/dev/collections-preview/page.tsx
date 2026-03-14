@@ -87,7 +87,7 @@ function mapDomainToCollectionData(c: DomainCollection): CollectionData {
 interface Filters {
   client: string | null
   status: string | null
-  createdBy: string | null
+  jobReference: string | null
   sortOrder: "asc" | "desc"
 }
 
@@ -98,7 +98,7 @@ export default function CollectionsPreviewPage() {
   const [filters, setFilters] = useState<Filters>({
     client: null,
     status: null,
-    createdBy: null,
+    jobReference: null,
     sortOrder: "desc",
   })
 
@@ -124,11 +124,20 @@ export default function CollectionsPreviewPage() {
     setFilters((prev) => ({ ...prev, sortOrder: order }))
   }
 
+  const jobReferenceOptions = React.useMemo(() => {
+    const refs = new Set<string>()
+    collections.forEach((c) => {
+      const r = c.reference?.trim()
+      if (r && r !== "—") refs.add(r)
+    })
+    return Array.from(refs).sort().map((value) => ({ value }))
+  }, [collections])
+
   const filteredCollections = React.useMemo(() => {
     let result = [...collections]
     if (filters.client) result = result.filter((c) => c.clientId === filters.client)
     if (filters.status) result = result.filter((c) => c.status === filters.status)
-    if (filters.createdBy) result = result.filter((c) => c.createdBy === filters.createdBy)
+    if (filters.jobReference) result = result.filter((c) => c.reference?.trim() === filters.jobReference)
     result.sort((a, b) => {
       const dateA = a.createdAt.getTime()
       const dateB = b.createdAt.getTime()
@@ -184,7 +193,7 @@ export default function CollectionsPreviewPage() {
             showAction={false}
             clientOptions={[]}
             photographerOptions={[]}
-            createdByOptions={[]}
+            jobReferenceOptions={jobReferenceOptions}
           />
         </LayoutSection>
         <LayoutSection>
