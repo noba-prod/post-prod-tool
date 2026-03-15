@@ -80,8 +80,13 @@ export function getViewStepDefinitions(
 
   const steps: ViewStepDefinition[] = VIEW_STEP_IDS.map((id) => {
     let title = VIEW_STEP_TITLES[id]
-    if (id === "handprint_high_res" && hasHandprint && handprintVariant === "hp") {
-      title = "Handprint to high-res"
+    if (id === "handprint_high_res") {
+      if (hasHandprint && handprintVariant === "hp") {
+        title = "Handprint to high-res"
+      } else if (!hasHandprint && hasEditionStudio) {
+        // Digital + Retouch: merge step 7 and 8; step 8 is hidden
+        title = "Low-res to high-res and retouch request"
+      }
     }
     let inactive = false
     let annotation: string | undefined
@@ -104,6 +109,9 @@ export function getViewStepDefinitions(
         }
         break
       case "edition_request":
+        // Digital + Retouch: edition_request is merged into handprint_high_res; hide this step
+        inactive = !hasEditionStudio || (!hasHandprint && hasEditionStudio)
+        break
       case "final_edits":
         inactive = !hasEditionStudio
         break
@@ -287,9 +295,10 @@ export function viewStepsWithStatus(
 
 /** Maps collection event types to view step ids (event → step completed). */
 export const EVENT_TYPE_TO_STEP_ID: Record<string, ViewStepId> = {
-  // Step 1: Shooting — completed when negatives are picked up (or shooting_ended for digital)
+  // Step 1: Shooting — completed when negatives are picked up (Analog) or shooting ended/confirmed (Digital)
   negatives_pickup_marked: "shooting",
   shooting_ended: "shooting",
+  shooting_completed_confirmed: "shooting",
   // Step 2: Negatives drop off
   dropoff_confirmed: "negatives_dropoff",
   // Step 3: Low-res scanning

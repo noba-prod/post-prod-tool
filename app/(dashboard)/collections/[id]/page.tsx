@@ -342,10 +342,11 @@ export default function CollectionViewPage({
   )
 
   const handleConfirmPickup = React.useCallback(
-    async (stepId: string) => {
+    async (stepId: string, shootingType?: string) => {
       if (!id || stepId !== "shooting") return
+      const isDigital = shootingType === "digital"
       try {
-        await fireEvent("negatives_pickup_marked")
+        await fireEvent(isDigital ? "shooting_completed_confirmed" : "negatives_pickup_marked")
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Confirm pickup error:", err)
@@ -633,11 +634,17 @@ export default function CollectionViewPage({
       try {
         const url = payload.url.trim()
         if (!url) throw new Error("URL is required")
+        const isDigital =
+          !!collection?.config?.hasLowResLab && !collection?.config?.hasHandprint
         const body: Record<string, unknown> = {
           highres_selection_url: url,
         }
         if (payload.notes?.trim()) {
-          body.step_note_high_res = { from: "lab", text: payload.notes.trim(), url }
+          body.step_note_high_res = {
+            from: isDigital ? "photographer" : "lab",
+            text: payload.notes.trim(),
+            url,
+          }
         }
         await patchCollection(body)
         await fireEvent("highres_ready", { url, notes: payload.notes })
@@ -645,6 +652,47 @@ export default function CollectionViewPage({
       } catch (err) {
         console.error("[CollectionViewPage] Upload high-res error:", err)
         toast.error("Failed to upload high-res")
+      }
+    },
+    [id, collection?.config?.hasLowResLab, collection?.config?.hasHandprint, patchCollection, fireEvent, refetchCollection]
+  )
+
+  // =============================================================================
+  // STEP 7+8 COMBINED (Digital + Retouch only): Upload high-res + edition instructions, fire both events
+  // =============================================================================
+  const handleUploadHighResAndInstructions = React.useCallback(
+    async (payload: { url: string; notes?: string; details?: string; instructionsUrl?: string }) => {
+      if (!id) return
+      try {
+        const url = payload.url.trim()
+        if (!url) throw new Error("High-res URL is required")
+        const body: Record<string, unknown> = {
+          highres_selection_url: url,
+        }
+        if (payload.notes?.trim()) {
+          body.step_note_high_res = {
+            from: "photographer",
+            text: payload.notes.trim(),
+            url,
+          }
+        }
+        if (payload.instructionsUrl?.trim()) {
+          body.edition_instructions_url = payload.instructionsUrl.trim()
+        }
+        if (payload.details?.trim()) {
+          body.step_note_edition_request = {
+            from: "photographer",
+            text: payload.details.trim(),
+            ...(payload.instructionsUrl?.trim() && { url: payload.instructionsUrl.trim() }),
+          }
+        }
+        await patchCollection(body)
+        await fireEvent("highres_ready", { url, notes: payload.notes })
+        await fireEvent("edition_request_submitted", { url: payload.instructionsUrl, details: payload.details })
+        await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Upload high-res and instructions error:", err)
+        toast.error("Failed to upload")
       }
     },
     [id, patchCollection, fireEvent, refetchCollection]
@@ -1048,6 +1096,7 @@ export default function CollectionViewPage({
       onRequestMorePhotosFromClient={handleRequestMorePhotosFromClient}
       stepNotesPhotographerReview={collection.stepNotesPhotographerReview}
       onUploadHighRes={handleUploadHighRes}
+      onUploadHighResAndInstructions={handleUploadHighResAndInstructions}
       highResSelectionUrl={collection.highResSelectionUrl ?? undefined}
       highResUploadedAt={collection.highResSelectionUploadedAt ?? undefined}
       highResUploadedByName={undefined}

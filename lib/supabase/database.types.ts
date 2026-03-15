@@ -44,6 +44,7 @@ export type CollectionEventType =
   | 'shooting_started'
   | 'shooting_ended'
   | 'negatives_pickup_marked'
+  | 'shooting_completed_confirmed'
   | 'dropoff_confirmed'
   | 'dropoff_deadline_missed'
   | 'scanning_started'

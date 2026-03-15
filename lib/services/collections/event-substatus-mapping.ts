@@ -29,6 +29,8 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   // Shooting: ended → move to negatives_drop_off
   shooting_started: { action: "none" },
   shooting_ended: { action: "advance", substatus: "negatives_drop_off" },
+  // Digital: producer confirms shooting ended → same advance (recompute syncs to photographer_selection)
+  shooting_completed_confirmed: { action: "advance", substatus: "negatives_drop_off" },
 
   // Negatives / drop-off: pickup marked completes shooting → advance to negatives_drop_off
   negatives_pickup_marked: { action: "advance", substatus: "negatives_drop_off" },

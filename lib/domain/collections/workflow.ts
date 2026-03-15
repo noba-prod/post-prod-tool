@@ -528,6 +528,10 @@ export function getStepOwner(
         ? (["photographer", "agency", producer] as ParticipantRole[])
         : (["photographer", producer] as ParticipantRole[])
     case "handprint_high_res":
+      // Digital: photographer converts LR→HR; Analog HP/HR: handprint_lab or photo_lab
+      if (!config.hasHandprint) {
+        return (["photographer", producer] as ParticipantRole[])
+      }
       return config.handprintIsDifferentLab
         ? (["handprint_lab", producer] as ParticipantRole[])
         : (["photo_lab", producer] as ParticipantRole[])

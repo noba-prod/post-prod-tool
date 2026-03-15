@@ -93,6 +93,9 @@ export const CollectionEvents = {
   
   shootingEnded: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "shooting_ended", options),
+
+  shootingCompletedConfirmed: (collectionId: string, options?: TriggerEventOptions) =>
+    triggerCollectionEvent(collectionId, "shooting_completed_confirmed", options),
   
   negativesPickupMarked: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "negatives_pickup_marked", options),

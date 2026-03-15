@@ -20,6 +20,7 @@ const VALID_EVENT_TYPES: CollectionEventType[] = [
   "shooting_started",
   "shooting_ended",
   "negatives_pickup_marked",
+  "shooting_completed_confirmed",
   "dropoff_confirmed",
   "dropoff_deadline_missed",
   "scanning_started",
@@ -95,13 +96,18 @@ export async function POST(
     // Verify collection exists and user has access
     const { data: collection, error: collectionError } = await supabase
       .from("collections")
-      .select("id")
+      .select("id, low_res_to_high_res_digital, low_res_to_high_res_hand_print, photographer_request_edition")
       .eq("id", collectionId)
       .single()
 
     if (collectionError || !collection) {
       return NextResponse.json({ error: "Collection not found" }, { status: 404 })
     }
+
+    const isDigital =
+      !!(collection as { low_res_to_high_res_digital?: boolean }).low_res_to_high_res_digital &&
+      !(collection as { low_res_to_high_res_hand_print?: boolean }).low_res_to_high_res_hand_print
+    const hasEditionStudio = !!(collection as { photographer_request_edition?: boolean }).photographer_request_edition
 
     // Trigger the event (records in collection_events and sends notifications).
     // Use service-role client to bypass RLS — ensures notifications are sent and
@@ -131,6 +137,11 @@ export async function POST(
     // - photographer_last_check -> final_edits
     // - default -> low_res_scanning
     let advance = getSubstatusAdvanceForEvent(eventType as CollectionEventType)
+    // Digital collections WITHOUT retouch: highres_ready advances directly to client_confirmation (skip edition_request, final_edits, photographer_last_check)
+    // Digital WITH retouch: use default flow (highres_ready → edition_request, edition_request_submitted → final_edits)
+    if (eventType === "highres_ready" && isDigital && !hasEditionStudio) {
+      advance = { action: "advance", substatus: "client_confirmation" }
+    }
     if (eventType === "photographer_requested_additional_photos") {
       const source = String((metadata as { source?: string } | undefined)?.source ?? "").trim()
       if (source === "client") {

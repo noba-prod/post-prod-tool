@@ -21,7 +21,8 @@ import {
 function getMainContextualPlayers(
   stepId: string | undefined,
   individuals: ParticipantsModalIndividual[],
-  entities: ParticipantsModalEntity[]
+  entities: ParticipantsModalEntity[],
+  options?: { isDigitalWithRetouch?: boolean }
 ): { individuals: ParticipantsModalIndividual[]; entities: ParticipantsModalEntity[] } {
   const isPhotoLabEntity = (entity: ParticipantsModalEntity): boolean =>
     (entity.entityTypeLabel ?? "").toLowerCase().includes("photo lab")
@@ -60,11 +61,13 @@ function getMainContextualPlayers(
   if (stepId === "handprint_high_res") {
     return {
       individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
-      entities: entities.filter(
-        (e) =>
-          (e.entityTypeLabel ?? "").toLowerCase().includes("hand print") ||
-          (e.entityTypeLabel ?? "").toLowerCase().includes("handprint")
-      ),
+      entities: entities.filter((e) => {
+        const label = (e.entityTypeLabel ?? "").toLowerCase()
+        if (options?.isDigitalWithRetouch) {
+          return label.includes("retouch") || label.includes("edition")
+        }
+        return label.includes("hand print") || label.includes("handprint")
+      }),
     }
   }
   if (stepId === "edition_request") {
@@ -261,8 +264,8 @@ export interface CollectionTemplateProps {
   dropoffShippingDestinationAddress?: string
   dropoffDeliveryDate?: string
   dropoffDeliveryTime?: string
-  /** Called when owner confirms pickup (Shooting step). Closes modal, updates stepper/progress, sends notification to Photo lab. */
-  onConfirmPickup?: (stepId: string) => void | Promise<void>
+  /** Called when owner confirms pickup (Shooting step). For Digital: shootingType="digital" triggers shooting_completed_confirmed. For Analog: triggers negatives_pickup_marked. */
+  onConfirmPickup?: (stepId: string, shootingType?: string) => void | Promise<void>
   /** Called when owner confirms delivery (Negatives drop-off step). Pass canMeetDeadline from dialog Yes/No. */
   onConfirmDropoffDelivery?: (stepId: string, canMeetDeadline: boolean) => void | Promise<void>
   /** Called when owner uploads low-res (step 3). Payload: url (required), notes (optional). Marks step completed, notifies producer + photographer. */
@@ -317,6 +320,8 @@ export interface CollectionTemplateProps {
   stepNotesPhotographerReview?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 7: called when lab uploads high-res selection. */
   onUploadHighRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
+  /** Step 7+8 combined (Digital + Retouch only): upload high-res + retouch instructions in one action. */
+  onUploadHighResAndInstructions?: (payload: { url: string; notes?: string; details?: string; instructionsUrl?: string }) => void | Promise<void>
   /** Step 8 (Edition request): URL(s) of high-res selection (step 7 upload). Array — latest is last. */
   highResSelectionUrl?: string | string[]
   /** Step 8: when the high-res URL was uploaded (ISO). */
@@ -474,6 +479,7 @@ export function CollectionTemplate({
   onRequestMorePhotosFromClient,
   stepNotesPhotographerReview,
   onUploadHighRes,
+  onUploadHighResAndInstructions,
   highResSelectionUrl,
   highResUploadedAt,
   highResUploadedByName,
@@ -833,6 +839,11 @@ export function CollectionTemplate({
   const [giveInstructionsDialogOpen, setGiveInstructionsDialogOpen] = React.useState(false)
   const [giveInstructionsDetails, setGiveInstructionsDetails] = React.useState("")
   const [giveInstructionsUrl, setGiveInstructionsUrl] = React.useState("")
+  const [uploadHighResAndInstructionsDialogOpen, setUploadHighResAndInstructionsDialogOpen] = React.useState(false)
+  const [uploadHighResAndInstructionsUrl, setUploadHighResAndInstructionsUrl] = React.useState("")
+  const [uploadHighResAndInstructionsNotes, setUploadHighResAndInstructionsNotes] = React.useState("")
+  const [uploadHighResAndInstructionsDetails, setUploadHighResAndInstructionsDetails] = React.useState("")
+  const [uploadHighResAndInstructionsInstructionsUrl, setUploadHighResAndInstructionsInstructionsUrl] = React.useState("")
   const [uploadFinalsDialogOpen, setUploadFinalsDialogOpen] = React.useState(false)
   const [uploadFinalsUrl, setUploadFinalsUrl] = React.useState("")
   const [uploadFinalsNotes, setUploadFinalsNotes] = React.useState("")
@@ -864,14 +875,14 @@ export function CollectionTemplate({
       photographer_selection: { stepNoteKey: "step_note_photographer_selection", from: "photographer" },
       client_selection: { stepNoteKey: "step_note_client_selection", from: "client" },
       photographer_check_client_selection: { stepNoteKey: "step_note_photographer_review", from: "photographer" },
-      handprint_high_res: { stepNoteKey: "step_note_high_res", from: "lab" },
+      handprint_high_res: { stepNoteKey: "step_note_high_res", from: shootingType === "digital" ? "photographer" : "lab" },
       edition_request: { stepNoteKey: "step_note_edition_request", from: "photographer" },
       final_edits: { stepNoteKey: "step_note_final_edits", from: "retouch_studio" },
       photographer_last_check: { stepNoteKey: "step_note_photographer_last_check", from: "photographer" },
       client_confirmation: { stepNoteKey: "step_note_client_confirmation", from: "client" },
     }
     return config[stepId] ?? null
-  }, [])
+  }, [shootingType])
 
   /** Map current user's DB role to step note "from" value (who wrote the comment). */
   const getStepNoteFromForCurrentUser = React.useCallback((): string => {
@@ -1612,7 +1623,7 @@ export function CollectionTemplate({
                                   if (clientUrls.length === 0) {
                                     try {
                                       await onValidateClientSelectionDirect?.()
-                                      setOpenStepId(null)
+                                      closeStepModalAndClearUrl()
                                       toast.success("Client selection validated.")
                                     } catch {
                                       // Error surfaced by page if any
@@ -1630,7 +1641,7 @@ export function CollectionTemplate({
                                     onConfirm: async (selectedUrls) => {
                                       try {
                                         await onValidateClientSelectionDirect?.(selectedUrls)
-                                        setOpenStepId(null)
+                                        closeStepModalAndClearUrl()
                                         toast.success("Client selection validated.")
                                       } catch {
                                         // Error surfaced by page if any
@@ -1702,7 +1713,14 @@ export function CollectionTemplate({
                     className="w-full"
                   />
                   {canShowModalActions && [
-                    ...buildUrlHistoryItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "photographer", resolveUploaderDisplay("photographer"), editionRequestInstructionsUploadedAt, "edition_request", "Edition request"),
+                    ...(shootingType === "digital" && hasEditionStudio
+                      ? [
+                          ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "photographer", resolveUploaderDisplay("photographer"), highResUploadedAt, "handprint_high_res", "High-res selection"),
+                          ...buildUrlHistoryItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "photographer", resolveUploaderDisplay("photographer"), editionRequestInstructionsUploadedAt, "edition_request", "Retouch instructions"),
+                        ]
+                      : [
+                          ...buildUrlHistoryItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "photographer", resolveUploaderDisplay("photographer"), editionRequestInstructionsUploadedAt, "edition_request", "Edition request"),
+                        ]),
                     ...buildUrlHistoryItems(finalsSelectionUrl, stepNotesFinalEdits, "retouch_studio", resolveUploaderDisplay("retouch_studio"), finalsUploadedAt, "final_edits", "Final edits"),
                   ].map((item, idx) => (
                     <UrlHistory
@@ -1861,7 +1879,7 @@ export function CollectionTemplate({
                                 if (materialUrlsList.length === 0) {
                                   try {
                                     await onValidateFinals?.()
-                                    setOpenStepId(null)
+                                    closeStepModalAndClearUrl()
                                     toast.success("Finals shared with client.")
                                   } catch {
                                     // Error surfaced by page if any
@@ -1879,7 +1897,7 @@ export function CollectionTemplate({
                                   onConfirm: async (selectedUrls) => {
                                     try {
                                       await onValidateFinals?.(selectedUrls)
-                                      setOpenStepId(null)
+                                      closeStepModalAndClearUrl()
                                       toast.success("Finals shared with client.")
                                     } catch {
                                       // Error surfaced by page if any
@@ -1901,31 +1919,53 @@ export function CollectionTemplate({
                 <div className="flex flex-col gap-5 w-full">
                   <StepDetails
                     variant="primary"
-                    mainTitle='Convert client selection to "high-resolution"'
-                    subtitle="Lab has to convert client selection to high-resolution using a traditional hand-printing technique."
+                    mainTitle={
+                      shootingType === "digital" && hasEditionStudio
+                        ? "Convert to high-res and give retouch instructions"
+                        : shootingType === "digital"
+                          ? 'Convert client selection to "high-resolution"'
+                          : 'Convert client selection to "high-resolution"'
+                    }
+                    subtitle={
+                      shootingType === "digital" && hasEditionStudio
+                        ? "Convert the client selection to high-resolution, upload the link, and provide instructions for the retouch studio."
+                        : shootingType === "digital"
+                          ? "Convert the client selection to high-resolution and upload the link."
+                          : "Lab has to convert client selection to high-resolution using a traditional hand-printing technique."
+                    }
                     backgroundImage="/assets/bg-highres.png"
                     hideActionButton
                     className="w-full"
                   />
                   {canShowModalActions && [
-                    ...buildUrlHistoryItems(
-                      photographerReviewUrl,
-                      stepNotesPhotographerReview,
-                      "photographer",
-                      resolveUploaderDisplay("photographer"),
-                      photographerReviewUploadedAt,
-                      "photographer_check_client_selection",
-                      undefined,
-                      (url, idx, hasPhotographerNotesForUrl) => {
-                        const clientUrls = allUrls(clientSelectionUrl)
-                        const isFromClientSelection = clientUrls.includes(url)
-                        if (isFromClientSelection && !hasPhotographerNotesForUrl) {
-                          return idx === 0 ? "Client selection (validated by photographer)" : `Client selection (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
-                        }
-                        return idx === 0 ? "Photographer review" : `Photographer review - Additional link ${String(idx).padStart(2, "0")}`
-                      }
-                    ),
-                    ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "handprint_lab", resolveUploaderDisplay("handprint_lab"), highResUploadedAt, "handprint_high_res", "High-res selection"),
+                    ...(shootingType === "digital"
+                      ? [
+                          ...buildUrlHistoryItems(clientSelectionUrl, stepNotesClientSelection, "client", resolveUploaderDisplay("client"), clientSelectionUploadedAt, "client_selection", "Client selection"),
+                          ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "photographer", resolveUploaderDisplay("photographer"), highResUploadedAt, "handprint_high_res", "High-res selection"),
+                          ...(hasEditionStudio
+                            ? buildUrlHistoryItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "photographer", resolveUploaderDisplay("photographer"), editionRequestInstructionsUploadedAt, "edition_request", "Retouch instructions")
+                            : []),
+                        ]
+                      : [
+                          ...buildUrlHistoryItems(
+                            photographerReviewUrl,
+                            stepNotesPhotographerReview,
+                            "photographer",
+                            resolveUploaderDisplay("photographer"),
+                            photographerReviewUploadedAt,
+                            "photographer_check_client_selection",
+                            undefined,
+                            (url, idx, hasPhotographerNotesForUrl) => {
+                              const clientUrls = allUrls(clientSelectionUrl)
+                              const isFromClientSelection = clientUrls.includes(url)
+                              if (isFromClientSelection && !hasPhotographerNotesForUrl) {
+                                return idx === 0 ? "Client selection (validated by photographer)" : `Client selection (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
+                              }
+                              return idx === 0 ? "Photographer review" : `Photographer review - Additional link ${String(idx).padStart(2, "0")}`
+                            }
+                          ),
+                          ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "handprint_lab", resolveUploaderDisplay("handprint_lab"), highResUploadedAt, "handprint_high_res", "High-res selection"),
+                        ]),
                   ].map((item, idx) => (
                     <UrlHistory
                       key={`handprint-highres-${idx}-${item.url}`}
@@ -1941,16 +1981,32 @@ export function CollectionTemplate({
                       aria-label="Step owner action"
                     >
                       <p className="text-center text-base font-semibold text-foreground">
-                        {highResSelectionUrlLatest ? "Need to send additional footage?" : "Upload high-resolution selection"}
+                        {shootingType === "digital" && hasEditionStudio
+                          ? (highResSelectionUrlLatest || editionRequestInstructionsUrlLatest
+                            ? "Need to send additional footage or instructions?"
+                            : "Upload high-res and give retouch instructions")
+                          : highResSelectionUrlLatest
+                            ? "Need to send additional footage?"
+                            : "Upload high-resolution selection"}
                       </p>
                       <Button
                         type="button"
                         variant="default"
                         size="lg"
                         className="w-fit rounded-xl"
-                        onClick={() => setUploadHighResDialogOpen(true)}
+                        onClick={() =>
+                          shootingType === "digital" && hasEditionStudio
+                            ? setUploadHighResAndInstructionsDialogOpen(true)
+                            : setUploadHighResDialogOpen(true)
+                        }
                       >
-                        {highResSelectionUrlLatest ? "Upload additional photos" : "Upload high-res"}
+                        {shootingType === "digital" && hasEditionStudio
+                          ? (highResSelectionUrlLatest || editionRequestInstructionsUrlLatest
+                            ? "Upload additional"
+                            : "Upload high-res and retouch instructions")
+                          : highResSelectionUrlLatest
+                            ? "Upload additional photos"
+                            : "Upload high-res"}
                       </Button>
                     </section>
                   )}
@@ -1980,8 +2036,33 @@ export function CollectionTemplate({
                   </div>
                   {/* UrlHistory blocks: previous-step material validated by photographer + optional links added in step 10 */}
                   {(() => {
-                    // When there's no edition studio, photographer validates High-res (step 7) in step 10.
-                    // In that scenario client confirmation must show High-res history, not Final edits.
+                    // Digital without retouch: photographer uploads high-res in step 7; no step 10. Show high-res + photographer comments from step 7.
+                    if (shootingType === "digital" && !hasEditionStudio) {
+                      return [
+                        ...buildUrlHistoryItems(
+                          highResSelectionUrl,
+                          stepNotesHighRes,
+                          "photographer",
+                          resolveUploaderDisplay("photographer"),
+                          highResUploadedAt,
+                          "handprint_high_res",
+                          "High-res selection"
+                        ),
+                      ].map((item, idx) => (
+                        <UrlHistory
+                          key={`client-confirmation-${idx}-${item.url}`}
+                          title={item.title}
+                          comments={item.comments}
+                          onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
+                          onAddComment={
+                            canShowModalActions && onAddStepNote && item.stepId
+                              ? () => openAddCommentDialog(item.stepId, item.url)
+                              : undefined
+                          }
+                        />
+                      ))
+                    }
+                    // Analog or with edition: photographer validates in step 10 (or high-res when no edition)
                     const materialUrls = hasEditionStudio ? finalsSelectionUrl : highResSelectionUrl
                     const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
                     const materialUrlsList = allUrls(materialUrls)
@@ -2031,8 +2112,8 @@ export function CollectionTemplate({
                       />
                     ))
                   })()}
-                  {/* Action block: Complete collection */}
-                  {canShowModalActions && (
+                  {/* Action block: Complete collection — hide once collection is completed */}
+                  {canShowModalActions && openStep.status !== "completed" && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
                       aria-label="Step owner action"
@@ -2048,7 +2129,7 @@ export function CollectionTemplate({
                         onClick={async () => {
                           try {
                             await onCompleteCollection?.()
-                            setOpenStepId(null)
+                            closeStepModalAndClearUrl()
                             toast.success("Collection completed successfully.")
                           } catch {
                             // Error surfaced by page callback
@@ -2072,14 +2153,16 @@ export function CollectionTemplate({
                   hideActionButton
                 />
               )}
-              {/* Owner-only action block (Confirm pickup) — Shooting step only when not yet completed; closes modal, toast, updates stepper/progress, notifies Photo lab */}
+              {/* Owner-only action block — Shooting step only when not yet completed. Digital: confirm shooting ended; Analog: confirm negatives pickup */}
               {canShowModalActions && openStep.id === "shooting" && openStep.status !== "completed" && (
                 <section
                   className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
                   aria-label="Step owner action"
                 >
                   <p className="text-center text-base font-semibold text-foreground">
-                    Have the negatives been collected?
+                    {shootingType === "digital"
+                      ? "Has the shooting been completed?"
+                      : "Have the negatives been collected?"}
                   </p>
                   <Button
                     type="button"
@@ -2088,15 +2171,19 @@ export function CollectionTemplate({
                     className="w-fit rounded-xl"
                     onClick={async () => {
                       try {
-                        await onConfirmPickup?.("shooting")
+                        await onConfirmPickup?.("shooting", shootingType)
                         closeStepModalAndClearUrl()
-                        toast.success("Pickup confirmed.")
+                        toast.success(
+                          shootingType === "digital" ? "Shooting confirmed." : "Pickup confirmed."
+                        )
                       } catch {
                         // Error toast is shown by the page callback.
                       }
                     }}
                   >
-                    Confirm pickup
+                    {shootingType === "digital"
+                      ? "Confirm shooting ended"
+                      : "Confirm pickup"}
                   </Button>
                 </section>
               )}
@@ -2134,7 +2221,8 @@ export function CollectionTemplate({
                 const { individuals: mainIndividuals, entities: mainEntities } = getMainContextualPlayers(
                   openStep?.id,
                   participantsMainPlayersIndividuals ?? [],
-                  participantsMainPlayersEntities ?? []
+                  participantsMainPlayersEntities ?? [],
+                  { isDigitalWithRetouch: shootingType === "digital" && hasEditionStudio }
                 )
                 const isLowResStep = openStep?.id === "low_res_scanning"
                 const isClientSelectionStep = openStep?.id === "client_selection"
@@ -2379,7 +2467,7 @@ export function CollectionTemplate({
                   setUploadMorePhotosDialogOpen(false)
                   setUploadMorePhotosUrl("")
                   setUploadMorePhotosNotes("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Additional photos uploaded.")
                 } finally {
                   setUploadSubmitting(false)
@@ -2486,7 +2574,7 @@ export function CollectionTemplate({
                   setUploadLowResDialogOpen(false)
                   setUploadLowResUrl("")
                   setUploadLowResNotes("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Low-res scans uploaded.")
                 } catch {
                   // Error already surfaced by page (toast.error)
@@ -2558,7 +2646,7 @@ export function CollectionTemplate({
                   setUploadPhotographerSelectionDialogOpen(false)
                   setUploadPhotographerSelectionUrl("")
                   setUploadPhotographerSelectionNotes("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Selection uploaded.")
                 } finally {
                   setUploadSubmitting(false)
@@ -2610,7 +2698,7 @@ export function CollectionTemplate({
                 await onRequestAdditionalPhotos?.(notes)
                 setMissingPhotosDialogOpen(false)
                 setMissingPhotosNotes("")
-                setOpenStepId(null)
+                closeStepModalAndClearUrl()
                 toast.success("Comments sent to the photographer")
               }}
             >
@@ -2737,7 +2825,7 @@ export function CollectionTemplate({
                   setClientUploadSelectionDialogOpen(false)
                   setClientUploadSelectionUrl("")
                   setClientUploadSelectionNotes("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Selection uploaded.")
                 } catch {
                   // Error surfaced by page if any
@@ -2791,7 +2879,7 @@ export function CollectionTemplate({
                 await onRequestMorePhotosFromPhotographer?.(notes)
                 setClientMissingPhotosDialogOpen(false)
                 setClientMissingPhotosNotes("")
-                setOpenStepId(null)
+                closeStepModalAndClearUrl()
                 toast.success("Request sent to the photographer.")
               }}
             >
@@ -2860,7 +2948,7 @@ export function CollectionTemplate({
                   setValidateSelectionDialogOpen(false)
                   setValidateSelectionComments("")
                   setValidateSelectionLink("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Comments sent to lab.")
                 } catch {
                   // Error surfaced by page if any
@@ -2914,7 +3002,7 @@ export function CollectionTemplate({
                 await onRequestMorePhotosFromClient?.(notes)
                 setPhotographerRequestClientPhotosDialogOpen(false)
                 setPhotographerRequestClientPhotosNotes("")
-                setOpenStepId(null)
+                closeStepModalAndClearUrl()
                 toast.success("Request sent to the client.")
               }}
             >
@@ -2979,7 +3067,7 @@ export function CollectionTemplate({
                   setUploadHighResDialogOpen(false)
                   setUploadHighResUrl("")
                   setUploadHighResNotes("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("High-res selection uploaded.")
                 } catch {
                   // Error surfaced by page if any
@@ -2987,6 +3075,105 @@ export function CollectionTemplate({
               }}
             >
               Upload high-res
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 7+8 combined (Digital + Retouch): Upload high-res + retouch instructions */}
+      <Dialog
+        open={uploadHighResAndInstructionsDialogOpen}
+        onOpenChange={(open) => {
+          setUploadHighResAndInstructionsDialogOpen(open)
+          if (!open) {
+            setUploadHighResAndInstructionsUrl("")
+            setUploadHighResAndInstructionsNotes("")
+            setUploadHighResAndInstructionsDetails("")
+            setUploadHighResAndInstructionsInstructionsUrl("")
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload high-res and retouch instructions</DialogTitle>
+            <DialogDescription>
+              Share the high-resolution selection link and provide instructions for the retouch studio. Both are required for the retouch studio to proceed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-highres-and-instructions-url">High-res selection link (required)</Label>
+              <Input
+                id="upload-highres-and-instructions-url"
+                type="url"
+                placeholder="Paste here the high-res link"
+                value={uploadHighResAndInstructionsUrl}
+                onChange={(e) => setUploadHighResAndInstructionsUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-highres-and-instructions-notes">Comments for high-res (optional)</Label>
+              <Textarea
+                id="upload-highres-and-instructions-notes"
+                placeholder="Write here comments and notes"
+                value={uploadHighResAndInstructionsNotes}
+                onChange={(e) => setUploadHighResAndInstructionsNotes(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-highres-and-instructions-instructions-url">Retouch instructions link (optional)</Label>
+              <Input
+                id="upload-highres-and-instructions-instructions-url"
+                type="url"
+                placeholder="Paste here a link with retouch instructions"
+                value={uploadHighResAndInstructionsInstructionsUrl}
+                onChange={(e) => setUploadHighResAndInstructionsInstructionsUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="upload-highres-and-instructions-details">Retouch instructions / notes (optional)</Label>
+              <Textarea
+                id="upload-highres-and-instructions-details"
+                placeholder="Describe the retouches needed for the retouch studio"
+                value={uploadHighResAndInstructionsDetails}
+                onChange={(e) => setUploadHighResAndInstructionsDetails(e.target.value)}
+                className="w-full max-h-[94px] overflow-y-auto resize-none"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!uploadHighResAndInstructionsUrl.trim()}
+              onClick={async () => {
+                const url = uploadHighResAndInstructionsUrl.trim()
+                if (!url) return
+                try {
+                  await onUploadHighResAndInstructions?.({
+                    url,
+                    notes: uploadHighResAndInstructionsNotes.trim() || undefined,
+                    details: uploadHighResAndInstructionsDetails.trim() || undefined,
+                    instructionsUrl: uploadHighResAndInstructionsInstructionsUrl.trim() || undefined,
+                  })
+                  setUploadHighResAndInstructionsDialogOpen(false)
+                  setUploadHighResAndInstructionsUrl("")
+                  setUploadHighResAndInstructionsNotes("")
+                  setUploadHighResAndInstructionsDetails("")
+                  setUploadHighResAndInstructionsInstructionsUrl("")
+                  closeStepModalAndClearUrl()
+                  toast.success("High-res and retouch instructions uploaded.")
+                } catch {
+                  // Error surfaced by page if any
+                }
+              }}
+            >
+              Upload high-res and retouch instructions
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3048,7 +3235,7 @@ export function CollectionTemplate({
                   setGiveInstructionsDialogOpen(false)
                   setGiveInstructionsDetails("")
                   setGiveInstructionsUrl("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Instructions sent to the retouch studio.")
                 } catch {
                   // Error surfaced by page if any
@@ -3116,7 +3303,7 @@ export function CollectionTemplate({
                   setUploadFinalsDialogOpen(false)
                   setUploadFinalsUrl("")
                   setUploadFinalsNotes("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success("Finals uploaded.")
                 } catch {
                   // Error surfaced by page if any
@@ -3186,7 +3373,7 @@ export function CollectionTemplate({
                   setAddNewLinkDialogOpen(false)
                   setAddNewLinkUrl("")
                   setAddNewLinkComments("")
-                  setOpenStepId(null)
+                  closeStepModalAndClearUrl()
                   toast.success(addNewLinkUrl.trim() ? "Link and comment saved." : "Comment saved.")
                 } catch {
                   // Error surfaced by page if any

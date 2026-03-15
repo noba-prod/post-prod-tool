@@ -209,9 +209,13 @@ const SUBSTATUS_ORDER = [
 /** Maps trigger_event to completion criteria. Skip scheduled notification if milestone already done. */
 const TRIGGER_EVENT_TO_COMPLETION: Record<
   string,
-  { minSubstatus?: (typeof SUBSTATUS_ORDER)[number]; completionEvent?: string }
+  { minSubstatus?: (typeof SUBSTATUS_ORDER)[number]; completionEvent?: string; completionEvents?: string[] }
 > = {
-  shooting_end: { minSubstatus: "negatives_drop_off", completionEvent: "negatives_pickup_marked" },
+  shooting_end: {
+    minSubstatus: "negatives_drop_off",
+    completionEvent: "negatives_pickup_marked",
+    completionEvents: ["negatives_pickup_marked", "shooting_ended", "shooting_completed_confirmed"],
+  },
   dropoff_deadline: { minSubstatus: "low_res_scanning", completionEvent: "dropoff_confirmed" },
   scanning_deadline: { minSubstatus: "photographer_selection", completionEvent: "scanning_completed" },
   photographer_selection_deadline: {
@@ -652,6 +656,11 @@ export class NotificationsService implements INotificationsService {
         // 4. Process each template (pass metadata for dynamic description interpolation)
         for (const template of templates as NotificationTemplate[]) {
           try {
+            // Skip if template has trigger_condition and it doesn't match this collection
+            if (template.trigger_condition) {
+              const conditionMet = await this.checkCondition(collectionId, template.trigger_condition)
+              if (!conditionMet) continue
+            }
             await this.processTemplate(
               template,
               collectionId,
@@ -2215,6 +2224,12 @@ export class NotificationsService implements INotificationsService {
     ) {
       return true
     }
+    if (
+      criteria.completionEvents &&
+      criteria.completionEvents.some((e) => eventTypes.includes(e as CollectionEventType))
+    ) {
+      return true
+    }
 
     if (criteria.minSubstatus && statusInfo.substatus) {
       const currentIdx = SUBSTATUS_ORDER.indexOf(statusInfo.substatus as (typeof SUBSTATUS_ORDER)[number])
@@ -2224,6 +2239,28 @@ export class NotificationsService implements INotificationsService {
       }
     }
 
+    return false
+  }
+
+  /**
+   * Check collection type for Digital vs Analog notifications
+   */
+  private async checkCollectionType(
+    collectionId: string,
+    type: "has_handprint" | "is_digital"
+  ): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from("collections")
+      .select("low_res_to_high_res_digital, low_res_to_high_res_hand_print")
+      .eq("id", collectionId)
+      .single()
+    if (error || !data) return false
+    const row = data as {
+      low_res_to_high_res_digital: boolean
+      low_res_to_high_res_hand_print: boolean
+    }
+    if (type === "has_handprint") return !!row.low_res_to_high_res_hand_print
+    if (type === "is_digital") return !!row.low_res_to_high_res_digital
     return false
   }
 
@@ -2243,6 +2280,14 @@ export class NotificationsService implements INotificationsService {
     const eventTypes = ((events || []) as Pick<CollectionEventRow, "event_type">[]).map((e) => e.event_type)
 
     switch (condition) {
+      case "has_handprint":
+        // Analog collections only (low_res_to_high_res_hand_print = true)
+        return await this.checkCollectionType(collectionId, "has_handprint")
+
+      case "is_digital":
+        // Digital collections only (low_res_to_high_res_digital = true)
+        return await this.checkCollectionType(collectionId, "is_digital")
+
       case "negatives_not_confirmed":
         // Check if dropoff has NOT been confirmed
         return !eventTypes.includes("dropoff_confirmed")
