@@ -211,7 +211,7 @@ export class CollectionsService {
     if (canonical !== collection.status) {
       const isRecovery =
         canonical === "in_progress" &&
-        (collection.substatus == null || collection.substatus === "") &&
+        !collection.substatus?.trim() &&
         (collection.completionPercentage ?? 0) > 0
       const substatusToSet =
         canonical === "in_progress"
@@ -223,7 +223,7 @@ export class CollectionsService {
         status: canonical,
         substatus: substatusToSet,
       })
-      const result = updated ?? { ...collection, status: canonical, substatus: substatusToSet }
+      const result = updated ?? { ...collection, status: canonical, substatus: substatusToSet ?? undefined }
       if (canonical === "in_progress" && !isRecovery) {
         try {
           await this.notifications.triggerEvent(id, "shooting_started", undefined, undefined)
@@ -292,7 +292,7 @@ export class CollectionsService {
       if (canonical !== c.status) {
         const isRecovery =
           canonical === "in_progress" &&
-          (c.substatus == null || c.substatus === "") &&
+          !c.substatus?.trim() &&
           (c.completionPercentage ?? 0) > 0
         const substatusToSet =
           canonical === "in_progress"
@@ -304,7 +304,7 @@ export class CollectionsService {
           status: canonical,
           substatus: substatusToSet,
         })
-        result.push(updated ?? { ...c, status: canonical, substatus: substatusToSet })
+        result.push(updated ?? { ...c, status: canonical, substatus: substatusToSet ?? undefined })
         if (canonical === "in_progress" && !isRecovery) {
           try {
             await this.notifications.triggerEvent(c.id, "shooting_started", undefined, undefined)
