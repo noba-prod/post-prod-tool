@@ -562,7 +562,14 @@ export default function CollectionCreatePage({
   const handleLrToHrSetupChange = React.useCallback(
     (patch: Partial<Pick<CollectionConfig, "lrToHrDueDate" | "lrToHrDueTime">>) => {
       if (!draft || !id) return
-      service.updateCollection(id, { config: patch }).then((updated) => {
+      const c = draft.config
+      const isDigitalWithRetouch = !c.hasHandprint && c.hasEditionStudio
+      const configPatch: Partial<CollectionConfig> = { ...patch }
+      if (isDigitalWithRetouch && (patch.lrToHrDueDate !== undefined || patch.lrToHrDueTime !== undefined)) {
+        if (patch.lrToHrDueDate !== undefined) configPatch.editionPhotographerDueDate = patch.lrToHrDueDate
+        if (patch.lrToHrDueTime !== undefined) configPatch.editionPhotographerDueTime = patch.lrToHrDueTime
+      }
+      service.updateCollection(id, { config: configPatch }).then((updated) => {
         if (updated) setDraft(updated)
       })
     },

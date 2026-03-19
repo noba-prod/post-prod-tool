@@ -289,6 +289,8 @@ const WORKFLOW_STEP_SEQUENCE = [
 interface CollectionWorkflowStepOptions {
   hasHandprint: boolean
   hasEditionStudio: boolean
+  /** Digital + Retouch: edition_request step is merged into handprint_high_res; photographer is step owner. */
+  isDigitalWithRetouch?: boolean
 }
 
 /** User-facing step names by URL slug (matches notification copy style). */
@@ -374,7 +376,13 @@ const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
   photographer_check_ready_for_hr: {
     handprint_lab: "handprint_high_res",
   },
+  highres_deadline_risk: {
+    photographer: "handprint_high_res",
+  },
   edition_request_ready: {
+    retouch_studio: "final_edits",
+  },
+  edition_request_ready_digital: {
     retouch_studio: "final_edits",
   },
   photographer_edits_approved: {
@@ -394,7 +402,13 @@ const TEMPLATE_STEP_NAME_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
   photographer_check_ready_for_hr: {
     handprint_lab: "Handprint to high-res",
   },
+  highres_deadline_risk: {
+    photographer: "Low-res to high-res and retouch request",
+  },
   edition_request_ready: {
+    retouch_studio: "Final edits",
+  },
+  edition_request_ready_digital: {
     retouch_studio: "Final edits",
   },
   photographer_edits_approved: {
@@ -497,6 +511,7 @@ export class NotificationsService implements INotificationsService {
     return {
       hasHandprint: !!row.low_res_to_high_res_hand_print,
       hasEditionStudio: !!row.photographer_request_edition,
+      isDigitalWithRetouch: !row.low_res_to_high_res_hand_print && !!row.photographer_request_edition,
     }
   }
 
@@ -1847,6 +1862,14 @@ export class NotificationsService implements INotificationsService {
         ? "edition_request"
         : "photographer_last_check"
     }
+    // Digital + Retouch: edition_completion_check → photographer goes to handprint_high_res (merged step)
+    if (
+      template.code === "edition_completion_check" &&
+      recipientType === "photographer" &&
+      workflowOptions?.isDigitalWithRetouch
+    ) {
+      overriddenStepSlugRaw = "handprint_high_res"
+    }
 
     if (overriddenStepSlugRaw) {
       const overriddenStepSlug = NotificationsService.getNearestNavigableStepSlug(
@@ -1857,8 +1880,11 @@ export class NotificationsService implements INotificationsService {
         `/collections/{collectionId}?step=${overriddenStepSlug}`,
         collectionId
       )
-      const stepNameOverride =
+      let stepNameOverride =
         recipientType && TEMPLATE_STEP_NAME_BY_RECIPIENT[template.code]?.[recipientType]
+      if (!stepNameOverride && overriddenStepSlug === "handprint_high_res" && workflowOptions?.isDigitalWithRetouch) {
+        stepNameOverride = "Low-res to high-res and retouch request"
+      }
       return {
         ctaUrl,
         stepName: stepNameOverride ?? STEP_NAME_BY_SLUG[overriddenStepSlug] ?? template.step_name,
@@ -1892,6 +1918,7 @@ export class NotificationsService implements INotificationsService {
       case "photographer_check":
         return workflowOptions.hasHandprint
       case "edition_request":
+        return workflowOptions.hasEditionStudio && !workflowOptions.isDigitalWithRetouch
       case "final_edits":
         return workflowOptions.hasEditionStudio
       case "photographer_last_check":
@@ -2017,19 +2044,27 @@ export class NotificationsService implements INotificationsService {
       return Array.from(recipientsByUserId.values())
     }
 
+    const workflowOptions = await this.getCollectionWorkflowStepOptions(collectionId)
+
+    // Digital + Retouch: highres_deadline_risk goes to photographer (owner of merged step), not handprint_lab
+    let emailRecipientTypes = (template.email_recipients || []) as RecipientType[]
+    let inappRecipientTypes = (template.inapp_recipients || []) as RecipientType[]
+    if (
+      template.code === "highres_deadline_risk" &&
+      workflowOptions?.isDigitalWithRetouch
+    ) {
+      emailRecipientTypes = ["photographer"]
+      inappRecipientTypes = ["photographer"]
+    }
+
     // Resolve recipients preserving recipient role/type for per-role navigation.
-    const emailRecipients = await resolveRecipientsWithType(
-      (template.email_recipients || []) as RecipientType[]
-    )
-    const inappRecipients = await resolveRecipientsWithType(
-      (template.inapp_recipients || []) as RecipientType[]
-    )
+    const emailRecipients = await resolveRecipientsWithType(emailRecipientTypes)
+    const inappRecipients = await resolveRecipientsWithType(inappRecipientTypes)
 
     const effectiveTitleTemplate = NotificationsService.getEffectiveTitleTemplate(template, metadata)
     const interpolatedTitle = NotificationsService.interpolateText(effectiveTitleTemplate, metadata, context)
     const title = formatNotificationTitle(interpolatedTitle, context.name, context.reference)
     const body = NotificationsService.interpolateText(template.description, metadata, context)
-    const workflowOptions = await this.getCollectionWorkflowStepOptions(collectionId)
 
     // Build email subject from template's email_subject column
     const defaultNavigation = NotificationsService.getTemplateNavigation(
@@ -2287,6 +2322,17 @@ export class NotificationsService implements INotificationsService {
       case "is_digital":
         // Digital collections only (low_res_to_high_res_digital = true)
         return await this.checkCollectionType(collectionId, "is_digital")
+
+      case "is_digital_and_edition":
+        // Digital + Retouch: low_res_to_high_res_digital = true AND photographer_request_edition = true
+        const { data: row } = await this.supabase
+          .from("collections")
+          .select("low_res_to_high_res_digital, low_res_to_high_res_hand_print, photographer_request_edition")
+          .eq("id", collectionId)
+          .single()
+        if (!row) return false
+        const r = row as { low_res_to_high_res_digital?: boolean; low_res_to_high_res_hand_print?: boolean; photographer_request_edition?: boolean }
+        return !!(r.low_res_to_high_res_digital && !r.low_res_to_high_res_hand_print && r.photographer_request_edition)
 
       case "negatives_not_confirmed":
         // Check if dropoff has NOT been confirmed

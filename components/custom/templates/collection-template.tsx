@@ -320,8 +320,8 @@ export interface CollectionTemplateProps {
   stepNotesPhotographerReview?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 7: called when lab uploads high-res selection. */
   onUploadHighRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
-  /** Step 7+8 combined (Digital + Retouch only): upload high-res + retouch instructions in one action. */
-  onUploadHighResAndInstructions?: (payload: { url: string; notes?: string; details?: string; instructionsUrl?: string }) => void | Promise<void>
+  /** Step 7+8 combined (Digital + Retouch only): upload single link + notes in one action. */
+  onUploadHighResAndInstructions?: (payload: { url: string; details?: string; instructionsUrl?: string }) => void | Promise<void>
   /** Step 8 (Edition request): URL(s) of high-res selection (step 7 upload). Array — latest is last. */
   highResSelectionUrl?: string | string[]
   /** Step 8: when the high-res URL was uploaded (ISO). */
@@ -841,9 +841,7 @@ export function CollectionTemplate({
   const [giveInstructionsUrl, setGiveInstructionsUrl] = React.useState("")
   const [uploadHighResAndInstructionsDialogOpen, setUploadHighResAndInstructionsDialogOpen] = React.useState(false)
   const [uploadHighResAndInstructionsUrl, setUploadHighResAndInstructionsUrl] = React.useState("")
-  const [uploadHighResAndInstructionsNotes, setUploadHighResAndInstructionsNotes] = React.useState("")
   const [uploadHighResAndInstructionsDetails, setUploadHighResAndInstructionsDetails] = React.useState("")
-  const [uploadHighResAndInstructionsInstructionsUrl, setUploadHighResAndInstructionsInstructionsUrl] = React.useState("")
   const [uploadFinalsDialogOpen, setUploadFinalsDialogOpen] = React.useState(false)
   const [uploadFinalsUrl, setUploadFinalsUrl] = React.useState("")
   const [uploadFinalsNotes, setUploadFinalsNotes] = React.useState("")
@@ -1715,7 +1713,7 @@ export function CollectionTemplate({
                   {canShowModalActions && [
                     ...(shootingType === "digital" && hasEditionStudio
                       ? [
-                          ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "photographer", resolveUploaderDisplay("photographer"), highResUploadedAt, "handprint_high_res", "High-res selection"),
+                          // Digital+Retouch: single link from photographer (stored in both highres + edition; show once)
                           ...buildUrlHistoryItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "photographer", resolveUploaderDisplay("photographer"), editionRequestInstructionsUploadedAt, "edition_request", "Retouch instructions"),
                         ]
                       : [
@@ -1941,10 +1939,9 @@ export function CollectionTemplate({
                     ...(shootingType === "digital"
                       ? [
                           ...buildUrlHistoryItems(clientSelectionUrl, stepNotesClientSelection, "client", resolveUploaderDisplay("client"), clientSelectionUploadedAt, "client_selection", "Client selection"),
-                          ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "photographer", resolveUploaderDisplay("photographer"), highResUploadedAt, "handprint_high_res", "High-res selection"),
                           ...(hasEditionStudio
                             ? buildUrlHistoryItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "photographer", resolveUploaderDisplay("photographer"), editionRequestInstructionsUploadedAt, "edition_request", "Retouch instructions")
-                            : []),
+                            : buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "photographer", resolveUploaderDisplay("photographer"), highResUploadedAt, "handprint_high_res", "High-res selection")),
                         ]
                       : [
                           ...buildUrlHistoryItems(
@@ -3087,9 +3084,7 @@ export function CollectionTemplate({
           setUploadHighResAndInstructionsDialogOpen(open)
           if (!open) {
             setUploadHighResAndInstructionsUrl("")
-            setUploadHighResAndInstructionsNotes("")
             setUploadHighResAndInstructionsDetails("")
-            setUploadHighResAndInstructionsInstructionsUrl("")
           }
         }}
       >
@@ -3097,45 +3092,23 @@ export function CollectionTemplate({
           <DialogHeader>
             <DialogTitle>Upload high-res and retouch instructions</DialogTitle>
             <DialogDescription>
-              Share the high-resolution selection link and provide instructions for the retouch studio. Both are required for the retouch studio to proceed.
+              Share the link with high-resolution selection and retouch instructions for the retouch studio.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="upload-highres-and-instructions-url">High-res selection link (required)</Label>
+              <Label htmlFor="upload-highres-and-instructions-url">Retouch instructions link</Label>
               <Input
                 id="upload-highres-and-instructions-url"
                 type="url"
-                placeholder="Paste here the high-res link"
+                placeholder="Paste here the link"
                 value={uploadHighResAndInstructionsUrl}
                 onChange={(e) => setUploadHighResAndInstructionsUrl(e.target.value)}
                 className="w-full"
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="upload-highres-and-instructions-notes">Comments for high-res (optional)</Label>
-              <Textarea
-                id="upload-highres-and-instructions-notes"
-                placeholder="Write here comments and notes"
-                value={uploadHighResAndInstructionsNotes}
-                onChange={(e) => setUploadHighResAndInstructionsNotes(e.target.value)}
-                className="w-full max-h-[94px] overflow-y-auto resize-none"
-                rows={2}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="upload-highres-and-instructions-instructions-url">Retouch instructions link (optional)</Label>
-              <Input
-                id="upload-highres-and-instructions-instructions-url"
-                type="url"
-                placeholder="Paste here a link with retouch instructions"
-                value={uploadHighResAndInstructionsInstructionsUrl}
-                onChange={(e) => setUploadHighResAndInstructionsInstructionsUrl(e.target.value)}
-                className="w-full"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="upload-highres-and-instructions-details">Retouch instructions / notes (optional)</Label>
+              <Label htmlFor="upload-highres-and-instructions-details">Comments and notes</Label>
               <Textarea
                 id="upload-highres-and-instructions-details"
                 placeholder="Describe the retouches needed for the retouch studio"
@@ -3157,17 +3130,14 @@ export function CollectionTemplate({
                 try {
                   await onUploadHighResAndInstructions?.({
                     url,
-                    notes: uploadHighResAndInstructionsNotes.trim() || undefined,
                     details: uploadHighResAndInstructionsDetails.trim() || undefined,
-                    instructionsUrl: uploadHighResAndInstructionsInstructionsUrl.trim() || undefined,
+                    instructionsUrl: url,
                   })
                   setUploadHighResAndInstructionsDialogOpen(false)
                   setUploadHighResAndInstructionsUrl("")
-                  setUploadHighResAndInstructionsNotes("")
                   setUploadHighResAndInstructionsDetails("")
-                  setUploadHighResAndInstructionsInstructionsUrl("")
                   closeStepModalAndClearUrl()
-                  toast.success("High-res and retouch instructions uploaded.")
+                  toast.success("Link and instructions uploaded.")
                 } catch {
                   // Error surfaced by page if any
                 }

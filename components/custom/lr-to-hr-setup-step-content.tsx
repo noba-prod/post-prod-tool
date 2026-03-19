@@ -89,6 +89,7 @@ export function LrToHrSetupStepContent({
     chronologyConstraints?.["lr_to_hr_setup"] ??
     chronologyConstraints?.["handprint_high_res_config"]
   const isDigital = !c.hasHandprint
+  const isDigitalWithRetouch = isDigital && c.hasEditionStudio
   const ownerLabel = isDigital
     ? "Photographer"
     : c.handprintIsDifferentLab
@@ -200,7 +201,7 @@ export function LrToHrSetupStepContent({
     <div className={cn("flex flex-col gap-5 w-full", className)}>
       <Forms
         variant="capsule"
-        title="Low-res selection to high resolution"
+        title={isDigitalWithRetouch ? "Low-res selection to high resolution and retouch request" : "Low-res selection to high resolution"}
         showTitle={true}
       >
         <RowVariants variant="2">

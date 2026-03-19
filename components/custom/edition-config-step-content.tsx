@@ -67,6 +67,7 @@ export function EditionConfigStepContent({
   className,
 }: EditionConfigStepContentProps) {
   const c = draft.config
+  const isDigitalWithRetouch = !c.hasHandprint && c.hasEditionStudio
   const [photographerName, setPhotographerName] = React.useState<string>("—")
   const [editionStudioName, setEditionStudioName] = React.useState<string>("—")
   const photographerConstraint = chronologyConstraints?.["edition_config_photographer"]
@@ -142,6 +143,22 @@ export function EditionConfigStepContent({
     }
   }, [retouchStudioParticipant?.entityId])
 
+  // Digital+Retouch: sync editionPhotographerDueDate from lrToHr (merged step uses same deadline)
+  React.useEffect(() => {
+    if (!isDigitalWithRetouch) return
+    if (!c.lrToHrDueDate && !c.lrToHrDueTime) return
+    const updates: Partial<Pick<CollectionConfig, "editionPhotographerDueDate" | "editionPhotographerDueTime">> = {}
+    if (c.lrToHrDueDate && c.editionPhotographerDueDate !== c.lrToHrDueDate) {
+      updates.editionPhotographerDueDate = c.lrToHrDueDate
+    }
+    if (c.lrToHrDueTime && c.editionPhotographerDueTime !== c.lrToHrDueTime) {
+      updates.editionPhotographerDueTime = c.lrToHrDueTime
+    }
+    if (Object.keys(updates).length > 0) {
+      onEditionConfigChange(updates)
+    }
+  }, [isDigitalWithRetouch, c.lrToHrDueDate, c.lrToHrDueTime, c.editionPhotographerDueDate, c.editionPhotographerDueTime, onEditionConfigChange])
+
   React.useEffect(() => {
     if (!studioConstraint?.defaultDate || c.editionStudioDueDate) return
     onEditionConfigChange({
@@ -161,6 +178,7 @@ export function EditionConfigStepContent({
     <div className={cn("flex flex-col gap-5 w-full", className)}>
       <Forms
         variant="horizontal-flow"
+        showFirstBlock={!isDigitalWithRetouch}
         firstTitle="Edition request"
         firstContent={
           <>
