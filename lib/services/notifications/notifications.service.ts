@@ -121,6 +121,51 @@ const MISSED_EVENT_MIN_SUBSTATUS: Record<string, (typeof SUBSTATUS_ORDER)[number
   photographer_review_deadline_missed: "client_confirmation",
 }
 
+interface DeadlineMissedGuard {
+  requiresAnyEvents?: CollectionEventType[]
+  blocksIfAnyEvents?: CollectionEventType[]
+}
+
+/**
+ * Guardrails for *_deadline_missed events.
+ * Prevents firing "delayed" signals when the collection has not reached the
+ * prerequisite workflow milestone yet.
+ */
+const DEADLINE_MISSED_GUARDS: Partial<Record<CollectionEventType, DeadlineMissedGuard>> = {
+  dropoff_deadline_missed: {
+    requiresAnyEvents: ["shooting_completed_confirmed", "negatives_pickup_marked", "shooting_ended"],
+    blocksIfAnyEvents: ["dropoff_confirmed"],
+  },
+  scanning_deadline_missed: {
+    requiresAnyEvents: ["dropoff_confirmed"],
+    blocksIfAnyEvents: ["scanning_completed"],
+  },
+  photographer_selection_deadline_missed: {
+    requiresAnyEvents: ["scanning_completed"],
+    blocksIfAnyEvents: ["photographer_selection_uploaded"],
+  },
+  client_selection_deadline_missed: {
+    requiresAnyEvents: ["photographer_selection_uploaded"],
+    blocksIfAnyEvents: ["client_selection_confirmed"],
+  },
+  photographer_check_deadline_missed: {
+    requiresAnyEvents: ["client_selection_confirmed"],
+    blocksIfAnyEvents: ["photographer_check_approved"],
+  },
+  highres_deadline_missed: {
+    requiresAnyEvents: ["photographer_check_approved"],
+    blocksIfAnyEvents: ["highres_ready"],
+  },
+  final_edits_deadline_missed: {
+    requiresAnyEvents: ["edition_request_submitted", "highres_ready"],
+    blocksIfAnyEvents: ["final_edits_completed"],
+  },
+  photographer_review_deadline_missed: {
+    requiresAnyEvents: ["final_edits_completed", "highres_ready"],
+    blocksIfAnyEvents: ["photographer_edits_approved"],
+  },
+}
+
 /**
  * Maps each step note key (from PATCH body) to the step info and all roles
  * that participate in that step's comment thread.
@@ -438,6 +483,10 @@ function isAdditionalMaterialsTemplateCode(templateCode: string): boolean {
 export class NotificationsService implements INotificationsService {
   constructor(private readonly supabase: SupabaseClient<Database>) {}
 
+  private static isDeadlineMissedEventType(eventType: string): eventType is CollectionEventType {
+    return eventType.endsWith("_deadline_missed")
+  }
+
   private static isMissingScheduledProcessingColumnsError(error: unknown): boolean {
     const code = (error as { code?: string } | null)?.code
     const message = String((error as { message?: string } | null)?.message ?? "")
@@ -577,6 +626,30 @@ export class NotificationsService implements INotificationsService {
       if (existing && existing.length > 0) return
     }
 
+    // Guardrail #1: don't persist invalid missed-deadline events.
+    if (NotificationsService.isDeadlineMissedEventType(eventType)) {
+      const { data: colStatusData } = await this.supabase
+        .from("collections")
+        .select("status, substatus")
+        .eq("id", collectionId)
+        .single()
+      const collectionStatus = colStatusData as { status: string; substatus: string | null } | null
+
+      const eventTypes = await this.getCollectionEventTypes(collectionId)
+      const shouldTrigger = await this.shouldTriggerDeadlineMissedEvent(
+        collectionId,
+        eventType,
+        collectionStatus ?? undefined,
+        eventTypes
+      )
+      if (!shouldTrigger) {
+        console.log(
+          `[NotificationsService] Skipping invalid missed-deadline event ${eventType} for collection ${collectionId}`
+        )
+        return
+      }
+    }
+
     // 1. Record the event
     const eventData: CollectionEvent = {
       collection_id: collectionId,
@@ -667,6 +740,24 @@ export class NotificationsService implements INotificationsService {
           .eq("id", collectionId)
           .single()
         const collectionStatus = colStatusData as { status: string; substatus: string | null } | null
+
+        // Guardrail #2: even if an event exists, suppress notification dispatch
+        // when event context is invalid for the current workflow state.
+        if (NotificationsService.isDeadlineMissedEventType(eventType)) {
+          const eventTypes = await this.getCollectionEventTypes(collectionId)
+          const shouldDispatch = await this.shouldTriggerDeadlineMissedEvent(
+            collectionId,
+            eventType,
+            collectionStatus ?? undefined,
+            eventTypes
+          )
+          if (!shouldDispatch) {
+            console.log(
+              `[NotificationsService] Suppressing notification dispatch for invalid event ${eventType} on collection ${collectionId}`
+            )
+            return
+          }
+        }
 
         // 4. Process each template (pass metadata for dynamic description interpolation)
         for (const template of templates as NotificationTemplate[]) {
@@ -1375,6 +1466,11 @@ export class NotificationsService implements INotificationsService {
       const col = collection as Record<string, unknown>
 
       const collSubstatus = col.substatus as string | null
+      const collectionStatus = {
+        status: String(col.status ?? "in_progress"),
+        substatus: collSubstatus,
+      }
+      const eventTypes = await this.getCollectionEventTypes(collection.id)
 
       for (const [dateField, timeField, eventType] of DEADLINE_TO_MISSED_EVENT) {
         const dateVal = col[dateField] as string | null
@@ -1392,16 +1488,18 @@ export class NotificationsService implements INotificationsService {
           if (currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx) continue
         }
 
-        const { data: existing } = await this.supabase
-          .from("collection_events")
-          .select("id")
-          .eq("collection_id", collection.id)
-          .eq("event_type", eventType)
-          .limit(1)
+        if (eventTypes.has(eventType as CollectionEventType)) continue
 
-        if (existing && existing.length > 0) continue
+        const shouldTrigger = await this.shouldTriggerDeadlineMissedEvent(
+          collection.id,
+          eventType as CollectionEventType,
+          collectionStatus,
+          eventTypes
+        )
+        if (!shouldTrigger) continue
 
         await this.triggerEvent(collection.id, eventType as CollectionEventType)
+        eventTypes.add(eventType as CollectionEventType)
         fired++
       }
     }
@@ -1426,6 +1524,11 @@ export class NotificationsService implements INotificationsService {
 
     const col = collection as Record<string, unknown>
     const collSubstatus = col.substatus as string | null
+    const collectionStatus = {
+      status: String(col.status ?? "in_progress"),
+      substatus: collSubstatus,
+    }
+    const eventTypes = await this.getCollectionEventTypes(collectionId)
     const now = new Date()
     let fired = 0
 
@@ -1444,16 +1547,18 @@ export class NotificationsService implements INotificationsService {
         if (currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx) continue
       }
 
-      const { data: existing } = await this.supabase
-        .from("collection_events")
-        .select("id")
-        .eq("collection_id", collectionId)
-        .eq("event_type", eventType)
-        .limit(1)
+      if (eventTypes.has(eventType as CollectionEventType)) continue
 
-      if (existing && existing.length > 0) continue
+      const shouldTrigger = await this.shouldTriggerDeadlineMissedEvent(
+        collectionId,
+        eventType as CollectionEventType,
+        collectionStatus,
+        eventTypes
+      )
+      if (!shouldTrigger) continue
 
       await this.triggerEvent(collectionId, eventType as CollectionEventType)
+      eventTypes.add(eventType as CollectionEventType)
       fired++
     }
 
@@ -2275,6 +2380,61 @@ export class NotificationsService implements INotificationsService {
     }
 
     return false
+  }
+
+  private async getCollectionEventTypes(collectionId: string): Promise<Set<CollectionEventType>> {
+    const { data: events } = await this.supabase
+      .from("collection_events")
+      .select("event_type")
+      .eq("collection_id", collectionId)
+    const types = ((events || []) as Pick<CollectionEventRow, "event_type">[]).map((e) => e.event_type)
+    return new Set(types as CollectionEventType[])
+  }
+
+  private async shouldTriggerDeadlineMissedEvent(
+    collectionId: string,
+    eventType: CollectionEventType,
+    preloadedStatus?: { status: string; substatus: string | null },
+    preloadedEventTypes?: Set<CollectionEventType>
+  ): Promise<boolean> {
+    if (!NotificationsService.isDeadlineMissedEventType(eventType)) return true
+
+    let statusInfo = preloadedStatus
+    if (!statusInfo) {
+      const { data } = await this.supabase
+        .from("collections")
+        .select("status, substatus")
+        .eq("id", collectionId)
+        .single()
+      if (data) statusInfo = data as { status: string; substatus: string | null }
+    }
+
+    if (statusInfo?.status === "completed" || statusInfo?.status === "cancelled") {
+      return false
+    }
+
+    const minSubstatus = MISSED_EVENT_MIN_SUBSTATUS[eventType]
+    if (minSubstatus && statusInfo?.substatus) {
+      const currentIdx = SUBSTATUS_ORDER.indexOf(statusInfo.substatus as (typeof SUBSTATUS_ORDER)[number])
+      const minIdx = SUBSTATUS_ORDER.indexOf(minSubstatus)
+      if (currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx) {
+        return false
+      }
+    }
+
+    const eventTypes = preloadedEventTypes ?? (await this.getCollectionEventTypes(collectionId))
+    const guard = DEADLINE_MISSED_GUARDS[eventType]
+    if (!guard) return true
+
+    if (guard.requiresAnyEvents && !guard.requiresAnyEvents.some((required) => eventTypes.has(required))) {
+      return false
+    }
+
+    if (guard.blocksIfAnyEvents && guard.blocksIfAnyEvents.some((blocked) => eventTypes.has(blocked))) {
+      return false
+    }
+
+    return true
   }
 
   /**
