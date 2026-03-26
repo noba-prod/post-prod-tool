@@ -30,7 +30,7 @@ export default function UserCreationFormDemoPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-6">
           {/* Create User Variant */}
           <div className="bg-white rounded-lg border p-6 space-y-4">
             <div>

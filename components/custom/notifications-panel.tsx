@@ -1,14 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Bell, Check, CheckCheck, ExternalLink } from "lucide-react"
+import { Dialog as DialogPrimitive } from "radix-ui"
+import { Bell, CheckCheck, ExternalLink, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import type { UserNotification } from "@/lib/services/notifications"
 
 interface NotificationsPanelProps {
@@ -87,7 +83,7 @@ function NotificationItem({
         {/* Unread indicator */}
         <div className="mt-1.5 shrink-0">
           {!notification.isRead ? (
-            <div className="size-2 rounded-full bg-blue-500" />
+            <div className="size-2 rounded-full bg-rose-500" />
           ) : (
             <div className="size-2" />
           )}
@@ -168,8 +164,8 @@ export function NotificationsPanel({
   }
 
   return (
-    <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
+    <DialogPrimitive.Root open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogPrimitive.Trigger asChild>
         <button
           type="button"
           className={cn(
@@ -188,64 +184,92 @@ export function NotificationsPanel({
             </span>
           )}
         </button>
-      </PopoverTrigger>
+      </DialogPrimitive.Trigger>
 
-      <PopoverContent
-        align="end"
-        sideOffset={8}
-        className="w-[380px] p-0 overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className="font-semibold">Notifications</h3>
-          {unreadCount > 0 && onMarkAllAsRead && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-muted-foreground hover:text-foreground"
-              onClick={onMarkAllAsRead}
-            >
-              <CheckCheck className="mr-1 size-3" />
-              Mark all as read
-            </Button>
+      <DialogPrimitive.Portal>
+        {/* Overlay: same as ModalWindow */}
+        <DialogPrimitive.Overlay
+          className="fixed inset-0 z-50 bg-black/[0.36] data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 duration-200"
+        />
+
+        {/* Content: same responsive shell as ModalWindow — full width below 768px (inset-x-3), fixed 380px from 768px up */}
+        <DialogPrimitive.Content
+          className={cn(
+            "fixed inset-x-3 top-3 z-50 w-auto max-w-none bg-background shadow-xl rounded-xl overflow-hidden",
+            "flex flex-col min-h-0",
+            "max-[759px]:bottom-auto max-[759px]:h-[calc(100dvh-24px)] max-[759px]:max-h-[calc(100dvh-24px)]",
+            "min-[760px]:bottom-3 min-[760px]:h-auto min-[760px]:max-h-none",
+            "min-[760px]:left-auto min-[760px]:right-3 min-[760px]:w-[380px]",
+            "data-open:animate-in data-closed:animate-out",
+            "data-closed:slide-out-to-bottom data-open:slide-in-from-bottom",
+            "min-[760px]:data-closed:slide-out-to-right min-[760px]:data-open:slide-in-from-right",
+            "duration-300 ease-in-out"
           )}
-        </div>
+        >
+          <DialogPrimitive.Title className="sr-only">
+            Notifications
+          </DialogPrimitive.Title>
 
-        {/* Notifications list */}
-        <div className="max-h-[400px] overflow-y-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="size-6 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin" />
+          {/* Header: title + Mark all as read + Close */}
+          <div className="flex items-center justify-between gap-4 p-5 shrink-0">
+            <h3 className="font-semibold">Notifications</h3>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && onMarkAllAsRead && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={onMarkAllAsRead}
+                >
+                  <CheckCheck className="mr-1 size-3" />
+                  Mark all as read
+                </Button>
+              )}
+              <DialogPrimitive.Close asChild>
+                <Button variant="outline" size="icon" className="rounded-xl size-10 shrink-0">
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </DialogPrimitive.Close>
             </div>
-          ) : notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Bell className="size-10 text-muted-foreground/40 mb-3" />
-              <p className="text-sm text-muted-foreground">No notifications yet</p>
-              <p className="text-xs text-muted-foreground/70 mt-1">
-                You'll see updates about your collections here
+          </div>
+
+          {/* Notifications list - scrollable */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="size-6 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin" />
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                <Bell className="size-10 text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">No notifications yet</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  You'll see updates about your collections here
+                </p>
+              </div>
+            ) : (
+              notifications.map((notification) => (
+                <NotificationItem
+                  key={notification.id}
+                  notification={notification}
+                  onClick={() => onNotificationClick?.(notification)}
+                  onMarkAsRead={() => onMarkAsRead?.(notification.id)}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          {notifications.length > 0 && (
+            <div className="px-4 py-3 border-t border-border bg-muted/30 shrink-0">
+              <p className="text-xs text-center text-muted-foreground">
+                Showing {notifications.length} notification{notifications.length !== 1 ? "s" : ""}
               </p>
             </div>
-          ) : (
-            notifications.map((notification) => (
-              <NotificationItem
-                key={notification.id}
-                notification={notification}
-                onClick={() => onNotificationClick?.(notification)}
-                onMarkAsRead={() => onMarkAsRead?.(notification.id)}
-              />
-            ))
           )}
-        </div>
-
-        {/* Footer - View all link */}
-        {notifications.length > 0 && (
-          <div className="px-4 py-3 border-t border-border bg-muted/30">
-            <p className="text-xs text-center text-muted-foreground">
-              Showing {notifications.length} notification{notifications.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }

@@ -40,6 +40,8 @@ export function ProgressItem({
       <div
         className={cn(
           "relative flex items-center gap-3 p-3 w-full",
+          // Below 760px: compact icon rail (sidebar collapsed)
+          "max-[759px]:mx-auto max-[759px]:w-10 max-[759px]:min-h-10 max-[759px]:justify-center max-[759px]:gap-0 max-[759px]:p-2 max-[759px]:box-border",
           // Completed: teal background + teal border + rounded-xl
           isCompleted && "bg-teal-50 border border-teal-100 rounded-xl",
           // Active: zinc background + rounded-lg (ring is separate)
@@ -66,7 +68,8 @@ export function ProgressItem({
             "text-sm font-medium leading-5",
             isCompleted && "text-teal-500",
             isActive && "text-zinc-900",
-            isDisabled && "text-zinc-500"
+            isDisabled && "text-zinc-500",
+            "max-[759px]:sr-only"
           )}
         >
           {label}

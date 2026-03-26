@@ -61,6 +61,8 @@ export function CollectionStepSummary({
   const cardBg = isLocked ? "bg-zinc-50" : "bg-white"
   const cardBorder = isLocked ? "border border-zinc-200" : "border border-border"
 
+  const showDot = (isActive || isCompleted) && showAttentionDot
+
   return (
     <div
       className={cn(
@@ -73,17 +75,26 @@ export function CollectionStepSummary({
       )}
       data-status={status}
     >
-      {/* layout1: flex row, space_between, gap 24. Title left; tags always right, justified within container. */}
-      <div className="flex flex-1 min-w-0 flex-row items-center gap-6 overflow-hidden">
-        <Titles
-          type="form"
-          title={title}
-          showSubtitle={false}
-          className={cn("min-w-0", isLocked && "text-muted-foreground")}
-        />
-        {/* Tags block: always right-aligned, justified-end so tags stay inside and on the right. */}
+      {/* Below 760px: column — row1 title + dot; row2 tags. From 760px: single row as before. */}
+      <div className="flex flex-1 min-w-0 flex-col gap-3 overflow-hidden min-[760px]:flex-row min-[760px]:items-center min-[760px]:gap-6">
+        {/* Row 1: title + attention dot (inline below 760px); dot absolute only from 760px up */}
+        <div className="flex min-w-0 items-center gap-2 min-[760px]:min-w-0 min-[760px]:flex-1">
+          {showDot && (
+            <span
+              className="size-1.5 shrink-0 rounded-full bg-rose-500 min-[760px]:hidden"
+              aria-hidden="true"
+            />
+          )}
+          <Titles
+            type="form"
+            title={title}
+            showSubtitle={false}
+            className={cn("min-w-0 flex-1", isLocked && "text-muted-foreground")}
+          />
+        </div>
+        {/* Tags (or locked date): row 2 on narrow viewports; right side on wide */}
         {showTags && (
-          <div className="flex flex-row flex-wrap items-center justify-end gap-2 shrink-0 ml-auto">
+          <div className="flex w-full min-w-0 flex-row flex-wrap items-center gap-2 min-[760px]:w-auto min-[760px]:shrink-0 min-[760px]:justify-end min-[760px]:ml-auto">
             <StageStatusTag status={isCompleted ? "done" : stageStatus} />
             <TimeStampTag status={timeStampStatus} />
             <DateIndicatorTag
@@ -94,7 +105,7 @@ export function CollectionStepSummary({
           </div>
         )}
         {isLocked && (
-          <div className="flex items-center justify-end shrink-0 ml-auto">
+          <div className="flex w-full items-start justify-start min-[760px]:w-auto min-[760px]:items-center min-[760px]:justify-end min-[760px]:shrink-0 min-[760px]:ml-auto">
             <DateIndicatorTag
               label={deadlineLabel}
               date={deadlineDate}
@@ -104,9 +115,9 @@ export function CollectionStepSummary({
           </div>
         )}
       </div>
-      {(isActive || isCompleted) && showAttentionDot && (
+      {showDot && (
         <span
-          className="pointer-events-none absolute left-2 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-rose-500"
+          className="pointer-events-none absolute left-2 top-1/2 hidden size-1.5 -translate-y-1/2 rounded-full bg-rose-500 min-[760px]:block"
           aria-hidden="true"
         />
       )}

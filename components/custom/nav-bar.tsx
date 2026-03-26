@@ -1,29 +1,45 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { Search, Menu, CircleUserRound, CircleDotDashed, LogOut } from "lucide-react"
+import { Search, Menu, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { Logo } from "./logo"
 import { Notifications } from "./notifications"
 import { UserInformation } from "./user-information"
 import { CreateEntityCommand } from "./create-entity-command"
 import {
   Sheet,
   SheetContent,
-  SheetHeader,
   SheetTitle,
+  SheetClose,
 } from "@/components/ui/sheet"
-import { Separator } from "@/components/ui/separator"
-import {
-  Command,
-  CommandGroup,
-  CommandItem,
-  CommandSeparator,
-} from "@/components/ui/command"
 import { roleToLabel } from "@/lib/types"
+
+const mobileMenuRowClass =
+  "flex items-center h-10 w-full px-3 text-sm font-medium text-foreground rounded-xl hover:bg-muted transition-colors text-left"
+
+const logoNavButtonClass =
+  "shrink-0 rounded-md p-0 border-0 bg-transparent cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+
+/** Same PNG + dimensions for desktop (≥940px) and mobile nav. */
+function NavBarLogoImage({ className }: { className?: string }) {
+  return (
+    <Image
+      src="/assets/Logo.png"
+      alt="noba"
+      width={160}
+      height={40}
+      className={cn(
+        "h-8 w-auto max-w-[min(52vw,220px)] min-[940px]:max-w-[240px] object-contain object-left shrink-0",
+        className
+      )}
+      priority
+    />
+  )
+}
 
 type NavBarVariant = "noba" | "collaborator" | "photographer"
 
@@ -115,6 +131,11 @@ export function NavBar({
     onMenuClick?.()
   }
 
+  const handleLogoClick = () => {
+    router.push("/collections")
+    setIsMobileMenuOpen(false)
+  }
+
   const handleTabClick = (tab: string) => {
     const routeMap: Record<string, string> = {
       "Collections": "/collections",
@@ -151,10 +172,17 @@ export function NavBar({
   return (
     <nav className={cn("w-full bg-background", className)}>
       {/* Desktop version */}
-      <div className="hidden md:flex items-center justify-between h-16 px-6 border-b border-border">
+      <div className="hidden min-[940px]:flex items-center justify-between h-16 px-6 border-b border-border">
         {/* Left section: Logo + Tabs + Search */}
         <div className="flex items-center gap-6">
-          <Logo variant="isotype" size="md" />
+          <button
+            type="button"
+            onClick={handleLogoClick}
+            className={logoNavButtonClass}
+            aria-label="Go to Collections"
+          >
+            <NavBarLogoImage />
+          </button>
           
           <div className="flex items-center gap-4">
             {/* Navigation Tabs */}
@@ -188,7 +216,7 @@ export function NavBar({
             <button
               type="button"
               onClick={onSearch}
-              className="flex items-center gap-2 h-10 px-4 bg-secondary rounded-full w-[224px] text-sm font-medium text-secondary-foreground"
+              className="flex items-center gap-2 h-10 px-4 pr-8 bg-secondary rounded-full w-fit text-sm font-medium text-secondary-foreground"
             >
               <Search className="size-4" />
               <span>Search...</span>
@@ -224,56 +252,109 @@ export function NavBar({
         </div>
       </div>
 
-      {/* Mobile version */}
-      <div className="flex md:hidden items-center justify-between h-16 px-6 border-b border-border">
-        {/* Left: Logo */}
-        <Logo variant="isotype" size="md" />
+      {/* Mobile version - per Figma: Logo | Notifications | Pill (Avatar + Menu) */}
+      <div className="flex min-[940px]:hidden items-center justify-between h-16 px-6 border-b border-border">
+        {/* Left: Logo (PNG) → Collections */}
+        <button
+          type="button"
+          onClick={handleLogoClick}
+          className={logoNavButtonClass}
+          aria-label="Go to Collections"
+        >
+          <NavBarLogoImage />
+        </button>
 
-        {/* Right: Avatar + Separator + Notifications + Menu */}
+        {/* Right: Notifications + Pill button (Avatar + Hamburger) */}
         <div className="flex items-center gap-4">
-          <Avatar size="sm">
-            {avatarSrc ? (
-              <AvatarImage src={avatarSrc} alt={userName} />
-            ) : null}
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
+          <Notifications usePanel />
 
-          <div className="w-px h-5 bg-border" />
-
-          <div className="flex items-center gap-1">
-            <Notifications usePanel />
-
-            <button
-              type="button"
-              onClick={handleMenuClick}
-              className="relative flex items-center justify-center size-10 rounded-xl transition-colors hover:bg-sidebar-background active:bg-accent z-10"
-              style={{ touchAction: 'manipulation' }}
-              aria-label="Open menu"
-            >
-              <Menu className="size-4 text-foreground" />
-            </button>
-          </div>
+          {/* Pill-shaped button combining Avatar + Menu (Figma design) */}
+          <button
+            type="button"
+            onClick={handleMenuClick}
+            className="flex items-center gap-2 rounded-full border border-border px-2 py-1.5 transition-colors hover:bg-sidebar-background active:bg-accent"
+            style={{ touchAction: 'manipulation' }}
+            aria-label="Open menu"
+          >
+            <Avatar size="sm">
+              {avatarSrc ? (
+                <AvatarImage src={avatarSrc} alt={userName} />
+              ) : null}
+              <AvatarFallback>{initials}</AvatarFallback>
+            </Avatar>
+            <Menu className="size-4 text-foreground shrink-0" />
+          </button>
         </div>
       </div>
 
-      {/* Mobile Menu Sheet */}
+      {/* Mobile Menu Sheet — ModalWindow shell; Figma 1248-50640 layout inside */}
       <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-        <SheetContent side="right" className="w-[300px] sm:w-[380px] p-0">
-          <SheetHeader className="px-6 py-4 border-b border-border">
-            <SheetTitle className="text-left">Menu</SheetTitle>
-          </SheetHeader>
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          overlayClassName="bg-black/[0.36]"
+          className={cn(
+            // Same responsive shell as ModalWindow / NotificationsPanel: full width below 768px (inset-x-3), 380px from 768px up
+            "p-0 gap-0 flex flex-col overflow-hidden shadow-xl rounded-xl bg-background",
+            "fixed inset-x-3 top-3 bottom-3 z-50 w-auto max-w-none h-[calc(100vh-24px)]",
+            "min-[768px]:left-auto min-[768px]:right-3 min-[768px]:inset-x-auto min-[768px]:w-[380px]",
+            "data-open:animate-in data-closed:animate-out duration-300 ease-in-out",
+            // Override sheet defaults so mobile matches ModalWindow (slide from bottom below 768px)
+            "max-[767px]:data-[side=right]:data-closed:slide-out-to-bottom max-[767px]:data-[side=right]:data-open:slide-in-from-bottom",
+            "min-[768px]:data-[side=right]:data-closed:slide-out-to-right min-[768px]:data-[side=right]:data-open:slide-in-from-right",
+            "data-[side=right]:!top-3 data-[side=right]:!bottom-3 data-[side=right]:!h-[calc(100vh-24px)]",
+            "max-[767px]:data-[side=right]:!inset-x-3 max-[767px]:data-[side=right]:!w-auto max-[767px]:data-[side=right]:!max-w-none",
+            "min-[768px]:data-[side=right]:!left-auto min-[768px]:data-[side=right]:!right-3 min-[768px]:data-[side=right]:!w-[380px]"
+          )}
+        >
+          <SheetTitle className="sr-only">Menu</SheetTitle>
 
-          <div className="flex flex-col h-[calc(100vh-73px)]">
-            <div className="flex-1 overflow-y-auto">
-              {/* Navigation Tabs */}
-              <div className="px-6 py-4">
+          {/* Figma 1248-50640: header = user + close; nav; separator; account links. Search/Create hidden below 768px only. */}
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            {/* Top: avatar, name, org/role, close */}
+            <div className="flex items-start justify-between gap-4 p-5 pb-4 shrink-0">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <Avatar size="sm">
+                  {avatarSrc ? (
+                    <AvatarImage src={avatarSrc} alt={userName} />
+                  ) : null}
+                  <AvatarFallback>{initials}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col items-start gap-0.5 flex-1 min-w-0">
+                  <span className="text-sm font-semibold leading-tight truncate w-full text-left text-foreground">
+                    {userName}
+                  </span>
+                  <span className="text-xs leading-tight truncate w-full text-left">
+                    <span className="text-lime-500">{displayOrganization}</span>
+                    {role && (
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {["admin", "editor", "viewer"].includes(role.toLowerCase())
+                          ? roleToLabel(role.toLowerCase() as "admin" | "editor" | "viewer")
+                          : role}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+              <SheetClose asChild>
+                <Button variant="outline" size="icon" className="rounded-xl size-10 shrink-0">
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </SheetClose>
+            </div>
+
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {/* Primary navigation */}
+              <div className="px-2 py-2">
                 <nav className="flex flex-col gap-1">
                   {tabs.map((tab) => (
                     <button
                       key={tab}
                       type="button"
                       onClick={() => handleTabClick(tab)}
-                      className="flex items-center h-10 px-3 text-sm font-medium text-foreground rounded-xl hover:bg-muted transition-colors text-left"
+                      className={mobileMenuRowClass}
                     >
                       {tab}
                     </button>
@@ -281,10 +362,8 @@ export function NavBar({
                 </nav>
               </div>
 
-              <Separator />
-
-              {/* Search */}
-              <div className="px-6 py-4">
+              {/* Creation/search flows: visible in sheet from 768px up (narrow phones: hidden). Desktop ≥940px unchanged. */}
+              <div className="hidden min-[768px]:block px-6 pb-4 space-y-4">
                 <button
                   type="button"
                   onClick={handleSearchClick}
@@ -293,82 +372,43 @@ export function NavBar({
                   <Search className="size-4" />
                   <span>Search...</span>
                 </button>
+                {variant === "noba" && role?.toLowerCase() !== "viewer" && (
+                  <CreateEntityCommand
+                    buttonLabel="Create new"
+                    popoverAlign="start"
+                  />
+                )}
               </div>
 
-              {/* Create New Button - only for noba variant and not viewers */}
-              {variant === "noba" && role?.toLowerCase() !== "viewer" && (
-                <>
-                  <Separator />
-                  <div className="px-6 py-4">
-                    <CreateEntityCommand
-                      buttonLabel="Create new"
-                      popoverAlign="start"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+              <div className="mx-2 border-t border-border" aria-hidden />
 
-            <Separator />
-
-            {/* User Information Section */}
-            <div className="px-6 py-4 shrink-0">
-              <div className="flex flex-col gap-1">
-                {/* User Info Display */}
-                <div className="flex items-center gap-3 px-3 py-2 mb-2">
-                  <Avatar size="sm">
-                    {avatarSrc ? (
-                      <AvatarImage src={avatarSrc} alt={userName} />
-                    ) : null}
-                    <AvatarFallback>{initials}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col items-start gap-0.5 flex-1 min-w-0">
-                    <span className="text-sm font-semibold leading-none truncate w-full text-left text-foreground">
-                      {userName}
-                    </span>
-                    <span className="text-xs leading-none truncate w-full text-left">
-                      <span className="text-lime-500">{displayOrganization}</span>
-                      {role && (
-                        <span className="text-muted-foreground">
-                          {" · "}
-                          {["admin", "editor", "viewer"].includes(role.toLowerCase())
-                            ? roleToLabel(role.toLowerCase() as "admin" | "editor" | "viewer")
-                            : role}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-
-                {/* User Menu Items */}
-                <Command className="rounded-lg">
-                  <CommandGroup>
-                    <CommandItem
-                      onSelect={handleEditProfile}
-                      className="cursor-pointer"
+              {/* Account actions — same row style as primary nav (Figma 1248-50640), not Command/popover */}
+              <div className="px-2 py-2">
+                <nav className="flex flex-col gap-1" aria-label="Account">
+                  <button
+                    type="button"
+                    onClick={handleEditProfile}
+                    className={mobileMenuRowClass}
+                  >
+                    Profile details
+                  </button>
+                  {isAdminUser && !isSelfPhotographer && (
+                    <button
+                      type="button"
+                      onClick={handleEditCompany}
+                      className={mobileMenuRowClass}
                     >
-                      <CircleUserRound className="size-4" />
-                      <span>Profile details</span>
-                    </CommandItem>
-                    {isAdminUser && !isSelfPhotographer && (
-                      <CommandItem
-                        onSelect={handleEditCompany}
-                        className="cursor-pointer"
-                      >
-                        <CircleDotDashed className="size-4" />
-                        <span>Company details</span>
-                      </CommandItem>
-                    )}
-                    <CommandSeparator />
-                    <CommandItem
-                      onSelect={handleLogout}
-                      className="cursor-pointer"
-                    >
-                      <LogOut className="size-4" />
-                      <span>Logout</span>
-                    </CommandItem>
-                  </CommandGroup>
-                </Command>
+                      Company details
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className={mobileMenuRowClass}
+                  >
+                    Logout
+                  </button>
+                </nav>
               </div>
             </div>
           </div>

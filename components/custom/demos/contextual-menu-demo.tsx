@@ -42,7 +42,7 @@ export function ContextualMenuDemo() {
   return (
     <div className="flex flex-col gap-8 w-full">
       {/* Side by side comparison */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-8">
         {/* Type: Menu */}
         <div className="space-y-4">
           <p className="text-xs font-medium text-muted-foreground">Type: Menu (gap-2 / 8px spacing)</p>

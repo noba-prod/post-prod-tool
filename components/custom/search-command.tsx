@@ -326,10 +326,7 @@ export function SearchCommand({
         {/* Overlay: #000 at 36% opacity */}
         <DialogOverlay className="bg-black/[0.36]" />
         <DialogContent
-          className={cn(
-            "max-w-2xl w-full p-0 overflow-hidden",
-            "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-          )}
+          className="max-w-2xl w-full p-0 overflow-hidden"
           showCloseButton={false}
         >
           <DialogHeader className="sr-only">

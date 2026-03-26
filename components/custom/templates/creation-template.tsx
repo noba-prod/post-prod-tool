@@ -422,8 +422,8 @@ function CreationTemplateContent({
           }}
         />
         
-        {/* Breadcrumb */}
-        <div className="border-border px-6 py-8 relative z-10 shrink-0">
+        {/* Breadcrumb — below 760px: 16px all sides (p-4); from 760px: px-6 py-8 */}
+        <div className="border-border p-4 relative z-10 shrink-0 min-[760px]:px-6 min-[760px]:py-8">
           <Breadcrumb>
             <BreadcrumbList>
               {effectiveBreadcrumbs.map((crumb, index) => (
@@ -452,8 +452,8 @@ function CreationTemplateContent({
 
         {/* Main Layout: Sidebar + Content */}
         <div className="flex-1 flex overflow-visible relative min-h-0">
-          {/* Sidebar Container with padding */}
-          <aside className="w-[320px] shrink-0 px-4 pb-4 relative z-10 flex flex-col min-h-0">
+          {/* Sidebar — hidden below 760px; full-width main on narrow viewports */}
+          <aside className="hidden min-[760px]:flex min-[760px]:flex-col w-[72px] min-[760px]:w-[320px] shrink-0 px-2 pb-4 min-[760px]:px-4 relative z-10 min-h-0">
             <div className="h-full max-h-full rounded-xl overflow-hidden flex flex-col">
               {sidebarVariant === "create-collection" ? (
                 <SideBar
@@ -509,7 +509,7 @@ function CreationTemplateContent({
 
           {/* Content */}
           <main className="flex-1 overflow-y-auto relative z-10 min-w-0">
-            <div className="px-6 space-y-0 pb-[45px]">
+            <div className="space-y-0 pt-2 px-4 pb-5 min-[760px]:px-6 min-[760px]:pb-[45px] min-[760px]:pt-0">
               {blocks.map((block, index) => (
                 <React.Fragment key={block.id}>
                   <BlockTemplate

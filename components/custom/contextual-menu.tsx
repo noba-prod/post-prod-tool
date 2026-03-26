@@ -55,7 +55,7 @@ export function ContextualMenu({
 }: ContextualMenuProps) {
   if (type === "stepper") {
     return (
-      <div className={cn("flex flex-col", className)}>
+      <div className={cn("flex flex-col max-[759px]:items-center", className)}>
         {items.map((item, index) => {
           const isActive = item.id === activeId
           const isCompleted = completedItems.includes(item.id)
@@ -80,7 +80,7 @@ export function ContextualMenu({
                 onClick={() => onItemClick?.(item.id)}
               />
               {!isLast && (
-                <div className="flex justify-start pl-5 py-0">
+                <div className="flex justify-start pl-5 py-0 max-[759px]:justify-center max-[759px]:pl-0">
                   <StepConnector 
                     status={isCompleted || isNextCompleted ? "completed" : "uncompleted"} 
                     orientation="vertical"
@@ -97,7 +97,7 @@ export function ContextualMenu({
 
   // type === "menu"
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
+    <div className={cn("flex flex-col gap-2 max-[759px]:items-center", className)}>
       {items.map((item) => {
         const isActive = item.id === activeId
         

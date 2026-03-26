@@ -166,7 +166,9 @@ export function CollectionHeading(props: CollectionHeadingProps) {
             <ShootingTypeTag type={shootingType} />
           )}
           {showPhotographerName && photographerName && (
-            <PhotographerNameTag name={photographerName} />
+            <span className="hidden min-[760px]:inline-flex">
+              <PhotographerNameTag name={photographerName} />
+            </span>
           )}
           {showStageStatus && (
             <StageStatusTag status={stageStatus} />
@@ -174,17 +176,21 @@ export function CollectionHeading(props: CollectionHeadingProps) {
         </div>
       </div>
 
-      {/* Right: CTA buttons */}
+      {/* Right: CTA buttons — below 760px: Participants icon-only; Settings hidden */}
       <div className="flex items-center gap-3">
         {showParticipantsButton && (
           <Button
             variant="secondary"
             size="lg"
             onClick={onParticipants}
-            className="rounded-xl gap-2"
+            aria-label="Participants"
+            className={cn(
+              "rounded-xl gap-2",
+              "max-[759px]:size-10 max-[759px]:min-h-10 max-[759px]:min-w-10 max-[759px]:gap-0 max-[759px]:px-0"
+            )}
           >
-            <Users className="size-4" />
-            Participants
+            <Users className="size-4 shrink-0" aria-hidden />
+            <span className="max-[759px]:sr-only">Participants</span>
           </Button>
         )}
         {showSettingsButton && (
@@ -192,7 +198,7 @@ export function CollectionHeading(props: CollectionHeadingProps) {
             variant="secondary"
             size="lg"
             onClick={onSettings}
-            className="rounded-xl gap-2"
+            className="hidden min-[760px]:inline-flex rounded-xl gap-2"
           >
             <Settings className="size-4" />
             Settings

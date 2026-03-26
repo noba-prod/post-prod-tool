@@ -5,6 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Mobile breakpoint: below 940px = mobile layout */
+  --breakpoint-md: 58.75rem; /* 940px */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);

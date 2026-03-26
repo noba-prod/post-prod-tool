@@ -4,7 +4,7 @@ import * as React from "react"
 import { useState, useEffect } from "react"
 import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
-import { FilterBar } from "@/components/custom/filter-bar"
+import { FilterBar, COLLECTION_STATUSES } from "@/components/custom/filter-bar"
 import { Grid } from "@/components/custom/grid"
 import { Tables, type Collection } from "@/components/custom/tables"
 import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
@@ -88,6 +88,7 @@ interface Filters {
   client: string | null
   status: string | null
   jobReference: string | null
+  photographer: string | null
   sortOrder: "asc" | "desc"
 }
 
@@ -99,6 +100,7 @@ export default function CollectionsPreviewPage() {
     client: null,
     status: null,
     jobReference: null,
+    photographer: null,
     sortOrder: "desc",
   })
 
@@ -113,25 +115,87 @@ export default function CollectionsPreviewPage() {
     })
   }, [])
 
-  const handleFilterChange = (filterId: string, value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      [filterId]: prev[filterId as keyof Filters] === value ? null : value,
-    }))
-  }
+  const handleFilterChange = React.useCallback((filterId: string, value: string) => {
+    const v = value === "" ? null : value
+    setFilters((prev) => {
+      if (filterId === "client") {
+        return {
+          ...prev,
+          client: v,
+          status: null,
+          jobReference: null,
+          photographer: null,
+        }
+      }
+      if (filterId === "status") {
+        return {
+          ...prev,
+          status: v,
+          jobReference: null,
+          photographer: null,
+        }
+      }
+      if (filterId === "jobReference") {
+        return { ...prev, jobReference: v, photographer: null }
+      }
+      if (filterId === "photographer") {
+        return { ...prev, photographer: v }
+      }
+      return prev
+    })
+  }, [])
 
   const handleSortChange = (order: "asc" | "desc") => {
     setFilters((prev) => ({ ...prev, sortOrder: order }))
   }
 
-  const jobReferenceOptions = React.useMemo(() => {
+  const collectionsBase = React.useMemo(() => collections, [collections])
+
+  const scopeAfterClient = React.useMemo(() => {
+    if (!filters.client) return collectionsBase
+    return collectionsBase.filter((c) => c.clientId === filters.client)
+  }, [collectionsBase, filters.client])
+
+  const collectionStatusOptionsForBar = React.useMemo(() => {
+    const seen = new Set<string>()
+    for (const c of scopeAfterClient) {
+      seen.add(c.status)
+    }
+    return COLLECTION_STATUSES.filter((s) => seen.has(s.value))
+  }, [scopeAfterClient])
+
+  const scopeAfterStatus = React.useMemo(() => {
+    let result = scopeAfterClient
+    if (filters.status) {
+      result = result.filter((c) => c.status === filters.status)
+    }
+    return result
+  }, [scopeAfterClient, filters.status])
+
+  const jobReferenceOptionsForBar = React.useMemo(() => {
     const refs = new Set<string>()
-    collections.forEach((c) => {
+    scopeAfterStatus.forEach((c) => {
       const r = c.reference?.trim()
       if (r && r !== "—") refs.add(r)
     })
     return Array.from(refs).sort().map((value) => ({ value }))
-  }, [collections])
+  }, [scopeAfterStatus])
+
+  const clientOptionsForBar = React.useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of collectionsBase) {
+      if (c.clientId && c.clientName && c.clientName !== "—") {
+        map.set(c.clientId, c.clientName)
+      }
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+  }, [collectionsBase])
+
+  /** Preview data has no photographer entity ids; keep list empty. */
+  const photographerOptionsForBar = React.useMemo<{ id: string; name: string }[]>(
+    () => [],
+    []
+  )
 
   const filteredCollections = React.useMemo(() => {
     let result = [...collections]
@@ -191,9 +255,11 @@ export default function CollectionsPreviewPage() {
             onFilterChange={handleFilterChange}
             onSortChange={handleSortChange}
             showAction={false}
-            clientOptions={[]}
-            photographerOptions={[]}
-            jobReferenceOptions={jobReferenceOptions}
+            collectionFilterState={filters}
+            collectionStatusOptions={collectionStatusOptionsForBar}
+            clientOptions={clientOptionsForBar}
+            photographerOptions={photographerOptionsForBar}
+            jobReferenceOptions={jobReferenceOptionsForBar}
           />
         </LayoutSection>
         <LayoutSection>

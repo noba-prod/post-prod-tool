@@ -49,6 +49,11 @@ interface ModalWindowProps {
   width?: string
   /** Additional class name for the modal content */
   className?: string
+  /**
+   * Radix `modal` on the dialog root. Default `true` (focus trap + standard overlay).
+   * Use `false` when children need nested Popovers that port to `body` (e.g. FilterBar command lists).
+   */
+  modal?: boolean
 }
 
 // ============================================================================
@@ -107,26 +112,43 @@ function ModalWindow({
   onSecondaryClick,
   width = "600px",
   className,
+  modal = true,
 }: ModalWindowProps) {
-  return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        {/* Overlay: #000 at 36% opacity */}
-        <DialogPrimitive.Overlay
-          className="fixed inset-0 z-50 bg-black/[0.36] data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 duration-200"
-        />
+  const useNonModal = modal === false
 
-        {/* Modal Content: Right-aligned slide-in panel with 12px margin (floating) */}
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} modal={!useNonModal}>
+      <DialogPrimitive.Portal>
+        {useNonModal ? (
+          open ? (
+            <div
+              role="presentation"
+              aria-hidden
+              className="fixed inset-0 z-50 bg-black/[0.36] animate-in fade-in-0 duration-200"
+              onClick={() => onOpenChange?.(false)}
+            />
+          ) : null
+        ) : (
+          <DialogPrimitive.Overlay
+            className="fixed inset-0 z-50 bg-black/[0.36] data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 duration-200"
+          />
+        )}
+
         <DialogPrimitive.Content
           className={cn(
-            "fixed top-3 right-3 bottom-3 z-50 bg-background shadow-xl rounded-xl overflow-hidden",
-            "flex flex-col",
+            // Below 760px: full width between horizontal margins; height uses dvh so inner scroll works with keyboard
+            "fixed inset-x-3 top-3 z-50 w-auto max-w-none bg-background shadow-xl rounded-xl overflow-hidden",
+            "flex flex-col min-h-0",
+            "max-[759px]:bottom-auto max-[759px]:h-[calc(100dvh-24px)] max-[759px]:max-h-[calc(100dvh-24px)]",
+            "min-[760px]:bottom-3 min-[760px]:h-auto min-[760px]:max-h-none",
+            "min-[760px]:left-auto min-[760px]:right-3 min-[760px]:w-[var(--modal-width)]",
             "data-open:animate-in data-closed:animate-out",
-            "data-closed:slide-out-to-right data-open:slide-in-from-right",
+            "data-closed:slide-out-to-bottom data-open:slide-in-from-bottom",
+            "min-[760px]:data-closed:slide-out-to-right min-[760px]:data-open:slide-in-from-right",
             "duration-300 ease-in-out",
             className
           )}
-          style={{ width }}
+          style={{ "--modal-width": width } as React.CSSProperties}
         >
           {/* Accessible title and description (visually hidden, required by Radix for a11y) */}
           <DialogPrimitive.Title className="sr-only">

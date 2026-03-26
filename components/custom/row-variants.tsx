@@ -16,12 +16,12 @@ interface RowVariantsProps {
 
 /**
  * Row Variants component - Layout wrapper with 1, 2, or 3 column grid
- * 
+ *
  * A flexible grid layout for form items and other components.
  * - variant="1": Single column (full width)
- * - variant="2": Two equal columns
- * - variant="3": Three equal columns
- * 
+ * - variant="2": Two equal columns from 760px up; single column below (narrow viewports / accessibility)
+ * - variant="3": Three equal columns from 760px up; single column below
+ *
  * Gap: 16px (spacing-4) between columns
  */
 export function RowVariants({
@@ -34,8 +34,8 @@ export function RowVariants({
       className={cn(
         "grid w-full gap-4",
         variant === "1" && "grid-cols-1",
-        variant === "2" && "grid-cols-2",
-        variant === "3" && "grid-cols-3",
+        variant === "2" && "grid-cols-1 min-[760px]:grid-cols-2",
+        variant === "3" && "grid-cols-1 min-[760px]:grid-cols-3",
         className
       )}
     >

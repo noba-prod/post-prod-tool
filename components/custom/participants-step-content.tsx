@@ -513,16 +513,19 @@ function NobaSection({ draft, onConfigChange }: NobaSectionProps) {
   )
 
   return (
-    <div className="flex flex-col gap-4 p-4 bg-background border border-border rounded-xl w-full">
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-base font-semibold text-foreground">noba*</span>
+    <div className="flex flex-col gap-4 p-4 bg-background border border-border rounded-xl w-full min-w-0 overflow-hidden">
+      <div className="flex min-w-0 w-full flex-row items-center justify-between gap-3">
+        <span className="text-base font-semibold text-foreground min-w-0 flex-1 max-[759px]:truncate">
+          noba*
+        </span>
         <Button
           variant="secondary"
+          size="lg"
           onClick={() => setAddOpen(true)}
-          className="h-10 gap-2 rounded-xl"
+          className="h-10 shrink-0 gap-2 rounded-xl max-[759px]:size-10 max-[759px]:p-0 max-[759px]:gap-0"
         >
-          <Plus className="h-4 w-4" />
-          Add user
+          <Plus className="h-4 w-4 shrink-0" />
+          <span className="max-[759px]:sr-only min-[760px]:inline">Add user</span>
         </Button>
       </div>
       {memberUsers.length > 0 && (
@@ -797,11 +800,21 @@ function ParticipantSection({
   // When can_edit = true the user can interact with milestone actions
   // (upload links, add comments, trigger missing-photos, etc.).
 
+  const optionPickerClassName = cn(
+    "min-[760px]:w-[224px] min-[760px]:min-w-[224px] min-[760px]:shrink-0",
+    "max-[759px]:w-fit max-[759px]:min-w-0 max-[759px]:max-w-full max-[759px]:[&_button]:w-auto max-[759px]:[&_button]:min-w-0 max-[759px]:[&_button]:max-w-full"
+  )
+
+  const addMemberButtonClassName =
+    "h-10 shrink-0 gap-2 rounded-xl max-[759px]:size-10 max-[759px]:p-0 max-[759px]:gap-0"
+
   return (
-    <div className="flex flex-col gap-4 p-4 bg-background border border-border rounded-xl w-full">
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-base font-semibold text-foreground">{label}</span>
-        <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-4 p-4 bg-background border border-border rounded-xl w-full min-w-0 overflow-hidden">
+      <div className="flex min-w-0 w-full flex-row items-center justify-between gap-2 min-[760px]:gap-4">
+        <span className="text-base font-semibold text-foreground min-w-0 flex-1 max-[759px]:truncate">
+          {label}
+        </span>
+        <div className="flex min-w-0 shrink-0 flex-row items-center gap-2 min-[760px]:gap-3">
           {showEntityPicker && (
             <OptionPicker
               label=""
@@ -810,28 +823,30 @@ function ParticipantSection({
               placeholder={pickerPlaceholder}
               options={entityOptions}
               disabled={prefilled}
-              className="w-[224px] min-w-[224px] shrink-0"
+              className={optionPickerClassName}
             />
           )}
           {(isPhotographerNoAgency || isPhotographerWithAgency) ? (
             <Button
               variant="secondary"
+              size="lg"
               onClick={() => setAddMemberOpen(true)}
               disabled={addPhotographerDisabled}
-              className="h-10 gap-2 rounded-xl"
+              className={addMemberButtonClassName}
             >
-              <Plus className="h-4 w-4" />
-              {addButtonLabel}
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="max-[759px]:sr-only min-[760px]:inline">{addButtonLabel}</span>
             </Button>
           ) : (
             <Button
               variant="secondary"
+              size="lg"
               onClick={() => setAddMemberOpen(true)}
               disabled={!entityId}
-              className="h-10 gap-2 rounded-xl"
+              className={addMemberButtonClassName}
             >
-              <Plus className="h-4 w-4" />
-              {addButtonLabel}
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="max-[759px]:sr-only min-[760px]:inline">{addButtonLabel}</span>
             </Button>
           )}
         </div>

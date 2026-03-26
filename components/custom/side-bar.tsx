@@ -119,16 +119,20 @@ export function SideBar(props: SideBarProps) {
   if (type === "view-entity") {
     const { items, entity, deleteLabel = "Delete [entity:type]", onDelete } = props
     return (
-      <div className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}>
+      <div
+        className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}
+        role="navigation"
+        aria-label={title}
+      >
         {/* Content - scrollable area */}
-        <div className="flex-1 flex flex-col gap-4 p-4 min-h-0 overflow-hidden">
-          {/* Title - fixed */}
-          <div className="flex items-center h-8 px-2 opacity-70 shrink-0">
+        <div className="flex-1 flex flex-col gap-4 p-4 min-h-0 overflow-hidden max-[759px]:gap-2 max-[759px]:p-2">
+          {/* Title — hidden below 760px (collapsed rail); nav items keep aria-label via MenuItem */}
+          <div className="flex items-center h-8 px-2 opacity-70 shrink-0 max-[759px]:hidden">
             <span className="text-xs font-medium text-zinc-900">{title}</span>
           </div>
 
           {/* Menu - scrollable */}
-          <div className="flex-1 overflow-y-auto min-h-0 -m-0.5 p-0.5">
+          <div className="flex-1 overflow-y-auto min-h-0 -m-0.5 p-0.5 max-[759px]:flex max-[759px]:flex-col max-[759px]:items-center">
             <ContextualMenu
               type="menu"
               items={items}
@@ -138,17 +142,19 @@ export function SideBar(props: SideBarProps) {
           </div>
         </div>
 
-        {/* Footer - always visible */}
-        <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0">
-          <EntitySummaryCard {...entity} />
+        {/* Footer — summary hidden & delete icon-only below 760px (Figma 1246-48552) */}
+        <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0 max-[759px]:items-center max-[759px]:p-2 max-[759px]:gap-2">
+          <div className="hidden min-[760px]:block w-full">
+            <EntitySummaryCard {...entity} />
+          </div>
           <Button
             variant="secondary"
             size="lg"
-            className="w-full rounded-xl gap-2"
+            className="w-full rounded-xl gap-2 max-[759px]:w-10 max-[759px]:h-10 max-[759px]:p-0 max-[759px]:shrink-0"
             onClick={onDelete}
           >
-            <Trash2 className="w-4 h-4" />
-            {deleteLabel}
+            <Trash2 className="w-4 h-4" aria-hidden />
+            <span className="max-[759px]:sr-only">{deleteLabel}</span>
           </Button>
         </div>
       </div>
@@ -158,16 +164,18 @@ export function SideBar(props: SideBarProps) {
   if (type === "create-entity") {
     const { items, completedItems = [], deleteLabel = "Delete [entity:type]", onDelete } = props
     return (
-      <div className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}>
+      <div
+        className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}
+        role="navigation"
+        aria-label={title}
+      >
         {/* Content - scrollable area */}
-        <div className="flex-1 flex flex-col gap-4 p-4 min-h-0 overflow-hidden">
-          {/* Title - fixed */}
-          <div className="flex items-center h-8 px-2 opacity-70 shrink-0">
+        <div className="flex-1 flex flex-col gap-4 p-4 min-h-0 overflow-hidden max-[759px]:gap-2 max-[759px]:p-2">
+          <div className="flex items-center h-8 px-2 opacity-70 shrink-0 max-[759px]:hidden">
             <span className="text-xs font-medium text-zinc-900">{title}</span>
           </div>
 
-          {/* Stepper - scrollable */}
-          <div className="flex-1 overflow-y-auto min-h-0 -m-0.5 p-0.5">
+          <div className="flex-1 overflow-y-auto min-h-0 -m-0.5 p-0.5 max-[759px]:flex max-[759px]:flex-col max-[759px]:items-center">
             <ContextualMenu
               type="stepper"
               items={items}
@@ -178,16 +186,15 @@ export function SideBar(props: SideBarProps) {
           </div>
         </div>
 
-        {/* Footer - always visible */}
-        <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0">
+        <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0 max-[759px]:items-center max-[759px]:p-2">
           <Button
             variant="secondary"
             size="lg"
-            className="w-full rounded-xl gap-2"
+            className="w-full rounded-xl gap-2 max-[759px]:w-10 max-[759px]:h-10 max-[759px]:p-0 max-[759px]:shrink-0"
             onClick={onDelete}
           >
-            <Trash2 className="w-4 h-4" />
-            {deleteLabel}
+            <Trash2 className="w-4 h-4" aria-hidden />
+            <span className="max-[759px]:sr-only">{deleteLabel}</span>
           </Button>
         </div>
       </div>
@@ -197,16 +204,17 @@ export function SideBar(props: SideBarProps) {
   if (type === "create-collection") {
     const { items, collection, completedItems = [], deleteLabel = "Delete collection", onDelete, onSettingsCollection, onPublish, publishDisabled = true, publishLabel = "Publish" } = props
     return (
-      <div className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}>
-        {/* Content - scrollable area */}
-        <div className="flex-1 flex flex-col gap-4 p-4 min-h-0 overflow-hidden">
-          {/* Title - fixed */}
-          <div className="flex items-center h-8 px-2 opacity-70 shrink-0">
+      <div
+        className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}
+        role="navigation"
+        aria-label={title}
+      >
+        <div className="flex-1 flex flex-col gap-4 p-4 min-h-0 overflow-hidden max-[759px]:gap-2 max-[759px]:p-2">
+          <div className="flex items-center h-8 px-2 opacity-70 shrink-0 max-[759px]:hidden">
             <span className="text-xs font-medium text-zinc-900">{title}</span>
           </div>
 
-          {/* Stepper - scrollable */}
-          <div className="flex-1 overflow-y-auto min-h-0 -m-0.5 p-0.5">
+          <div className="flex-1 overflow-y-auto min-h-0 -m-0.5 p-0.5 max-[759px]:flex max-[759px]:flex-col max-[759px]:items-center">
             <ContextualMenu
               type="stepper"
               items={items}
@@ -217,10 +225,12 @@ export function SideBar(props: SideBarProps) {
           </div>
         </div>
 
-        {/* Footer - collection summary + 3 actions (Figma 763-45815): destructive icon, settings icon, Publish primary, gap-2 */}
-        <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0">
-          <CollectionSummaryCard {...collection} />
-          <div className="flex items-center gap-2 w-full">
+        {/* Footer — summary hidden below 760px; action row stays icon-heavy */}
+        <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0 max-[759px]:p-2 max-[759px]:gap-2">
+          <div className="hidden min-[760px]:block w-full">
+            <CollectionSummaryCard {...collection} />
+          </div>
+          <div className="flex items-center gap-2 w-full max-[759px]:justify-center max-[759px]:flex-wrap">
             <Button
               variant="destructive"
               size="icon"
@@ -242,7 +252,7 @@ export function SideBar(props: SideBarProps) {
             <Button
               variant="default"
               size="lg"
-              className="flex-1 rounded-xl min-w-0"
+              className="flex-1 rounded-xl min-w-0 max-[759px]:flex-initial max-[759px]:px-3 max-[759px]:text-xs"
               onClick={onPublish}
               disabled={publishDisabled}
             >
@@ -265,28 +275,33 @@ export function SideBar(props: SideBarProps) {
   } = props as SideBarDefaultProps
 
   return (
-    <div className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}>
+    <div
+      className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}
+      role="navigation"
+      aria-label={title}
+    >
       {/* Content - scrollable area */}
-      <div className="flex-1 flex flex-col gap-4 p-4 min-h-0 overflow-hidden">
-        {/* Title - fixed */}
-        <div className="flex items-center h-8 px-2 opacity-70 shrink-0">
+      <div className="flex-1 flex flex-col gap-4 p-4 min-h-0 overflow-hidden max-[759px]:gap-2 max-[759px]:p-2">
+        <div className="flex items-center h-8 px-2 opacity-70 shrink-0 max-[759px]:hidden">
           <span className="text-xs font-medium text-zinc-900">{title}</span>
         </div>
 
-        {/* Slot - scrollable */}
         <div className="flex-1 flex items-center justify-center border-2 border-dashed border-zinc-200 rounded-lg p-4 overflow-y-auto min-h-0">
           {children || (
-            <span className="text-sm text-zinc-900 text-center">
+            <span className="text-sm text-zinc-900 text-center max-[759px]:text-xs">
               Slot (swap it with your content)
             </span>
           )}
         </div>
       </div>
 
-      {/* Footer - always visible */}
-      <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0">
-        {entity && <EntitySummaryCard {...entity} />}
-        <div className="flex gap-3">
+      <div className="border-t border-zinc-200 p-4 flex flex-col gap-4 shrink-0 max-[759px]:p-2">
+        {entity && (
+          <div className="hidden min-[760px]:block w-full">
+            <EntitySummaryCard {...entity} />
+          </div>
+        )}
+        <div className="flex gap-3 max-[759px]:flex-col">
           <Button
             variant="secondary"
             size="lg"

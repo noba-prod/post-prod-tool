@@ -380,7 +380,7 @@ export const customRegistry: ComponentEntry[] = [
         </div>
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Mobile (resize window to see)</p>
-          <p className="text-xs text-muted-foreground">La versión mobile se muestra automáticamente en viewports menores a 768px</p>
+          <p className="text-xs text-muted-foreground">La versión mobile se muestra automáticamente en viewports menores a 940px</p>
         </div>
       </div>
     ),
@@ -806,14 +806,14 @@ Gap: 16px | Padding: 40px`,
     id: "row-variants",
     name: "row-variants",
     title: "Row Variants",
-    description: "Layout wrapper with 1, 2, or 3 column grid. Use variant='1' for single column, '2' for two columns, '3' for three columns. Gap: 16px between columns. Slots can contain any form component.",
+    description: "Layout wrapper with 1, 2, or 3 column grid. Use variant='1' for single column, '2' for two columns, '3' for three columns. Below 760px viewport width, variants 2 and 3 stack to one column; from 760px up they use 2 or 3 columns. Gap: 16px between columns. Slots can contain any form component.",
     demo: <RowVariantsDemo />,
   },
   {
     id: "forms",
     name: "forms",
     title: "Forms",
-    description: "Form layout component with four variants: 'basic' (title + rows), 'capsule' (bordered container), 'shipping-module' (origin/destination with shipping details), 'horizontal-flow' (two capsules side by side with arrow). Uses RowVariants for flexible slot layouts and Titles (type='form') for headers.",
+    description: "Form layout component with four variants: 'basic' (title + rows), 'capsule' (bordered container), 'shipping-module' (origin/destination with shipping details), 'horizontal-flow' (two capsules side by side with arrow). Shipping-module and horizontal-flow stack vertically below 760px. Uses RowVariants for flexible slot layouts and Titles (type='form') for headers.",
     demo: <FormsDemo />,
   },
   {

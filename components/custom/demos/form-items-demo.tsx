@@ -57,7 +57,7 @@ export function FormItemsDemo() {
       {/* Phone Input */}
       <div className="space-y-4">
         <p className="text-xs font-medium text-muted-foreground">Phone Input</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4">
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Default (interactive)</p>
             <PhoneInput
@@ -83,7 +83,7 @@ export function FormItemsDemo() {
       {/* Date Picker */}
       <div className="space-y-4">
         <p className="text-xs font-medium text-muted-foreground">Date Picker</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4">
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Default (interactive)</p>
             <DatePicker
@@ -105,7 +105,7 @@ export function FormItemsDemo() {
       {/* Time Picker */}
       <div className="space-y-4">
         <p className="text-xs font-medium text-muted-foreground">Time Picker</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4">
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Default (interactive)</p>
             <SlotPicker
@@ -127,7 +127,7 @@ export function FormItemsDemo() {
       {/* Option Picker */}
       <div className="space-y-4">
         <p className="text-xs font-medium text-muted-foreground">Option Picker</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4">
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Default (interactive)</p>
             <OptionPicker
@@ -151,7 +151,7 @@ export function FormItemsDemo() {
       {/* Entity Selected */}
       <div className="space-y-4">
         <p className="text-xs font-medium text-muted-foreground">Entity Selected</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4">
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Default (removable)</p>
             <EntitySelected

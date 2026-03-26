@@ -153,7 +153,7 @@ export function BlockTemplateDemo() {
       {/* Description */}
       <div className="p-4 bg-zinc-50 rounded-lg text-sm text-zinc-600 mx-4">
         <p className="font-medium mb-2">Micro-interactions:</p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4">
           <div>
             <p className="font-medium text-zinc-800 mb-1">Creation Mode:</p>
             <ul className="list-disc list-inside space-y-1">

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
-import { FilterBar } from "@/components/custom/filter-bar"
+import { FilterBar, COLLECTION_STATUSES } from "@/components/custom/filter-bar"
 import { Grid } from "@/components/custom/grid"
 import { Tables } from "@/components/custom/tables"
 import { Button } from "@/components/ui/button"
@@ -108,6 +108,11 @@ function mapStatusToUI(
   return status
 }
 
+/** Maps domain status to filter-bar / UI filter value. */
+function domainStatusToFilterValue(s: Collection["status"]): string {
+  return s === "in_progress" ? "in-progress" : s
+}
+
 /**
  * Location for card: "City, Country".
  * Same source as Shooting setup → Location (OptionPicker City + OptionPicker Country):
@@ -180,14 +185,6 @@ export default function CollectionsPage() {
   const [clientNamesByEntityId, setClientNamesByEntityId] = useState<Record<string, string>>({})
   const [clientOptions, setClientOptions] = useState<{ id: string; name: string }[]>([])
   const [photographerOptions, setPhotographerOptions] = useState<{ id: string; name: string }[]>([])
-  const jobReferenceOptions = React.useMemo(() => {
-    const refs = new Set<string>()
-    collections.forEach((c) => {
-      const r = c.config.reference?.trim()
-      if (r) refs.add(r)
-    })
-    return Array.from(refs).sort().map((value) => ({ value }))
-  }, [collections])
 
   // View state (Gallery or List)
   const [activeView, setActiveView] = useState<string>("Gallery")
@@ -285,13 +282,104 @@ export default function CollectionsPage() {
     load()
   }, [collections])
 
-  // Handle filter changes
-  const handleFilterChange = (filterId: string, value: string) => {
-    setFilters(prev => ({
-      ...prev,
-      [filterId]: prev[filterId as keyof Filters] === value ? null : value,
-    }))
-  }
+  const collectionsBase = React.useMemo(() => {
+    if (!isNobaUser) {
+      return collections.filter((c) => c.status !== "draft")
+    }
+    return collections
+  }, [collections, isNobaUser])
+
+  const scopeAfterClient = React.useMemo(() => {
+    if (!filters.client) return collectionsBase
+    return collectionsBase.filter((c) => c.config.clientEntityId === filters.client)
+  }, [collectionsBase, filters.client])
+
+  const collectionStatusOptionsForBar = React.useMemo(() => {
+    const seen = new Set<string>()
+    for (const c of scopeAfterClient) {
+      seen.add(domainStatusToFilterValue(c.status))
+    }
+    return COLLECTION_STATUSES.filter((s) => seen.has(s.value))
+  }, [scopeAfterClient])
+
+  const scopeAfterStatus = React.useMemo(() => {
+    let result = scopeAfterClient
+    if (filters.status) {
+      const domain =
+        filters.status === "in-progress" ? "in_progress" : filters.status
+      result = result.filter((c) => c.status === domain)
+    }
+    return result
+  }, [scopeAfterClient, filters.status])
+
+  const jobReferenceOptionsForBar = React.useMemo(() => {
+    const refs = new Set<string>()
+    for (const c of scopeAfterStatus) {
+      const r = c.config.reference?.trim()
+      if (r) refs.add(r)
+    }
+    return Array.from(refs).sort().map((value) => ({ value }))
+  }, [scopeAfterStatus])
+
+  const scopeAfterJobRef = React.useMemo(() => {
+    let result = scopeAfterStatus
+    if (filters.jobReference) {
+      result = result.filter(
+        (c) => (c.config.reference?.trim() ?? "") === filters.jobReference
+      )
+    }
+    return result
+  }, [scopeAfterStatus, filters.jobReference])
+
+  const photographerOptionsForBar = React.useMemo(() => {
+    const idSet = new Set<string>()
+    for (const c of scopeAfterJobRef) {
+      for (const p of c.participants) {
+        if (p.role === "photographer" && p.entityId) idSet.add(p.entityId)
+      }
+    }
+    return photographerOptions.filter((p) => idSet.has(p.id))
+  }, [photographerOptions, scopeAfterJobRef])
+
+  const clientOptionsForBar = React.useMemo(() => {
+    const ids = new Set(
+      collectionsBase
+        .map((c) => c.config.clientEntityId)
+        .filter((id): id is string => Boolean(id))
+    )
+    return clientOptions.filter((c) => ids.has(c.id))
+  }, [clientOptions, collectionsBase])
+
+  // Handle filter changes (cascade: client → status → job reference → photographer)
+  const handleFilterChange = React.useCallback((filterId: string, value: string) => {
+    const v = value === "" ? null : value
+    setFilters((prev) => {
+      if (filterId === "client") {
+        return {
+          ...prev,
+          client: v,
+          status: null,
+          jobReference: null,
+          photographer: null,
+        }
+      }
+      if (filterId === "status") {
+        return {
+          ...prev,
+          status: v,
+          jobReference: null,
+          photographer: null,
+        }
+      }
+      if (filterId === "jobReference") {
+        return { ...prev, jobReference: v, photographer: null }
+      }
+      if (filterId === "photographer") {
+        return { ...prev, photographer: v }
+      }
+      return prev
+    })
+  }, [])
 
   // Handle sort changes
   const handleSortChange = (order: "asc" | "desc") => {
@@ -458,9 +546,11 @@ export default function CollectionsPage() {
             onFilterChange={handleFilterChange}
             onSortChange={handleSortChange}
             showAction={false}
-            clientOptions={clientOptions}
-            photographerOptions={photographerOptions}
-            jobReferenceOptions={jobReferenceOptions}
+            collectionFilterState={filters}
+            collectionStatusOptions={collectionStatusOptionsForBar}
+            clientOptions={clientOptionsForBar}
+            photographerOptions={photographerOptionsForBar}
+            jobReferenceOptions={jobReferenceOptionsForBar}
           />
         </LayoutSection>
         <LayoutSection>

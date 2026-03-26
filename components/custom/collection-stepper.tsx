@@ -67,7 +67,7 @@ export function CollectionStepper({
   return (
     <div
       className={cn(
-        "flex items-stretch gap-8",
+        "flex items-stretch gap-3 min-[760px]:gap-8",
         clickable && "cursor-pointer",
         inactive && "opacity-50 pointer-events-none",
         className

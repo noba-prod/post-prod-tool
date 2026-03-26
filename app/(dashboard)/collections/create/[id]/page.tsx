@@ -146,6 +146,23 @@ const PLACEHOLDER = (
   </div>
 )
 
+/** Viewport ≤759px — matches product 760px breakpoint for creation/edit templates. */
+function useIsBelow760(): boolean {
+  const [matches, setMatches] = React.useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(max-width: 759px)").matches
+      : false
+  )
+  React.useEffect(() => {
+    const mql = window.matchMedia("(max-width: 759px)")
+    const sync = () => setMatches(mql.matches)
+    sync()
+    mql.addEventListener("change", sync)
+    return () => mql.removeEventListener("change", sync)
+  }, [])
+  return matches
+}
+
 export default function CollectionCreatePage({
   params,
   searchParams,
@@ -789,13 +806,22 @@ export default function CollectionCreatePage({
 
   // Edition mode: collection is already published (accessed via Settings → Edit collection). Must be before blocks useMemo.
   const isEditionMode = Boolean(draft && draft.status !== "draft")
+  const isBelow760 = useIsBelow760()
+
+  /** Edit collection on narrow viewports: only Participants step; primary CTA becomes Save changes (same dialog + redirect as desktop). */
+  const editionParticipantsOnlyMobile = isEditionMode && isBelow760
+
+  React.useEffect(() => {
+    if (!editionParticipantsOnlyMobile) return
+    setActiveStep("participants")
+  }, [editionParticipantsOnlyMobile])
 
   const blocks = React.useMemo(() => {
     if (!draft || steps.length === 0) return []
     const completedBlockIds = draft.creationData.completedBlockIds
     const currentActive = activeStep || steps[0]?.stepId
 
-    return steps.map((step, index) => {
+    const built = steps.map((step, index) => {
       const stepId = step.stepId
       const isFirst = index === 0
       const isLast = index === steps.length - 1
@@ -1002,7 +1028,24 @@ export default function CollectionCreatePage({
         onEdit: isInternalNonInvitedViewer ? undefined : () => setActiveStepHandler(stepId),
       }
     })
-  }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleSaveChanges, isEditionMode, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handlePhotographerCheckChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries, isInternalNonInvitedViewer])
+    if (editionParticipantsOnlyMobile) {
+      const only = built.filter((b) => b.id === "participants")
+      if (only.length !== 1) return only.length > 0 ? only : built
+      const p = only[0]
+      if (isInternalNonInvitedViewer) return [p]
+      return [
+        {
+          ...p,
+          primaryLabel: "Save changes",
+          onPrimaryClick: handleSaveChanges,
+          primaryDisabled: false,
+          secondaryLabel: undefined,
+          onSecondaryClick: undefined,
+        },
+      ]
+    }
+    return built
+  }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleSaveChanges, isEditionMode, editionParticipantsOnlyMobile, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handlePhotographerCheckChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries, isInternalNonInvitedViewer])
 
   // Map domain status to UI status for sidebar badge (draft | upcoming | in-progress | completed | canceled)
   const collectionStatusForUI = React.useMemo((): "draft" | "upcoming" | "in-progress" | "completed" | "canceled" => {

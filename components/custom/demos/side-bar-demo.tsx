@@ -36,7 +36,7 @@ export function SideBarDemo() {
   return (
     <div className="flex flex-col gap-8 w-full">
       {/* Grid of all variants */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 min-[760px]:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Default */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Type: Default</p>

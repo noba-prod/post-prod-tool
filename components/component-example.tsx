@@ -425,7 +425,7 @@ function FormExample() {
         <CardContent>
           <form>
             <FieldGroup>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4">
                 <Field>
                   <FieldLabel htmlFor="small-form-name">Name</FieldLabel>
                   <Input

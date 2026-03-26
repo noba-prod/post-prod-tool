@@ -1188,7 +1188,7 @@ export function CollectionTemplate({
       />
 
       <div className="flex flex-1 flex-col min-h-0">
-        <div className="shrink-0 px-6 pt-6">
+        <div className="shrink-0 px-4 pt-6 min-[760px]:px-6">
           <CollectionHeading
             type="main"
             collectionName={collectionName}
@@ -1212,7 +1212,7 @@ export function CollectionTemplate({
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0 px-6 pt-4 pb-8">
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-4 pb-8 min-[760px]:px-6">
           <div className="flex flex-col gap-0 w-full">
             {visibleSteps.map((step, index) => (
               <CollectionStepper

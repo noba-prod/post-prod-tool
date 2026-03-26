@@ -645,7 +645,7 @@ export function ViewTemplate({
         />
         
         {/* Breadcrumb */}
-        <div className="px-6 py-8 relative z-10 shrink-0">
+        <div className="p-4 relative z-10 shrink-0 min-[760px]:px-6 min-[760px]:py-8">
           <Breadcrumb>
             <BreadcrumbList>
               {breadcrumbs.map((crumb, index) => (
@@ -675,7 +675,7 @@ export function ViewTemplate({
         {/* Main Layout: Sidebar + Content */}
         <div className="flex-1 flex overflow-visible relative min-h-0">
           {/* Sidebar Container with padding */}
-          <aside className="w-[320px] shrink-0 px-4 pb-4 relative z-10 flex flex-col min-h-0">
+          <aside className="w-[72px] min-[760px]:w-[320px] shrink-0 px-2 pb-4 min-[760px]:px-4 relative z-10 flex flex-col min-h-0">
             <div className="h-full max-h-full rounded-xl overflow-hidden flex flex-col">
               <SideBar
                 type="view-entity"
@@ -701,7 +701,7 @@ export function ViewTemplate({
             ref={mainContentRef}
             className="flex-1 overflow-y-auto relative z-10 min-w-0"
           >
-            <div className="px-6 space-y-4 pb-[45px]">
+            <div className="space-y-4 pt-0 pl-2 pr-4 pb-5 min-[760px]:px-6 min-[760px]:pb-[45px]">
               {filteredSections.length > 0 ? (
                 filteredSections.map((section) => {
                   const isActive = section.id === activeSection

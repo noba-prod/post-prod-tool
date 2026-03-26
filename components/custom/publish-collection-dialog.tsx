@@ -65,8 +65,9 @@ export function PublishCollectionDialog({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40" />
         <DialogPrimitive.Content
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2",
-            "max-w-[calc(100%-2rem)] sm:max-w-[640px]",
+            "fixed z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-[640px]",
+            "max-[759px]:top-4 max-[759px]:left-1/2 max-[759px]:-translate-x-1/2 max-[759px]:translate-y-0 max-[759px]:max-h-[calc(100dvh-2rem)] max-[759px]:overflow-y-auto max-[759px]:overflow-x-hidden max-[759px]:overscroll-contain",
+            "min-[760px]:left-1/2 min-[760px]:top-1/2 min-[760px]:-translate-x-1/2 min-[760px]:-translate-y-1/2",
             "rounded-xl border border-border bg-background p-6 shadow-lg",
             "grid gap-6"
           )}

@@ -39,6 +39,8 @@ export function MenuItem({
       disabled={isDisabled}
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg w-full text-left transition-colors",
+        // Below 760px: icon-only rail (Figma 1246-48552); label stays for screen readers
+        "max-[759px]:size-10 max-[759px]:shrink-0 max-[759px]:justify-center max-[759px]:gap-0 max-[759px]:p-0 max-[759px]:mx-auto",
         // Background
         isActive && "bg-zinc-100",
         !isActive && "bg-transparent",
@@ -57,13 +59,15 @@ export function MenuItem({
           isDisabled ? "text-zinc-500" : "text-zinc-900"
         )}
         strokeWidth={2}
+        aria-hidden
       />
 
       {/* Label text */}
       <span
         className={cn(
           "text-sm font-medium leading-none",
-          isDisabled ? "text-zinc-500" : "text-zinc-900"
+          isDisabled ? "text-zinc-500" : "text-zinc-900",
+          "max-[759px]:sr-only"
         )}
       >
         {label}
