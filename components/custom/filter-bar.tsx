@@ -66,6 +66,12 @@ interface FilterBarProps {
    * Defaults to all collection statuses when omitted.
    */
   collectionStatusOptions?: { value: string; label: string }[]
+  /**
+   * When false (default) with `members` or `entities`, the action button is hidden below 940px
+   * to avoid duplicating the nav FAB. Set true on routes like `/team` where the inline
+   * “New member” control should stay visible on narrow viewports.
+   */
+  showActionOnNarrowScreens?: boolean
 }
 
 export const COLLECTION_STATUSES = [
@@ -445,6 +451,7 @@ export function FilterBar({
   jobReferenceOptions = [],
   collectionFilterState,
   collectionStatusOptions,
+  showActionOnNarrowScreens = false,
 }: FilterBarProps) {
   const isCollectionsControlled =
     variant === "collections" && collectionFilterState != null
@@ -1168,7 +1175,12 @@ export function FilterBar({
                 onActionClick?.()
               }}
               disabled={actionDisabled}
-              className="h-10 px-4 rounded-xl gap-2"
+              className={cn(
+                "h-10 px-4 rounded-xl gap-2",
+                (variant === "members" || variant === "entities") &&
+                  !showActionOnNarrowScreens &&
+                  "hidden min-[940px]:inline-flex"
+              )}
             >
               {effectiveActionIcon}
               {effectiveActionLabel}

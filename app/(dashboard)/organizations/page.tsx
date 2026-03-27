@@ -14,6 +14,7 @@ import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import type { Entity } from "@/components/custom/tables"
 import { useUserContext } from "@/lib/contexts/user-context"
+import { cn } from "@/lib/utils"
 
 // Service imports
 import { createEntitiesListService } from "@/lib/services"
@@ -360,6 +361,10 @@ export default function OrganizationsPage() {
             <CreateEntityCommand
               allowedOptions={ORGANIZATIONS_PAGE_OPTIONS}
               buttonLabel="New player"
+              buttonClassName={cn(
+                "rounded-xl gap-2 px-4",
+                "hidden min-[940px]:inline-flex"
+              )}
               popoverAlign="end"
               redirectAfterCreate={false}
               onCreated={handleEntityCreated}

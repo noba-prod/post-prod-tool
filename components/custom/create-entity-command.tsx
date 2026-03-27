@@ -295,6 +295,8 @@ interface CreateEntityCommandProps {
   buttonClassName?: string
   /** Popover alignment */
   popoverAlign?: "start" | "center" | "end"
+  /** Popover side (e.g. `top` for FAB above trigger) */
+  popoverSide?: "top" | "right" | "bottom" | "left"
   /** Whether the button is disabled */
   disabled?: boolean
 }
@@ -330,6 +332,7 @@ function CreateEntityCommand({
   buttonSize = "lg",
   buttonClassName,
   popoverAlign = "end",
+  popoverSide = "bottom",
   disabled = false,
 }: CreateEntityCommandProps) {
   let managerUserId = ""
@@ -378,6 +381,7 @@ function CreateEntityCommand({
         <PopoverContent
           className="w-[200px] p-1"
           align={popoverAlign}
+          side={popoverSide}
           sideOffset={8}
         >
           <Command shouldFilter={false}>

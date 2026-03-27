@@ -256,7 +256,7 @@ export function MainTemplate({
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col">
-        <div className="py-8 px-6 w-full">
+        <div className="py-8 px-6 max-[759px]:px-4 w-full">
           <Layout padding="none" showSeparators={false}>
             <LayoutSection>
               {title && <Titles type="main-section" title={title} showSubtitle={false} />}

@@ -531,6 +531,7 @@ export default function TeamPage() {
             onFilterChange={handleFilterChange}
             searchPlaceholder="Search team members..."
             actionDisabled={!canManageTeam}
+            showActionOnNarrowScreens
           />
         </LayoutSection>
         <LayoutSection>

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { Search, Menu, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Notifications } from "./notifications"
 import { UserInformation } from "./user-information"
 import { CreateEntityCommand } from "./create-entity-command"
+import { CreateFabTrigger } from "./create-fab-trigger"
 import {
   Sheet,
   SheetContent,
@@ -111,7 +112,16 @@ export function NavBar({
   className,
 }: NavBarProps) {
   const router = useRouter()
+  const pathname = usePathname() ?? ""
   const tabs = variantTabs[variant]
+
+  /** FAB (hidden from 940px up via wrapper): main list routes only — not detail/create views. */
+  const showCreateFab =
+    variant === "noba" &&
+    role?.toLowerCase() !== "viewer" &&
+    (pathname === "/collections" ||
+      pathname === "/organizations" ||
+      pathname === "/team")
   const initials = userName.charAt(0).toUpperCase()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
 
@@ -147,11 +157,6 @@ export function NavBar({
       router.push(route)
       setIsMobileMenuOpen(false)
     }
-  }
-
-  const handleSearchClick = () => {
-    onSearch?.()
-    setIsMobileMenuOpen(false)
   }
 
   const handleEditProfile = () => {
@@ -253,7 +258,7 @@ export function NavBar({
       </div>
 
       {/* Mobile version - per Figma: Logo | Notifications | Pill (Avatar + Menu) */}
-      <div className="flex min-[940px]:hidden items-center justify-between h-16 px-6 border-b border-border">
+      <div className="flex min-[940px]:hidden items-center justify-between h-16 px-6 max-[759px]:px-4 border-b border-border">
         {/* Left: Logo (PNG) → Collections */}
         <button
           type="button"
@@ -309,7 +314,7 @@ export function NavBar({
         >
           <SheetTitle className="sr-only">Menu</SheetTitle>
 
-          {/* Figma 1248-50640: header = user + close; nav; separator; account links. Search/Create hidden below 768px only. */}
+          {/* Figma 1248-50640: header, primary nav, separator, account. Search/Create live on desktop nav or FAB below 940px. */}
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             {/* Top: avatar, name, org/role, close */}
             <div className="flex items-start justify-between gap-4 p-5 pb-4 shrink-0">
@@ -362,24 +367,6 @@ export function NavBar({
                 </nav>
               </div>
 
-              {/* Creation/search flows: visible in sheet from 768px up (narrow phones: hidden). Desktop ≥940px unchanged. */}
-              <div className="hidden min-[768px]:block px-6 pb-4 space-y-4">
-                <button
-                  type="button"
-                  onClick={handleSearchClick}
-                  className="flex items-center gap-2 h-10 w-full px-4 bg-secondary rounded-full text-sm font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                >
-                  <Search className="size-4" />
-                  <span>Search...</span>
-                </button>
-                {variant === "noba" && role?.toLowerCase() !== "viewer" && (
-                  <CreateEntityCommand
-                    buttonLabel="Create new"
-                    popoverAlign="start"
-                  />
-                )}
-              </div>
-
               <div className="mx-2 border-t border-border" aria-hidden />
 
               {/* Account actions — same row style as primary nav (Figma 1248-50640), not Command/popover */}
@@ -415,6 +402,24 @@ export function NavBar({
         </SheetContent>
       </Sheet>
 
+      {/* Mobile/tablet FAB: entities only (no Collection); fixed below nav shell */}
+      {showCreateFab && (
+        <div className="min-[940px]:hidden fixed bottom-6 right-6 max-[759px]:right-4 z-40 pointer-events-auto">
+          <CreateEntityCommand
+            allowedOptions={[
+              "client",
+              "self-photographer",
+              "agency",
+              "photo-lab",
+              "edition-studio",
+              "hand-print-lab",
+            ]}
+            popoverAlign="end"
+            popoverSide="top"
+            trigger={<CreateFabTrigger aria-label="Create new" />}
+          />
+        </div>
+      )}
     </nav>
   )
 }
