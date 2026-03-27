@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 function InputOTP({
   className,
   containerClassName,
+  textAlign = "center",
   ...props
 }: React.ComponentProps<typeof OTPInput> & {
   containerClassName?: string
@@ -15,8 +16,9 @@ function InputOTP({
   return (
     <OTPInput
       data-slot="input-otp"
+      textAlign={textAlign}
       containerClassName={cn(
-        "cn-input-otp flex items-center has-disabled:opacity-50",
+        "cn-input-otp flex items-center justify-center has-disabled:opacity-50",
         containerClassName
       )}
       spellCheck={false}
@@ -69,11 +71,17 @@ function InputOTPSlot({
   )
 }
 
-function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
+function InputOTPSeparator({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-otp-separator"
-      className="flex items-center justify-center w-6 h-6"
+      className={cn(
+        "flex items-center justify-center w-6 h-6 shrink-0 max-[759px]:hidden",
+        className
+      )}
       role="separator"
       {...props}
     >

@@ -72,6 +72,12 @@ interface FilterBarProps {
    * “New member” control should stay visible on narrow viewports.
    */
   showActionOnNarrowScreens?: boolean
+  /**
+   * When true with `showActionOnNarrowScreens`, below 760px the action becomes a 40×40 icon-only
+   * button (label stays available to screen readers). Use only where the layout needs it
+   * (e.g. entity detail → Team members block).
+   */
+  actionIconOnlyBelow760?: boolean
 }
 
 export const COLLECTION_STATUSES = [
@@ -452,6 +458,7 @@ export function FilterBar({
   collectionFilterState,
   collectionStatusOptions,
   showActionOnNarrowScreens = false,
+  actionIconOnlyBelow760 = false,
 }: FilterBarProps) {
   const isCollectionsControlled =
     variant === "collections" && collectionFilterState != null
@@ -1179,11 +1186,20 @@ export function FilterBar({
                 "h-10 px-4 rounded-xl gap-2",
                 (variant === "members" || variant === "entities") &&
                   !showActionOnNarrowScreens &&
-                  "hidden min-[940px]:inline-flex"
+                  "hidden min-[940px]:inline-flex",
+                actionIconOnlyBelow760 &&
+                  showActionOnNarrowScreens &&
+                  "max-[759px]:size-10 max-[759px]:min-w-10 max-[759px]:p-0 max-[759px]:gap-0 max-[759px]:shrink-0"
               )}
             >
               {effectiveActionIcon}
-              {effectiveActionLabel}
+              {actionIconOnlyBelow760 ? (
+                <span className="max-[759px]:sr-only min-[760px]:inline">
+                  {effectiveActionLabel}
+                </span>
+              ) : (
+                effectiveActionLabel
+              )}
             </Button>
           )}
         </div>

@@ -505,6 +505,8 @@ export default function OrganizationDetailPage() {
             searchPlaceholder="Search members..."
             onActionClick={handleOpenNewMemberModal}
             actionDisabled={!canCreate}
+            showActionOnNarrowScreens
+            actionIconOnlyBelow760
           />
         </LayoutSection>
 

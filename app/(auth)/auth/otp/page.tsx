@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, ChevronLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from "@/components/ui/input-otp"
 import { useAuthAdapter } from "@/lib/auth"
 import { toast } from "sonner"
@@ -54,6 +55,17 @@ function OTPContent() {
     const secs = seconds % 60
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
   }
+
+  /** Active lime border must win over `border-[#e4e4e7]`. Narrow sizes. */
+  const slotShared = cn(
+    "data-[active=true]:!border-lime-500",
+    "max-[759px]:!h-9 max-[759px]:!w-8 max-[759px]:!min-w-0 max-[759px]:text-sm"
+  )
+  /** Left cell of each pair uses `border-r-0`; when active, restore full rect so ring + border read as one (like before). */
+  const slotPairLeft = cn(
+    slotShared,
+    "data-[active=true]:!border-r data-[active=true]:!rounded-md"
+  )
 
   const maskEmail = (email: string) => {
     if (!email) return ""
@@ -128,11 +140,9 @@ function OTPContent() {
       </div>
 
       {/* Right side - OTP form */}
-      <div className="flex-1 flex flex-col items-center justify-center p-10 bg-background min-h-screen relative w-full lg:w-1/2 overflow-hidden">
-        {/* Content wrapper with animation */}
-        <div className={`w-full flex-1 flex flex-col items-center justify-center relative ${isAnimating ? 'page-enter' : ''}`}>
-        {/* Top Navigation - Back button (aligned with footer) */}
-          <div className="absolute top-10 left-10 z-20">
+      <div className="flex-1 flex flex-col items-center justify-center p-10 max-[759px]:px-4 bg-background min-h-screen relative w-full lg:w-1/2 overflow-hidden">
+        {/* Top nav: same horizontal inset as footer row (left-0 + px matches bottom bar) */}
+        <div className="absolute top-10 left-0 right-0 z-20 flex justify-start px-10 max-[759px]:px-4">
           <Button
             variant="ghost"
             className="h-10 text-[#18181b] hover:text-[#18181b] font-medium text-sm bg-transparent px-4 py-2 rounded-xl hover:bg-transparent"
@@ -143,7 +153,9 @@ function OTPContent() {
           </Button>
         </div>
 
-          <div className="w-full max-w-[456px] min-w-[190px] flex flex-col gap-[10px] items-center justify-center flex-1 relative">
+        {/* Content wrapper with animation */}
+        <div className={`w-full flex-1 flex flex-col items-center justify-center relative ${isAnimating ? 'page-enter' : ''}`}>
+          <div className="w-full max-w-[456px] min-w-0 flex flex-col gap-[10px] items-center justify-center flex-1 relative px-0 min-[760px]:min-w-[190px]">
           {/* Main Content (centered) */}
           <div className="w-full flex flex-col gap-6 items-center flex-1 justify-center">
             {/* Header */}
@@ -161,55 +173,96 @@ function OTPContent() {
             {/* Form */}
             <form onSubmit={handleVerifyOTP} className="w-full flex flex-col gap-6">
               {/* OTP Input with separators */}
-              <div className="flex justify-center w-full">
+              <div className="flex w-full min-w-0 justify-center px-1.5 py-1 max-[759px]:overflow-x-auto max-[759px]:[scrollbar-width:thin]">
                 <InputOTP
                   maxLength={8}
                   value={otp}
                   onChange={setOtp}
                   disabled={loading}
-                  containerClassName="gap-2"
+                  pushPasswordManagerStrategy="none"
+                  containerClassName={cn(
+                    /* w-fit + mx-auto: overlay input matches slot width; w-full was stretching input to ~456px while slots looked left-heavy */
+                    "mx-auto w-fit min-w-0 max-w-full justify-center gap-3 overflow-visible",
+                    "max-[759px]:gap-2"
+                  )}
                 >
-                  <InputOTPGroup>
-                    <InputOTPSlot 
-                      index={0} 
-                      className="w-10 h-10 rounded-l-md rounded-r-none border border-[#e4e4e7] bg-white text-base font-medium border-r-0" 
+                  <InputOTPGroup className="shrink-0 overflow-visible">
+                    <InputOTPSlot
+                      index={0}
+                      className={cn(
+                        "h-10 w-10 border border-[#e4e4e7] bg-white text-base font-medium",
+                        "rounded-l-md rounded-r-none border-r-0",
+                        slotPairLeft
+                      )}
                     />
-                    <InputOTPSlot 
-                      index={1} 
-                      className="w-10 h-10 rounded-r-md rounded-l-none border border-[#e4e4e7] bg-white text-base font-medium" 
-                    />
-                  </InputOTPGroup>
-                  <InputOTPSeparator />
-                  <InputOTPGroup>
-                    <InputOTPSlot 
-                      index={2} 
-                      className="w-10 h-10 rounded-l-md rounded-r-none border border-[#e4e4e7] bg-white text-base font-medium border-r-0" 
-                    />
-                    <InputOTPSlot 
-                      index={3} 
-                      className="w-10 h-10 rounded-r-md rounded-l-none border border-[#e4e4e7] bg-white text-base font-medium" 
+                    <InputOTPSlot
+                      index={1}
+                      className={cn(
+                        "h-10 w-10 border border-[#e4e4e7] bg-white text-base font-medium",
+                        "rounded-r-md rounded-l-none",
+                        slotShared,
+                        "data-[active=true]:!rounded-md"
+                      )}
                     />
                   </InputOTPGroup>
                   <InputOTPSeparator />
-                  <InputOTPGroup>
-                    <InputOTPSlot 
-                      index={4} 
-                      className="w-10 h-10 rounded-l-md rounded-r-none border border-[#e4e4e7] bg-white text-base font-medium border-r-0" 
+                  <InputOTPGroup className="shrink-0 overflow-visible">
+                    <InputOTPSlot
+                      index={2}
+                      className={cn(
+                        "h-10 w-10 border border-[#e4e4e7] bg-white text-base font-medium",
+                        "rounded-l-md rounded-r-none border-r-0",
+                        slotPairLeft
+                      )}
                     />
-                    <InputOTPSlot 
-                      index={5} 
-                      className="w-10 h-10 rounded-r-md rounded-l-none border border-[#e4e4e7] bg-white text-base font-medium" 
+                    <InputOTPSlot
+                      index={3}
+                      className={cn(
+                        "h-10 w-10 border border-[#e4e4e7] bg-white text-base font-medium",
+                        "rounded-r-md rounded-l-none",
+                        slotShared,
+                        "data-[active=true]:!rounded-md"
+                      )}
                     />
                   </InputOTPGroup>
                   <InputOTPSeparator />
-                  <InputOTPGroup>
-                    <InputOTPSlot 
-                      index={6} 
-                      className="w-10 h-10 rounded-l-md rounded-r-none border border-[#e4e4e7] bg-white text-base font-medium border-r-0" 
+                  <InputOTPGroup className="shrink-0 overflow-visible">
+                    <InputOTPSlot
+                      index={4}
+                      className={cn(
+                        "h-10 w-10 border border-[#e4e4e7] bg-white text-base font-medium",
+                        "rounded-l-md rounded-r-none border-r-0",
+                        slotPairLeft
+                      )}
                     />
-                    <InputOTPSlot 
-                      index={7} 
-                      className="w-10 h-10 rounded-r-md rounded-l-none border border-[#e4e4e7] bg-white text-base font-medium" 
+                    <InputOTPSlot
+                      index={5}
+                      className={cn(
+                        "h-10 w-10 border border-[#e4e4e7] bg-white text-base font-medium",
+                        "rounded-r-md rounded-l-none",
+                        slotShared,
+                        "data-[active=true]:!rounded-md"
+                      )}
+                    />
+                  </InputOTPGroup>
+                  <InputOTPSeparator />
+                  <InputOTPGroup className="shrink-0 overflow-visible">
+                    <InputOTPSlot
+                      index={6}
+                      className={cn(
+                        "h-10 w-10 border border-[#e4e4e7] bg-white text-base font-medium",
+                        "rounded-l-md rounded-r-none border-r-0",
+                        slotPairLeft
+                      )}
+                    />
+                    <InputOTPSlot
+                      index={7}
+                      className={cn(
+                        "h-10 w-10 border border-[#e4e4e7] bg-white text-base font-medium",
+                        "rounded-r-md rounded-l-none",
+                        slotShared,
+                        "data-[active=true]:!rounded-md"
+                      )}
                     />
                   </InputOTPGroup>
                 </InputOTP>
@@ -250,8 +303,8 @@ function OTPContent() {
           </div>
         </div>
 
-        {/* Bottom Navigation - Static (no animation) */}
-        <div className="absolute bottom-10 left-0 right-0 flex items-center justify-between px-10 z-10">
+        {/* Bottom Navigation - same horizontal padding as Back row */}
+        <div className="absolute bottom-10 left-0 right-0 z-10 flex items-center justify-between px-10 max-[759px]:px-4">
           <Button
             variant="ghost"
             className="h-10 text-[#71717a] hover:text-[#18181b] font-medium text-sm bg-transparent"

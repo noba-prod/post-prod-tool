@@ -402,11 +402,12 @@ export function NavBar({
         </SheetContent>
       </Sheet>
 
-      {/* Mobile/tablet FAB: entities only (no Collection); fixed below nav shell */}
+      {/* Mobile/tablet FAB: same create menu as desktop nav; Collection shown only for noba producer users (see useCreateEntity). */}
       {showCreateFab && (
         <div className="min-[940px]:hidden fixed bottom-6 right-6 max-[759px]:right-4 z-40 pointer-events-auto">
           <CreateEntityCommand
             allowedOptions={[
+              "collection",
               "client",
               "self-photographer",
               "agency",
