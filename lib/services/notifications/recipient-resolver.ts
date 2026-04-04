@@ -113,29 +113,19 @@ export async function resolveRecipients(
       
       case "photo_lab":
         memberRoles.push("photo_lab")
-        if (collectionData.photo_lab_id) {
-          orgIds.add(collectionData.photo_lab_id)
-        }
         break
       
       case "photographer":
         memberRoles.push("photographer")
-        if (collectionData.photographer_id) {
-          orgIds.add(collectionData.photographer_id)
-        }
         break
       
       case "client":
         memberRoles.push("client")
-        if (collectionData.client_id) {
-          orgIds.add(collectionData.client_id)
-        }
         break
       
       case "handprint_lab":
         if (collectionData.handprint_lab_id) {
           memberRoles.push("handprint_lab")
-          orgIds.add(collectionData.handprint_lab_id)
           // When handprint uses the same organization as photo lab, notifications
           // must reach photo_lab members too (they are the effective owners in UI).
           if (sameHandprintAndPhotoLab) {
@@ -143,15 +133,11 @@ export async function resolveRecipients(
           }
         } else if (collectionData.photo_lab_id) {
           memberRoles.push("photo_lab")
-          orgIds.add(collectionData.photo_lab_id)
         }
         break
       
       case "retouch_studio":
         memberRoles.push("retouch_studio")
-        if (collectionData.retouch_studio_id) {
-          orgIds.add(collectionData.retouch_studio_id)
-        }
         break
     }
   }
@@ -203,8 +189,10 @@ export async function resolveRecipients(
     }
   }
 
-  // Fallback/source of truth by org assignments: include all users from mapped orgs.
-  // This prevents notification misses when collection_members role rows are stale or absent.
+  // Producer-only fallback by organization: include users from producer org(s).
+  // NOTE: We intentionally avoid org-wide expansion for external roles
+  // (client/photographer/labs/retouch) to prevent notifying users who are not
+  // explicit collection members.
   if (orgIds.size > 0) {
     const { data: orgUsers, error: orgUsersError } = await supabase
       .from("profiles")
