@@ -14,8 +14,8 @@ import type { OrganizationType, Profile, Organization } from "@/lib/supabase/dat
 // =============================================================================
 
 /**
- * The noba* production agency organization ID.
- * Users with this organization_id AND is_internal=true are considered noba variant.
+ * Legacy noba* organization ID fallback.
+ * Kept for defensive defaults when a profile has no organization.
  */
 export const NOBA_ORGANIZATION_ID = "7abddcb4-52d3-4f96-b399-ff094c01ec53"
 
@@ -52,7 +52,7 @@ export function mapOrganizationTypeToEntityType(orgType: OrganizationType): Enti
  * Determines the entity type for a user based on their profile and organization.
  * 
  * Rules (as specified):
- * 1. If is_internal=true AND organization_id=NOBA_ORGANIZATION_ID AND organization.type='noba' → "noba"
+ * 1. If is_internal=true AND organization.type='noba' → "noba"
  * 2. If is_internal=true (backup rule for internal staff without specific org) → "noba"
  * 3. If organization.type = 'self_photographer' → "self-photographer"
  * 4. Otherwise → map organization type to entity type (collaborator variant)
@@ -61,10 +61,9 @@ export function determineEntityType(
   profile: Profile,
   organization: Organization | null
 ): EntityType {
-  // Rule 1: Full noba check (is_internal + correct org ID + noba type)
+  // Rule 1: Full noba check (is_internal + noba org type)
   if (
     profile.is_internal && 
-    profile.organization_id === NOBA_ORGANIZATION_ID &&
     organization?.type === "noba"
   ) {
     return "noba"
@@ -98,7 +97,7 @@ export function determineEntityType(
 export interface SupabaseUserData {
   user: User
   entity: Entity
-  /** True when profile.organization_id === NOBA_ORGANIZATION_ID && profile.is_internal === true (can create collections). */
+  /** True when profile.is_internal === true and organization.type === "noba" (can create collections). */
   isNobaProducerUser: boolean
 }
 
@@ -197,7 +196,7 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
     }
 
     const isNobaProducerUser =
-      p.is_internal === true && p.organization_id === NOBA_ORGANIZATION_ID
+      p.is_internal === true && organization?.type === "noba"
 
     console.log(`[SupabaseProfileService] Loaded user data:`, {
       userId: user.id,

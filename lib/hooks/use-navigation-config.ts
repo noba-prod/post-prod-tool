@@ -23,7 +23,7 @@ interface NavigationConfig {
  * - Other entities: variant "collaborator", tabs ["Collections", "Team"]
  * 
  * Entity type is determined by Supabase profile service (supabase-profile-service.ts):
- * - is_internal=true AND organization_id=NOBA_ORGANIZATION_ID AND org.type='noba' → "noba"
+ * - is_internal=true AND org.type='noba' → "noba"
  * - is_internal=true (even without org) → "noba"
  * - organization.type='self_photographer' → "self-photographer"
  * - All other organization types → mapped to entity type (collaborator variant)

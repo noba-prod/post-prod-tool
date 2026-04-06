@@ -23,7 +23,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
-import { NOBA_ORGANIZATION_ID } from "@/lib/services"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { useUserContext } from "@/lib/contexts/user-context"
@@ -357,7 +356,7 @@ export function ParticipantsStepContent({
 // NOBA* SECTION — Owner (current user) + noba members with Edit permission
 // =============================================================================
 
-/** Fetches noba producer team members (organization_id = NOBA_ORGANIZATION_ID AND is_internal = true) for the New member overlay. */
+/** Fetches noba producer team members (is_internal = true and organization.type = "noba") for the New member overlay. */
 function useInternalUsers(): User[] {
   const [users, setUsers] = React.useState<User[]>([])
   React.useEffect(() => {
@@ -377,9 +376,16 @@ function useInternalUsers(): User[] {
           }>
         } | null) => {
           if (cancelled || !data?.profiles) return
+          const nobaOrganizationIds = new Set(
+            (data.organizations ?? [])
+              .filter((org) => org.type === "noba")
+              .map((org) => org.id)
+          )
           const nobaTeam = data.profiles.filter(
             (p) =>
-              p.organization_id === NOBA_ORGANIZATION_ID && p.is_internal === true
+              p.is_internal === true &&
+              !!p.organization_id &&
+              nobaOrganizationIds.has(p.organization_id)
           )
           setUsers(
             nobaTeam.map((p) => ({
