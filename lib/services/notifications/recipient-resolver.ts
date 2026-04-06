@@ -9,21 +9,17 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/database.types"
 import type { RecipientType } from "./notification-templates"
 
+/** Subset of `collections` row used here; explicit Pick avoids Supabase `.select()` inferring `never`. */
+type CollectionAssignmentFields = Pick<
+  Database["public"]["Tables"]["collections"]["Row"],
+  "id" | "client_id" | "photographer_id" | "photo_lab_id" | "retouch_studio_id" | "handprint_lab_id"
+>
+
 export interface ResolvedRecipient {
   userId: string
   email: string
   firstName: string | null
   lastName: string | null
-}
-
-interface CollectionWithAssignments {
-  id: string
-  client_id: string
-  photographer_id: string | null
-  photo_lab_id: string | null
-  retouch_studio_id: string | null
-  handprint_lab_id: string | null
-  noba_user_ids: string[] | null
 }
 
 /**
@@ -46,48 +42,21 @@ export async function resolveRecipients(
     return []
   }
 
-  // Get collection with organization assignments.
-  // Some environments may still be missing collections.noba_user_ids; in that case
-  // retry without the column so notifications keep working.
-  let collectionData: CollectionWithAssignments | null = null
-  const { data: collectionWithNobaUsers, error: collectionWithNobaUsersError } = await supabase
+  // Get collection assignments needed for role-specific recipient resolution.
+  const { data: rawCollection, error: collectionError } = await supabase
     .from("collections")
-    .select("id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id, noba_user_ids")
+    .select("id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id")
     .eq("id", collectionId)
     .single()
 
-  const missingNobaUserIdsColumn =
-    collectionWithNobaUsersError &&
-    (collectionWithNobaUsersError as { code?: string }).code === "42703"
+  const collectionData = rawCollection as CollectionAssignmentFields | null
 
-  if (missingNobaUserIdsColumn) {
-    const { data: collectionWithoutNobaUsers, error: collectionWithoutNobaUsersError } = await supabase
-      .from("collections")
-      .select("id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id")
-      .eq("id", collectionId)
-      .single()
-
-    if (collectionWithoutNobaUsersError || !collectionWithoutNobaUsers) {
-      console.error("[resolveRecipients] Collection not found:", collectionId, collectionWithoutNobaUsersError)
-      return []
-    }
-
-    collectionData = {
-      ...(collectionWithoutNobaUsers as Omit<CollectionWithAssignments, "noba_user_ids">),
-      noba_user_ids: null,
-    }
-  } else {
-    collectionData = collectionWithNobaUsers as CollectionWithAssignments | null
-    if (collectionWithNobaUsersError || !collectionData) {
-      console.error("[resolveRecipients] Collection not found:", collectionId, collectionWithNobaUsersError)
-      return []
-    }
+  if (collectionError || !collectionData) {
+    console.error("[resolveRecipients] Collection not found:", collectionId, collectionError)
+    return []
   }
 
   const userIds = new Set<string>()
-  const orgIds = new Set<string>()
-  const producerSeedUserIds = new Set<string>()
-  const wantsProducerRecipients = recipientTypes.includes("producer")
 
   // Collect member roles and org IDs to query
   const memberRoles: string[] = []
@@ -100,15 +69,6 @@ export async function resolveRecipients(
     switch (type) {
       case "producer":
         memberRoles.push("noba")
-        // Fallback/source of truth for producer recipients:
-        // collections.noba_user_ids is maintained by the collection workflow and
-        // prevents missing recipients when collection_members is stale or restricted.
-        for (const uid of collectionData.noba_user_ids ?? []) {
-          if (uid?.trim()) {
-            userIds.add(uid)
-            producerSeedUserIds.add(uid)
-          }
-        }
         break
       
       case "photo_lab":
@@ -156,55 +116,6 @@ export async function resolveRecipients(
       const memberList = members as { user_id: string }[]
       for (const member of memberList) {
         userIds.add(member.user_id)
-      }
-    }
-  }
-
-  // For producer notifications, infer producer organizations from explicit noba members
-  // and include all profiles from those orgs as a robust fallback.
-  if (wantsProducerRecipients) {
-    const { data: producerMembers } = await supabase
-      .from("collection_members")
-      .select("user_id")
-      .eq("collection_id", collectionId)
-      .eq("role", "noba")
-    for (const row of (producerMembers ?? []) as { user_id: string }[]) {
-      if (row.user_id?.trim()) producerSeedUserIds.add(row.user_id)
-    }
-
-    if (producerSeedUserIds.size > 0) {
-      const { data: producerProfiles, error: producerProfilesError } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .in("id", Array.from(producerSeedUserIds))
-
-      if (producerProfilesError) {
-        console.error("[resolveRecipients] Error fetching producer organizations:", producerProfilesError)
-      } else {
-        for (const profile of (producerProfiles ?? []) as { organization_id: string | null }[]) {
-          const orgId = profile.organization_id?.trim()
-          if (orgId) orgIds.add(orgId)
-        }
-      }
-    }
-  }
-
-  // Producer-only fallback by organization: include users from producer org(s).
-  // NOTE: We intentionally avoid org-wide expansion for external roles
-  // (client/photographer/labs/retouch) to prevent notifying users who are not
-  // explicit collection members.
-  if (orgIds.size > 0) {
-    const { data: orgUsers, error: orgUsersError } = await supabase
-      .from("profiles")
-      .select("id")
-      .in("organization_id", Array.from(orgIds))
-
-    if (orgUsersError) {
-      console.error("[resolveRecipients] Error fetching organization users:", orgUsersError)
-    } else if (orgUsers) {
-      const orgUserList = orgUsers as { id: string }[]
-      for (const user of orgUserList) {
-        userIds.add(user.id)
       }
     }
   }
