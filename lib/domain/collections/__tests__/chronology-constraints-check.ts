@@ -93,7 +93,14 @@ function runChronologyAssertions(): void {
   console.log("OK: invalid downstream date — suggestedCorrection set")
 
   // 4) Handprint scenario — dropoff_plan and low_res_config slots present
-  const draftHandprint = minimalDraft(SCENARIO_3_HANDPRINT_ONLY, {
+  const draftHandprint = minimalDraft({
+    ...SCENARIO_3_HANDPRINT_ONLY,
+    shootingStartDate: "2026-04-07",
+    shootingEndDate: "2026-04-07",
+    dropoff_shipping_date: "2026-04-07",
+    dropoff_delivery_date: "2026-04-08",
+    lowResScanDeadlineDate: "2026-04-09",
+  }, {
     completedBlockIds: [],
   })
   const result4 = getChronologyConstraints(draftHandprint)
@@ -105,6 +112,12 @@ function runChronologyAssertions(): void {
   }
   if (!result4.byBlockId["handprint_high_res_config"]) {
     throw new Error("Expected handprint_high_res_config in handprint scenario (not lr_to_hr_setup)")
+  }
+  const handprintPhotoSelectionPhotographer = result4.byBlockId["photo_selection_photographer"]
+  if (handprintPhotoSelectionPhotographer?.minDate !== "2026-04-09") {
+    throw new Error(
+      `Expected handprint photo_selection_photographer minDate 2026-04-09 (from low_res_config), got ${handprintPhotoSelectionPhotographer?.minDate}`
+    )
   }
   console.log("OK: handprint scenario — dropoff, low_res, handprint_high_res slots present")
 

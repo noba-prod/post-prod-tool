@@ -677,14 +677,9 @@ function getOrderedDateSlots(
         })
         break
       case "photo_selection":
-        // Handprint flow: Photographer check block is shown first in UI; its date must drive Photo selection (no auto-fill until photographer check is set). So emit photographer_check slot before photo_selection slots.
-        if (hasHandprint) {
-          slots.push({
-            key: "photographer_check_client_selection",
-            dateKey: "photographerCheckDueDate",
-            timeKey: "photographerCheckDueTime",
-          })
-        }
+        // Photo selection must always depend on low_res_config as previous milestone.
+        // Do not place photographer_check before these slots, because that would make
+        // photoSelectionPhotographerDueDate depend on a later step in handprint flow.
         slots.push({
           key: "photo_selection_photographer",
           dateKey: "photoSelectionPhotographerDueDate",
@@ -704,7 +699,14 @@ function getOrderedDateSlots(
         })
         break
       case "handprint_high_res_config":
-        // photographer_check_client_selection already added before photo_selection when hasHandprint; only add lr_to_hr slot here
+        // Handprint-only sub-step rendered before LR->HR date fields.
+        // Keep it before handprint_high_res_config in chronology so LR->HR cannot be
+        // scheduled earlier than photographer check.
+        slots.push({
+          key: "photographer_check_client_selection",
+          dateKey: "photographerCheckDueDate",
+          timeKey: "photographerCheckDueTime",
+        })
         slots.push({
           key: step.stepId,
           dateKey: "lrToHrDueDate",
