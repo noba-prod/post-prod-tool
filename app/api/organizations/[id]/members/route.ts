@@ -116,7 +116,7 @@ export async function POST(
     )
   }
 
-  const profilePayload = {
+  const profilePayload: Record<string, unknown> = {
     id: userId,
     organization_id: organizationId,
     first_name: payload.firstName.trim(),
@@ -125,7 +125,10 @@ export async function POST(
     phone: (payload.phoneNumber ?? "").trim() || null,
     prefix: (payload.countryCode ?? "").trim() || null,
     role: payload.role,
-    is_internal: isNobaOrg,
+  }
+  // Preserve existing internal users: only ever promote to true, never demote to false.
+  if (isNobaOrg) {
+    profilePayload.is_internal = true
   }
 
   const { data: updatedProfile, error: upsertError } = await adminClient

@@ -233,15 +233,18 @@ export async function activateInvitation(token: string) {
       isInternal = (org as { type?: string } | null)?.type === "noba"
     }
 
-    // Ensure profile exists; for org-only invite set organization_id, role, is_internal
+    // Ensure profile exists; for org-only invite set organization_id/role.
+    // Never write is_internal=false here: internal users must keep that flag forever.
     const profilePayload: Record<string, unknown> = {
       id: userId,
       email: invitation.email,
-      is_internal: collectionId ? false : isInternal,
     }
     if (!collectionId && orgId) {
       profilePayload.organization_id = orgId
       profilePayload.role = invitationRole
+      if (isInternal) {
+        profilePayload.is_internal = true
+      }
     }
     const { error: profileError } = await (adminSupabase.from("profiles") as any).upsert(profilePayload as Record<string, string | boolean | null>, {
       onConflict: "id",
