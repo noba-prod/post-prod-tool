@@ -19,9 +19,13 @@ export const metadata: Metadata = {
   title: "noba* - Post Production Tool",
   description: "Centralized platform for post-production workflow management",
   icons: {
-    icon: "/assets/noba-_-logo-secundario-black.png",
-    shortcut: "/assets/noba-_-logo-secundario-black.png",
-    apple: "/assets/noba-_-logo-secundario-black.png",
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 
