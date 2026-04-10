@@ -80,6 +80,30 @@ async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: str
   return (data ?? []).map((org: Pick<Organization, "id" | "name">) => ({ id: org.id, name: org.name }))
 }
 
+async function fetchProfileNamesByUserIds(ids: string[]): Promise<Record<string, string>> {
+  if (ids.length === 0) return {}
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from("profiles") as any)
+    .select("id, first_name, last_name")
+    .in("id", ids)
+
+  if (error) {
+    console.error("[CollectionsPage] Failed to fetch photographer profile names:", error)
+    return {}
+  }
+
+  const namesById: Record<string, string> = {}
+  for (const row of (data ?? []) as Array<{ id: string; first_name: string | null; last_name: string | null }>) {
+    const firstName = row.first_name?.trim() ?? ""
+    const lastName = row.last_name?.trim() ?? ""
+    const fullName = `${firstName} ${lastName}`.trim()
+    if (fullName) namesById[row.id] = fullName
+  }
+  return namesById
+}
+
 // ============================================================================
 // FILTER TYPES
 // ============================================================================
@@ -185,6 +209,7 @@ export default function CollectionsPage() {
   const [clientNamesByEntityId, setClientNamesByEntityId] = useState<Record<string, string>>({})
   const [clientOptions, setClientOptions] = useState<{ id: string; name: string }[]>([])
   const [photographerOptions, setPhotographerOptions] = useState<{ id: string; name: string }[]>([])
+  const [photographerNamesByUserId, setPhotographerNamesByUserId] = useState<Record<string, string>>({})
 
   // View state (Gallery or List)
   const [activeView, setActiveView] = useState<string>("Gallery")
@@ -277,6 +302,35 @@ export default function CollectionsPage() {
         setClientNamesByEntityId(map)
       } else {
         setClientNamesByEntityId({})
+      }
+    }
+    load()
+  }, [collections])
+
+  // Resolve photographer display names from user profiles as fallback for collections where
+  // photographer participant has userIds but no entityId (e.g. photographer collaborating with agency).
+  useEffect(() => {
+    if (collections.length === 0) {
+      setPhotographerNamesByUserId({})
+      return
+    }
+    const photographerUserIds = [
+      ...new Set(
+        collections.flatMap((c) =>
+          (c.participants.find((p) => p.role === "photographer")?.userIds ?? []).filter(Boolean)
+        )
+      ),
+    ]
+    if (photographerUserIds.length === 0) {
+      setPhotographerNamesByUserId({})
+      return
+    }
+    const load = async () => {
+      if (isSupabaseConfigured()) {
+        const namesById = await fetchProfileNamesByUserIds(photographerUserIds)
+        setPhotographerNamesByUserId(namesById)
+      } else {
+        setPhotographerNamesByUserId({})
       }
     }
     load()
@@ -443,6 +497,15 @@ export default function CollectionsPage() {
       const clientName = clientNamesByEntityId[c.config.clientEntityId]
         ? `@${clientNamesByEntityId[c.config.clientEntityId].toLowerCase()}`
         : "—"
+      const photographerParticipant = c.participants.find((p) => p.role === "photographer")
+      const photographerEntityId = photographerParticipant?.entityId
+      const photographerUserId = photographerParticipant?.userIds?.[0]
+      const photographerName =
+        photographerEntityId
+          ? photographerOptions.find((p) => p.id === photographerEntityId)?.name ?? undefined
+          : photographerUserId
+            ? photographerNamesByUserId[photographerUserId]
+            : undefined
       const baseUI = mapStatusToUI(c.status)
       const displayStatus =
         c.status === "in_progress"
@@ -462,6 +525,7 @@ export default function CollectionsPage() {
         status: displayStatus,
         collectionName: c.config.name || "—",
         clientName,
+        photographerName,
         location: collectionLocation(c),
         startDate: start,
         endDate: end,
@@ -472,7 +536,7 @@ export default function CollectionsPage() {
         onClick: () => handleCollectionClick(c.id, c.status),
       }
     })
-  }, [filteredCollections, clientNamesByEntityId, handleCollectionClick])
+  }, [filteredCollections, clientNamesByEntityId, photographerOptions, photographerNamesByUserId, handleCollectionClick])
 
   const tableItems: TableCollection[] = React.useMemo(() => {
     return filteredCollections.map((c) => {

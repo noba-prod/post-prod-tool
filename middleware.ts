@@ -18,11 +18,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Allow auth routes
-  if (isAuthRoute) {
-    return NextResponse.next()
-  }
-
   // Require Supabase config for server-side auth; otherwise allow through (client-side will handle)
   const hasSupabaseConfig =
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -78,10 +73,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // If user is authenticated and tries to access auth routes, redirect to app
+  // If user is authenticated and hits domain root, send them to collections
+  if (pathname === "/" && user) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/collections"
+    return NextResponse.redirect(url)
+  }
+
+  // If user is authenticated and tries to access auth routes, redirect to collections
   if (isAuthRoute && user) {
     const url = request.nextUrl.clone()
-    url.pathname = "/app"
+    url.pathname = "/collections"
     return NextResponse.redirect(url)
   }
 

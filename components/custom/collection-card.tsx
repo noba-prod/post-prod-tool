@@ -96,6 +96,8 @@ interface CollectionCardProps {
   collectionName?: string
   /** Nombre del cliente (solo visible en formato default) */
   clientName?: string
+  /** Nombre del fotógrafo (solo visible en formato default) */
+  photographerName?: string
   /** Ubicación del shooting */
   location?: string
   /** Fecha de inicio */
@@ -119,6 +121,7 @@ export function CollectionCard({
   status = "draft",
   collectionName = "collection name",
   clientName = "@client",
+  photographerName,
   location = "city, country",
   startDate = "dec 4, 2025",
   endDate = "dec 14, 2025",
@@ -210,9 +213,15 @@ export function CollectionCard({
             <span className="text-sm font-semibold text-[#fafafa] truncate block">
               {collectionName}
             </span>
-            <span className="text-xs font-medium text-lime-400 block">
-              {clientName}
-            </span>
+            <div className="flex items-center gap-1 text-xs font-medium">
+              <span className="text-lime-400 block">{clientName}</span>
+              {photographerName && (
+                <>
+                  <span className="text-white block">by</span>
+                  <span className="text-white block">{photographerName}</span>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Contextual Info (gap-1 = 4px) */}

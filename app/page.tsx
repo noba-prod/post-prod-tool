@@ -30,7 +30,7 @@ export default function HomePage() {
       try {
         const session = await authAdapter.getSession()
         if (session) {
-          router.replace("/app")
+          router.replace("/collections")
         } else {
           router.replace("/auth/login")
         }
