@@ -116,6 +116,41 @@ export async function POST(
     )
   }
 
+  const { data: existingProfileRow, error: existingProfileError } = await adminClient
+    .from("profiles")
+    .select("id,organization_id,is_internal")
+    .eq("id", userId)
+    .maybeSingle()
+  if (existingProfileError) {
+    return NextResponse.json({ error: existingProfileError.message }, { status: 500 })
+  }
+
+  const existingProfile = existingProfileRow as
+    | Pick<Profile, "id" | "organization_id" | "is_internal">
+    | null
+  if (existingProfile) {
+    if (existingProfile.organization_id === organizationId) {
+      return NextResponse.json(
+        { error: "User already belongs to this organization" },
+        { status: 409 }
+      )
+    }
+
+    if (existingProfile.organization_id && existingProfile.organization_id !== organizationId) {
+      return NextResponse.json(
+        { error: "User already belongs to another organization" },
+        { status: 409 }
+      )
+    }
+
+    if (existingProfile.is_internal && !isNobaOrg) {
+      return NextResponse.json(
+        { error: "Internal users can only be managed from the noba organization" },
+        { status: 409 }
+      )
+    }
+  }
+
   const profilePayload: Record<string, unknown> = {
     id: userId,
     organization_id: organizationId,

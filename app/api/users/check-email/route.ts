@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin"
 
 /**
  * GET /api/users/check-email?email=...&excludeUserId=...
- * Returns { exists: boolean } whether a profile with that email already exists.
+ * Returns:
+ * - exists: true when email is already assigned and cannot be reused.
+ * - reusable: true when a profile exists but can be adopted (no org + non-internal).
  * Used to validate email uniqueness when registering or editing a team member.
  * excludeUserId: when editing, pass the user id to exclude from the check (so current user's email is not flagged).
  */
@@ -37,7 +39,7 @@ export async function GET(request: Request) {
   const adminClient = createAdminClient()
   let query = adminClient
     .from("profiles")
-    .select("id")
+    .select("id,organization_id,is_internal")
     .ilike("email", email)
   if (excludeUserId) {
     query = query.neq("id", excludeUserId)
@@ -49,5 +51,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ exists: (rows?.length ?? 0) > 0 })
+  const existing = rows?.[0] as
+    | { id: string; organization_id: string | null; is_internal: boolean | null }
+    | undefined
+
+  if (!existing) {
+    return NextResponse.json({ exists: false, reusable: false })
+  }
+
+  const reusable = !existing.organization_id && !existing.is_internal
+  const exists = !reusable
+
+  return NextResponse.json({ exists, reusable })
 }
