@@ -26,6 +26,11 @@ interface CollectionStepperProps {
   deadlineTime?: string
   /** Callback when step is clicked (e.g. to open step modal). All steps (active, locked, completed) are clickable when this is set, except inactive. */
   onStepClick?: () => void
+  /**
+   * When true, the row cannot open the step modal (e.g. collection canceled). Active steps render as
+   * locked visually so nothing looks “current”; distinct from `inactive` (scenario-hidden / greyed).
+   */
+  suppressInteraction?: boolean
   /** Whether to show the expand/arrow button */
   showExpandButton?: boolean
   /** When true, step is not part of this collection type (greyed out, not clickable). */
@@ -55,14 +60,18 @@ export function CollectionStepper({
   onStepClick,
   showExpandButton = true,
   inactive = false,
+  suppressInteraction = false,
   isFirst = false,
   isLast = false,
   showAttentionDot = false,
   className,
 }: CollectionStepperProps) {
-  const isLocked = status === "locked"
-  const clickable = !inactive && !!onStepClick
-  const isDisabled = inactive
+  const openDisabled = inactive || suppressInteraction
+  const clickable = !openDisabled && !!onStepClick
+  const isDisabled = inactive || suppressInteraction
+  /** Read-only canceled collection: “active” must not look like the current step. */
+  const uiStatus: CollectionStepperStatus =
+    inactive || (suppressInteraction && status === "active") ? "locked" : status
 
   return (
     <div
@@ -70,16 +79,19 @@ export function CollectionStepper({
         "flex items-stretch gap-3 min-[760px]:gap-8",
         clickable && "cursor-pointer",
         inactive && "opacity-50 pointer-events-none",
+        suppressInteraction &&
+          !inactive &&
+          "pointer-events-none cursor-default",
         className
       )}
       onClick={clickable ? () => onStepClick?.() : undefined}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
-      data-status={status}
+      data-status={uiStatus}
       data-inactive={inactive || undefined}
     >
       <VerticalProgressIndicator
-        status={inactive ? "locked" : status}
+        status={uiStatus}
         segmentHeight={32}
         hideTopSegment={isFirst}
         hideBottomSegment={isLast}
@@ -89,7 +101,7 @@ export function CollectionStepper({
         <div className="flex flex-1 min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2 min-w-0">
             <CollectionStepSummary
-              status={inactive ? "locked" : status}
+              status={uiStatus}
               title={title}
               stageStatus={stageStatus}
               timeStampStatus={timeStampStatus}
@@ -104,7 +116,7 @@ export function CollectionStepper({
         {showExpandButton && (
           <div className="shrink-0 w-10 self-stretch min-h-0 flex">
             <Button
-              variant={status === "active" && !inactive ? "default" : "secondary"}
+              variant={uiStatus === "active" && !inactive ? "default" : "secondary"}
               size="icon"
               className={cn(
                 "!h-full !min-h-0 w-full rounded-xl",

@@ -70,11 +70,6 @@ export function getDeadlineForStep(
         date: config.photoSelectionClientDueDate,
         time: config.photoSelectionClientDueTime,
       }
-    case "photographer_check_client_selection":
-      return {
-        date: config.photographerCheckDueDate,
-        time: config.photographerCheckDueTime,
-      }
     case "handprint_high_res":
       return { date: config.lrToHrDueDate, time: config.lrToHrDueTime }
     case "edition_request":
@@ -196,8 +191,7 @@ export function deriveCompletedStepIds(eventTypes: string[]): Set<string> {
 function getRevertTargetStepId(sourceRaw: unknown): ViewStepId {
   const source = String(sourceRaw ?? "").trim()
   if (source === "client") return "photographer_selection"
-  if (source === "photographer_review") return "client_selection"
-  if (source === "high_res") return "photographer_check_client_selection"
+  if (source === "high_res") return "client_selection"
   if (source === "photographer_last_check") return "final_edits"
   if (source === "client_confirmation") return "photographer_last_check"
   // default case (photographer selection missing photos)

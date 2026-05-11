@@ -108,13 +108,6 @@ export const CollectionEvents = {
   scanningCompleted: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "scanning_completed", options),
 
-  // Photographer check (validates client selection — step 6)
-  photographerCheckApproved: (collectionId: string, options?: TriggerEventOptions) =>
-    triggerCollectionEvent(collectionId, "photographer_check_approved", options),
-
-  photographerCheckDeadlineMissed: (collectionId: string, options?: TriggerEventOptions) =>
-    triggerCollectionEvent(collectionId, "photographer_check_deadline_missed", options),
-
   // Client selection events
   clientSelectionConfirmed: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "client_selection_confirmed", options),

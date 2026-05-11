@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { NavBar } from "../nav-bar"
 import { SideBar } from "../side-bar"
+import type { CollectionSidebarSecondaryActions } from "../side-bar"
 import { BlockTemplate } from "../block"
 import { StepConnector } from "../step-connector"
 import {
@@ -121,10 +122,8 @@ interface CreationTemplateProps {
   completedStepIds?: string[]
   /** Callback when a sidebar item is clicked */
   onSidebarItemClick?: (id: string) => void
-  /** When create-collection: callback when Delete collection is clicked */
-  onDeleteCollection?: () => void
-  /** When create-collection: callback when Settings (collection config) is clicked */
-  onSettingsCollection?: () => void
+  /** When create-collection: unified “more” menu (Edit / Cancel / Delete). Null to hide. */
+  collectionSecondaryActions?: CollectionSidebarSecondaryActions | null
   /** When create-collection: callback when Publish / Save changes is clicked */
   onPublishCollection?: () => void
   /** When create-collection: disable Publish until draft is complete (ignored in edition mode) */
@@ -175,8 +174,7 @@ function CreationTemplateContent({
   blocks = [],
   completedStepIds,
   onSidebarItemClick,
-  onDeleteCollection,
-  onSettingsCollection,
+  collectionSecondaryActions,
   onPublishCollection,
   publishCollectionDisabled = true,
   publishCollectionLabel = "Publish",
@@ -475,9 +473,7 @@ function CreationTemplateContent({
                   }
                   collection={collectionSummary ?? { name: title }}
                   onItemClick={onSidebarItemClick}
-                  onDelete={onDeleteCollection}
-                  deleteLabel="Delete collection"
-                  onSettingsCollection={onSettingsCollection}
+                  collectionSecondaryActions={collectionSecondaryActions}
                   onPublish={onPublishCollection}
                   publishDisabled={publishCollectionDisabled}
                   publishLabel={publishCollectionLabel}
@@ -627,3 +623,4 @@ export function CreationTemplate(props: CreationTemplateProps) {
 }
 
 export type { CreationTemplateProps, CreationBlock }
+export type { CollectionSidebarSecondaryActions } from "../side-bar"

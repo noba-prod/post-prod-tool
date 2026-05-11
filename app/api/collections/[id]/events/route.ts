@@ -34,8 +34,6 @@ const VALID_EVENT_TYPES: CollectionEventType[] = [
   "client_selection_started",
   "client_selection_confirmed",
   "client_selection_deadline_missed",
-  "photographer_check_approved",
-  "photographer_check_deadline_missed",
   "highres_started",
   "highres_ready",
   "highres_deadline_missed",
@@ -45,7 +43,6 @@ const VALID_EVENT_TYPES: CollectionEventType[] = [
   "final_edits_completed",
   "final_edits_deadline_missed",
   "retouch_studio_shared_additional_materials",
-  "photographer_review_started",
   "photographer_edits_approved",
   "photographer_last_check_shared_additional_materials",
   "photographer_review_deadline_missed",
@@ -132,9 +129,9 @@ export async function POST(
     // For photographer_requested_additional_photos we support multiple revert targets
     // driven by metadata.source:
     // - client -> photographer_selection
-    // - photographer_review -> client_selection
-    // - high_res -> photographer_review (substatus client_selection)
+    // - high_res -> client_selection
     // - photographer_last_check -> final_edits
+    // - client_confirmation -> photographer_last_check
     // - default -> low_res_scanning
     let advance = getSubstatusAdvanceForEvent(eventType as CollectionEventType)
     // Digital collections WITHOUT retouch: highres_ready advances directly to client_confirmation (skip edition_request, final_edits, photographer_last_check)
@@ -146,8 +143,6 @@ export async function POST(
       const source = String((metadata as { source?: string } | undefined)?.source ?? "").trim()
       if (source === "client") {
         advance = { action: "revert", substatus: "photographer_selection" }
-      } else if (source === "photographer_review") {
-        advance = { action: "revert", substatus: "client_selection" }
       } else if (source === "high_res") {
         advance = { action: "revert", substatus: "client_selection" }
       } else if (source === "photographer_last_check") {

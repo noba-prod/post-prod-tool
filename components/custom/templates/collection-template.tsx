@@ -52,12 +52,6 @@ function getMainContextualPlayers(
       entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"),
     }
   }
-  if (stepId === "photographer_check_client_selection") {
-    return {
-      individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
-      entities: entities.filter((e) => (e.entityTypeLabel ?? "").toLowerCase() === "client"),
-    }
-  }
   if (stepId === "handprint_high_res") {
     return {
       individuals: individuals.filter((u) => (u.roleLabel ?? "").toLowerCase() === "photographer"),
@@ -118,6 +112,21 @@ function formatTimeLabel(date?: string, time?: string): string {
   return `Time: ${d} · ${t}`
 }
 
+/** Preset shipping providers — aligned with Drop-off plan creation step */
+const VIEW_DROPOFF_SHIPPING_PROVIDER_OPTIONS = [
+  { value: "dhl", label: "DHL" },
+  { value: "fedex", label: "FedEx" },
+  { value: "ups", label: "UPS" },
+  { value: "correos", label: "Correos" },
+  { value: "seur", label: "SEUR" },
+]
+
+function isAnalogHandprintShooting(
+  shootingType: "digital" | "handprint_hp" | "handprint_hr" | undefined
+): boolean {
+  return shootingType === "handprint_hp" || shootingType === "handprint_hr"
+}
+
 /** Relative time for low-res upload: minutes (precise), then hours, days, weeks, months (rounded). */
 function formatRelativeTime(iso: string): string {
   const then = new Date(iso).getTime()
@@ -169,6 +178,11 @@ import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
 import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
 import { InformativeToast } from "@/components/custom/informative-toast"
 import { ValidateLinksDialog, type ValidateLinksDialogItem } from "@/components/custom/validate-links-dialog"
+import type { DropoffAdditionalShipment } from "@/lib/domain/collections"
+import { RowVariants } from "../row-variants"
+import { OptionPicker } from "../option-picker"
+import { mergeShippingProviderOptions } from "@/lib/utils/shipping-provider-picker"
+import { Field, FieldLabel, FieldContent } from "@/components/ui/field"
 import type { CollectionMemberRole } from "@/lib/supabase/database.types"
 
 const NOTIFICATIONS_REFRESH_EVENT = "noba:notifications:refresh"
@@ -236,6 +250,8 @@ export interface CollectionTemplateProps {
   showParticipantsButton?: boolean
   /** Show Settings button */
   showSettingsButton?: boolean
+  /** When true, collection was canceled: read-only steps, no progress pill, header shows Canceled. */
+  isCollectionCanceled?: boolean
   /** Callback when Participants is clicked */
   onParticipants?: () => void
   /** Callback when Settings is clicked */
@@ -264,6 +280,14 @@ export interface CollectionTemplateProps {
   dropoffShippingDestinationAddress?: string
   dropoffDeliveryDate?: string
   dropoffDeliveryTime?: string
+  /** Extra tracking rows (Analog) — informational; primary shipment is dropoffShippingCarrier / dropoffShippingTracking. */
+  dropoffAdditionalShipments?: DropoffAdditionalShipment[]
+  /** Options for Responsible for shipping when adding supplemental shipment from Shooting step modal. */
+  dropoffManagingShippingOptions?: { value: string; label: string }[]
+  /** Persist one supplemental shipment (producer). */
+  onAppendDropoffAdditionalShipment?: (
+    shipment: DropoffAdditionalShipment
+  ) => void | Promise<void>
   /** Called when owner confirms pickup (Shooting step). For Digital: shootingType="digital" triggers shooting_completed_confirmed. For Analog: triggers negatives_pickup_marked. */
   onConfirmPickup?: (stepId: string, shootingType?: string) => void | Promise<void>
   /** Called when owner confirms delivery (Negatives drop-off step). Pass canMeetDeadline from dialog Yes/No. */
@@ -300,35 +324,23 @@ export interface CollectionTemplateProps {
   onUploadClientSelection?: (payload: { url: string; notes?: string }) => void | Promise<void>
   /** Step 5 (Client selection): called when client requests more photos from photographer. */
   onRequestMorePhotosFromPhotographer?: (notes: string) => void | Promise<void>
-  /** Step 6 (Photographer review): URL(s) of client final selection (step 5 upload). Array — latest is last. */
+  /** URL(s) of client final selection (step 5 upload). Array — latest is last. */
   clientSelectionUrl?: string | string[]
-  /** Step 6: when the client selection URL was uploaded (ISO). */
+  /** When the client selection URL was uploaded (ISO). */
   clientSelectionUploadedAt?: string
-  /** Step 6: URL(s) uploaded by photographer during review/validation. Array — latest is last. */
-  photographerReviewUrl?: string | string[]
-  /** Step 6: when the photographer review URL was uploaded (ISO). */
-  photographerReviewUploadedAt?: string
   /** Step notes conversation for client selection step (step 5). */
   stepNotesClientSelection?: Array<{ from: string; text: string; at: string; userId?: string }>
-  /** Step 6: called when photographer validates client selection (adds comments/link). */
-  onValidateClientSelection?: (comments?: string, url?: string) => void | Promise<void>
-  /** Step 6: called when photographer approves client selection directly. Receives selected URLs when multiple links exist. */
-  onValidateClientSelectionDirect?: (selectedUrls?: string[]) => void | Promise<void>
-  /** Step 6: called when photographer requests more photos from client. */
-  onRequestMorePhotosFromClient?: (notes: string) => void | Promise<void>
-  /** Step notes conversation for photographer review step (step 6). */
-  stepNotesPhotographerReview?: Array<{ from: string; text: string; at: string; userId?: string }>
-  /** Step 7: called when lab uploads high-res selection. */
+  /** Step 6: called when lab uploads high-res selection. */
   onUploadHighRes?: (payload: { url: string; notes?: string }) => void | Promise<void>
-  /** Step 7+8 combined (Digital + Retouch only): upload single link + notes in one action. */
+  /** Step 6+7 combined (Digital + Retouch only): upload single link + notes in one action. */
   onUploadHighResAndInstructions?: (payload: { url: string; details?: string; instructionsUrl?: string }) => void | Promise<void>
-  /** Step 8 (Edition request): URL(s) of high-res selection (step 7 upload). Array — latest is last. */
+  /** Step 7 (Edition request): URL(s) of high-res selection (step 6 upload). Array — latest is last. */
   highResSelectionUrl?: string | string[]
-  /** Step 8: when the high-res URL was uploaded (ISO). */
+  /** Step 7: when the high-res URL was uploaded (ISO). */
   highResUploadedAt?: string
-  /** Step 8: name of entity that uploaded high-res (e.g. Hand Print Lab name) for "Uploaded by @X". */
+  /** Step 7: name of entity that uploaded high-res (e.g. Hand Print Lab name) for "Uploaded by @X". */
   highResUploadedByName?: string
-  /** Step notes conversation for high-res step (step 7). */
+  /** Step notes conversation for high-res step (step 6). */
   stepNotesHighRes?: Array<{ from: string; text: string; at: string; userId?: string }>
   /** Step 8: entity name for notes block (e.g. "Hand Print Lab" or "Photo Lab"). */
   highResUploadedByEntityName?: string
@@ -432,6 +444,7 @@ export function CollectionTemplate({
   showPhotographerName = false,
   showParticipantsButton = true,
   showSettingsButton = true,
+  isCollectionCanceled = false,
   onParticipants,
   onSettings,
   collectionId,
@@ -451,6 +464,9 @@ export function CollectionTemplate({
   dropoffShippingDestinationAddress,
   dropoffDeliveryDate,
   dropoffDeliveryTime,
+  dropoffAdditionalShipments = [],
+  dropoffManagingShippingOptions,
+  onAppendDropoffAdditionalShipment,
   onConfirmPickup,
   onConfirmDropoffDelivery,
   onUploadLowRes,
@@ -471,13 +487,7 @@ export function CollectionTemplate({
   onRequestMorePhotosFromPhotographer,
   clientSelectionUrl,
   clientSelectionUploadedAt,
-  photographerReviewUrl,
-  photographerReviewUploadedAt,
   stepNotesClientSelection,
-  onValidateClientSelection,
-  onValidateClientSelectionDirect,
-  onRequestMorePhotosFromClient,
-  stepNotesPhotographerReview,
   onUploadHighRes,
   onUploadHighResAndInstructions,
   highResSelectionUrl,
@@ -582,7 +592,6 @@ export function CollectionTemplate({
   const highResUploadNotes = lastNoteText(stepNotesHighRes)
   const editionRequestInstructionsNotes = lastNoteText(stepNotesEditionRequest)
   const finalsUploadNotes = lastNoteText(stepNotesFinalEdits)
-  const photographerValidationNotes = lastNoteText(stepNotesPhotographerReview)
 
   /** Resolve uploader entity display (name + image) for link-accordion note author by role. */
   const resolveUploaderDisplay = React.useCallback(
@@ -812,6 +821,11 @@ export function CollectionTemplate({
     () => new Set()
   )
   const [confirmDropoffDialogOpen, setConfirmDropoffDialogOpen] = React.useState(false)
+  const [addDropoffShippingDialogOpen, setAddDropoffShippingDialogOpen] = React.useState(false)
+  const [addShipManaging, setAddShipManaging] = React.useState("")
+  const [addShipProvider, setAddShipProvider] = React.useState("")
+  const [addShipTracking, setAddShipTracking] = React.useState("")
+  const [addShipSaving, setAddShipSaving] = React.useState(false)
   const [uploadLowResDialogOpen, setUploadLowResDialogOpen] = React.useState(false)
   const [uploadLowResUrl, setUploadLowResUrl] = React.useState("")
   const [uploadLowResNotes, setUploadLowResNotes] = React.useState("")
@@ -828,11 +842,6 @@ export function CollectionTemplate({
   const [clientUploadSelectionNotes, setClientUploadSelectionNotes] = React.useState("")
   const [clientMissingPhotosDialogOpen, setClientMissingPhotosDialogOpen] = React.useState(false)
   const [clientMissingPhotosNotes, setClientMissingPhotosNotes] = React.useState("")
-  const [validateSelectionDialogOpen, setValidateSelectionDialogOpen] = React.useState(false)
-  const [validateSelectionComments, setValidateSelectionComments] = React.useState("")
-  const [validateSelectionLink, setValidateSelectionLink] = React.useState("")
-  const [photographerRequestClientPhotosDialogOpen, setPhotographerRequestClientPhotosDialogOpen] = React.useState(false)
-  const [photographerRequestClientPhotosNotes, setPhotographerRequestClientPhotosNotes] = React.useState("")
   const [uploadHighResDialogOpen, setUploadHighResDialogOpen] = React.useState(false)
   const [uploadHighResUrl, setUploadHighResUrl] = React.useState("")
   const [uploadHighResNotes, setUploadHighResNotes] = React.useState("")
@@ -872,7 +881,6 @@ export function CollectionTemplate({
       low_res_scanning: { stepNoteKey: "step_note_low_res", from: "lab" },
       photographer_selection: { stepNoteKey: "step_note_photographer_selection", from: "photographer" },
       client_selection: { stepNoteKey: "step_note_client_selection", from: "client" },
-      photographer_check_client_selection: { stepNoteKey: "step_note_photographer_review", from: "photographer" },
       handprint_high_res: { stepNoteKey: "step_note_high_res", from: shootingType === "digital" ? "photographer" : "lab" },
       edition_request: { stepNoteKey: "step_note_edition_request", from: "photographer" },
       final_edits: { stepNoteKey: "step_note_final_edits", from: "retouch_studio" },
@@ -1096,6 +1104,11 @@ export function CollectionTemplate({
   }, [refreshStepAttention])
 
   React.useEffect(() => {
+    if (isCollectionCanceled) setOpenStepId(null)
+  }, [isCollectionCanceled])
+
+  React.useEffect(() => {
+    if (isCollectionCanceled) return
     const targetStepId = normalizeStepIdFromQuery(searchParams.get("step"))
     if (!targetStepId) return
 
@@ -1103,7 +1116,7 @@ export function CollectionTemplate({
     if (!canOpenStep) return
 
     setOpenStepId((prev) => prev ?? targetStepId)
-  }, [searchParams, visibleSteps])
+  }, [searchParams, visibleSteps, isCollectionCanceled])
 
   React.useEffect(() => {
     if (!collectionId || !openStepId) return
@@ -1156,6 +1169,14 @@ export function CollectionTemplate({
     () => steps.find((s) => s.id === openStepId) ?? null,
     [steps, openStepId]
   )
+  const addShippingProviderMergedOptions = React.useMemo(
+    () =>
+      mergeShippingProviderOptions(
+        VIEW_DROPOFF_SHIPPING_PROVIDER_OPTIONS,
+        addShipProvider || undefined
+      ),
+    [addShipProvider]
+  )
   const canShowModalActions = React.useMemo(() => {
     if (!openStep) return false
     // Fallback behavior for demos/legacy callers that don't pass current owner context.
@@ -1165,6 +1186,32 @@ export function CollectionTemplate({
     const stepOwnerRoles = stepOwners?.[openStep.id] ?? currentOwners
     return currentUserHasEditPermission && stepOwnerRoles.includes(currentUserCollectionRole)
   }, [openStep, currentOwners, stepOwners, currentUserCollectionRole, currentUserHasEditPermission])
+
+  // Read-only exception: after removing the dedicated "Photographer review" step,
+  // the photographer must still be able to inspect the client's final selection (and add
+  // comments visible to the lab in the next step) on the Client Selection modal even
+  // though they are not the step owner. The action block (Upload selection) remains
+  // gated by canShowModalActions and is reserved for the client + producer.
+  const canViewClientSelectionUrlsAsPhotographer = React.useMemo(() => {
+    if (!openStep || openStep.id !== "client_selection") return false
+    return currentUserCollectionRole === "photographer"
+  }, [openStep, currentUserCollectionRole])
+  const canViewClientSelectionUrls = canShowModalActions || canViewClientSelectionUrlsAsPhotographer
+
+  // Workflow guardrail for the photographer:
+  // Even though the photographer is owner of edition_request (step 7/8 in UI) and
+  // photographer_last_check (step 9/10 in UI), they must NOT be able to act on those
+  // steps until the client has finished selecting (client_selection = completed).
+  // This avoids the photographer skipping ahead while the client / lab / retouch
+  // studio still need to interact with earlier steps. The lock applies BOTH visually
+  // (opacity + pointer-events-none) and behaviorally because the wrapper below uses it.
+  const isPhotographerLockedFromAdvancedStep = React.useMemo(() => {
+    if (!openStep) return false
+    if (currentUserCollectionRole !== "photographer") return false
+    if (openStep.id !== "edition_request" && openStep.id !== "photographer_last_check") return false
+    const clientSelectionStep = steps?.find((s) => s.id === "client_selection")
+    return clientSelectionStep?.status !== "completed"
+  }, [openStep, currentUserCollectionRole, steps])
 
   return (
     <div
@@ -1195,7 +1242,11 @@ export function CollectionTemplate({
             clientName={clientName}
             progress={progress}
             stageStatus={stageStatus}
-            showStageStatus
+            hideProgress={isCollectionCanceled}
+            collectionLifecycleStatus={
+              isCollectionCanceled ? "canceled" : undefined
+            }
+            showStageStatus={!isCollectionCanceled}
             shootingType={shootingType}
             photographerName={photographerName}
             showPhotographerName={showPhotographerName}
@@ -1224,10 +1275,16 @@ export function CollectionTemplate({
                 deadlineLabel={step.deadlineLabel ?? "Deadline:"}
                 deadlineDate={step.deadlineDate ?? "Dec 4, 2025"}
                 deadlineTime={step.deadlineTime ?? "End of day (5:00pm)"}
+                inactive={Boolean(step.inactive)}
+                suppressInteraction={isCollectionCanceled}
                 showAttentionDot={Boolean(step.attention) || stepsWithUnreadActivity.has(step.id)}
-                onStepClick={() => setOpenStepId(step.id)}
+                onStepClick={
+                  isCollectionCanceled
+                    ? undefined
+                    : () => setOpenStepId(step.id)
+                }
                 showExpandButton
-                  isFirst={index === 0}
+                isFirst={index === 0}
                 isLast={index === visibleSteps.length - 1}
               />
             ))}
@@ -1271,7 +1328,9 @@ export function CollectionTemplate({
         showPrimary={false}
         showSecondary={false}
       >
-        <div className={`px-5 pb-5 flex flex-col gap-6${openStep && openStep.status !== "active" && openStep.status !== "completed" ? " opacity-50 pointer-events-none" : ""}`}>
+        <div
+          className={`px-5 pb-5 flex flex-col gap-6 min-w-0 max-w-full touch-pan-y${openStep && openStep.status !== "active" && openStep.status !== "completed" && (!canShowModalActions || isPhotographerLockedFromAdvancedStep) ? " opacity-50 pointer-events-none" : ""}`}
+        >
           {openStep && (
             <>
               {openStep.id === "shooting" ? (
@@ -1285,27 +1344,62 @@ export function CollectionTemplate({
                 />
               ) : openStep.id === "negatives_dropoff" ? (
                 <>
-                  <StepDetails
-                    variant="primary"
-                    mainTitle="Tracking shipping"
-                    subtitle={
-                      dropoffShippingCarrier?.trim() ? (
-                        <>
-                          Provider:{" "}
-                          <span className="text-lime-400">@{(dropoffShippingCarrier ?? "").replace(/^@/, "").trim()}</span>
-            </>
-          ) : (
-                        "Provider: —"
-                      )
-                    }
-                    additionalInfo={
-                      dropoffShippingTracking?.trim()
-                        ? `Tracking ID: ${dropoffShippingTracking.trim()}`
-                        : "Tracking ID: —"
-                    }
-                    backgroundImage="/assets/bg-tracking.png"
-                    hideActionButton
-                  />
+                  {/* Single flex scroller: avoids nested overflow quirks; pan-x keeps horizontal wheel on the strip only. */}
+                  <div
+                    className="flex w-full max-w-full min-w-0 flex-nowrap gap-4 overflow-x-auto overscroll-x-contain touch-pan-x pb-1 pr-6 [scrollbar-width:thin]"
+                    role="region"
+                    aria-label="Tracking shipments"
+                  >
+                    <StepDetails
+                      variant="primary"
+                      mainTitle="Tracking shipping"
+                      subtitle={
+                        dropoffShippingCarrier?.trim() ? (
+                          <>
+                            Provider:{" "}
+                            <span className="text-lime-400">
+                              @{(dropoffShippingCarrier ?? "").replace(/^@/, "").trim()}
+                            </span>
+                          </>
+                        ) : (
+                          "Provider: —"
+                        )
+                      }
+                      additionalInfo={
+                        dropoffShippingTracking?.trim()
+                          ? `Tracking ID: ${dropoffShippingTracking.trim()}`
+                          : "Tracking ID: —"
+                      }
+                      backgroundImage="/assets/bg-tracking.png"
+                      hideActionButton
+                      className="w-[260px] shrink-0 max-[759px]:w-[280px]"
+                    />
+                    {dropoffAdditionalShipments.map((s, idx) => (
+                      <StepDetails
+                        key={`extra-shipping-${idx}-${s.provider ?? ""}-${s.tracking ?? ""}`}
+                        variant="primary"
+                        mainTitle={`Tracking shipping ${idx + 2}`}
+                        subtitle={
+                          s.provider?.trim() ? (
+                            <>
+                              Provider:{" "}
+                              <span className="text-lime-400">
+                                @{(s.provider ?? "").replace(/^@/, "").trim()}
+                              </span>
+                            </>
+                          ) : (
+                            "Provider: —"
+                          )
+                        }
+                        additionalInfo={
+                          s.tracking?.trim() ? `Tracking ID: ${s.tracking.trim()}` : "Tracking ID: —"
+                        }
+                        backgroundImage="/assets/bg-tracking.png"
+                        hideActionButton
+                        className="w-[260px] shrink-0 max-[759px]:w-[280px]"
+                      />
+                    ))}
+                  </div>
                   <div className="flex flex-row gap-4 w-full">
                     <StepDetails
                       variant="secondary"
@@ -1503,7 +1597,7 @@ export function CollectionTemplate({
                     hideActionButton
                     className="w-full"
                   />
-                  {canShowModalActions && [
+                  {canViewClientSelectionUrls && [
                     ...buildUrlHistoryItems(photographerSelectionUrl, stepNotesPhotographerSelection, "photographer", resolveUploaderDisplay("photographer"), photographerSelectionUploadedAt, "photographer_selection", "Photographer selection"),
                     ...buildUrlHistoryItems(clientSelectionUrl, stepNotesClientSelection, "client", resolveUploaderDisplay("client"), clientSelectionUploadedAt, "client_selection", "Client selection"),
                   ].map((item, idx) => (
@@ -1534,129 +1628,6 @@ export function CollectionTemplate({
                       </Button>
                     </section>
                   )}
-                </div>
-              ) : openStep.id === "photographer_check_client_selection" ? (
-                <div className="flex flex-col gap-5 w-full">
-                  <StepDetails
-                    variant="primary"
-                    mainTitle="Validation for HR"
-                    subtitle="Photographer must download and validate client selections for hand print lab instructions."
-                    backgroundImage="/assets/bg-improvements.png"
-                    hideActionButton
-                    className="w-full"
-                  />
-                  {canShowModalActions && [
-                    ...buildUrlHistoryItems(clientSelectionUrl, stepNotesClientSelection, "client", resolveUploaderDisplay("client"), clientSelectionUploadedAt, "client_selection", "Client selection"),
-                    ...buildUrlHistoryItems(
-                      allUrls(photographerReviewUrl).length > 0 ? photographerReviewUrl : (stepNotesPhotographerReview?.length ?? 0) > 0 ? ["notes-only"] : undefined,
-                      stepNotesPhotographerReview,
-                      "photographer",
-                      resolveUploaderDisplay("photographer"),
-                      photographerReviewUploadedAt,
-                      "photographer_check_client_selection",
-                      undefined,
-                      (url, idx, hasPhotographerNotesForUrl) => {
-                        const clientUrls = allUrls(clientSelectionUrl)
-                        const isFromClientSelection = url !== "notes-only" && clientUrls.includes(url)
-                        if (isFromClientSelection && !hasPhotographerNotesForUrl) {
-                          return idx === 0 ? "Client selection (validated by photographer)" : `Client selection (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
-                        }
-                        return idx === 0 ? "Photographer review" : `Photographer review - Additional link ${String(idx).padStart(2, "0")}`
-                      }
-                    ),
-                  ].map((item, idx) => (
-                    <UrlHistory
-                      key={`photographer-review-${idx}-${item.url}`}
-                      title={item.title}
-                      comments={item.comments}
-                      onOpenLink={item.url !== "notes-only" ? () => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer") : undefined}
-                      onAddComment={onAddStepNote && item.stepId && item.url !== "notes-only" ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                    />
-                  ))}
-                  {canShowModalActions && (() => {
-                    const hasPhotographerReviewData =
-                      allUrls(photographerReviewUrl).length > 0 || (stepNotesPhotographerReview?.length ?? 0) > 0
-                    return (
-                      <section
-                        className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
-                        aria-label="Step owner action"
-                      >
-                        {hasPhotographerReviewData ? (
-                          <>
-                            <p className="text-center text-base font-semibold text-foreground">
-                              Need to send additional footage?
-                            </p>
-                            <Button
-                              type="button"
-                              variant="default"
-                              size="lg"
-                              className="w-fit rounded-xl"
-                              onClick={() => setValidateSelectionDialogOpen(true)}
-                            >
-                              Upload additional photos
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-center text-base font-semibold text-foreground">
-                              Review client selection and confirm or add comments for lab
-                            </p>
-                            <div className="flex items-center justify-center gap-3">
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                size="lg"
-                                className="w-fit rounded-xl"
-                                onClick={() => setValidateSelectionDialogOpen(true)}
-                              >
-                                Add comments to lab
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="default"
-                                size="lg"
-                                className="w-fit rounded-xl"
-                                onClick={async () => {
-                                  const clientUrls = allUrls(clientSelectionUrl)
-                                  if (clientUrls.length === 0) {
-                                    try {
-                                      await onValidateClientSelectionDirect?.()
-                                      closeStepModalAndClearUrl()
-                                      toast.success("Client selection validated.")
-                                    } catch {
-                                      // Error surfaced by page if any
-                                    }
-                                    return
-                                  }
-                                  const links: ValidateLinksDialogItem[] = clientUrls.map((url, idx) => ({
-                                    label: idx === 0 ? "Client selection" : `Additional Link ${String(idx).padStart(2, "0")}`,
-                                    url,
-                                  }))
-                                  setValidateLinksDialogConfig({
-                                    links,
-                                    singleSelect: links.length === 1,
-                                    confirmLabel: "Validate client selection",
-                                    onConfirm: async (selectedUrls) => {
-                                      try {
-                                        await onValidateClientSelectionDirect?.(selectedUrls)
-                                        closeStepModalAndClearUrl()
-                                        toast.success("Client selection validated.")
-                                      } catch {
-                                        // Error surfaced by page if any
-                                      }
-                                    },
-                                  })
-                                  setValidateLinksDialogOpen(true)
-                                }}
-                              >
-                                Validate client selection
-                              </Button>
-                            </div>
-                          </>
-                        )}
-                      </section>
-                    )
-                  })()}
                 </div>
               ) : openStep.id === "edition_request" ? (
                 <div className="flex flex-col gap-5 w-full">
@@ -1944,23 +1915,7 @@ export function CollectionTemplate({
                             : buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "photographer", resolveUploaderDisplay("photographer"), highResUploadedAt, "handprint_high_res", "High-res selection")),
                         ]
                       : [
-                          ...buildUrlHistoryItems(
-                            photographerReviewUrl,
-                            stepNotesPhotographerReview,
-                            "photographer",
-                            resolveUploaderDisplay("photographer"),
-                            photographerReviewUploadedAt,
-                            "photographer_check_client_selection",
-                            undefined,
-                            (url, idx, hasPhotographerNotesForUrl) => {
-                              const clientUrls = allUrls(clientSelectionUrl)
-                              const isFromClientSelection = clientUrls.includes(url)
-                              if (isFromClientSelection && !hasPhotographerNotesForUrl) {
-                                return idx === 0 ? "Client selection (validated by photographer)" : `Client selection (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
-                              }
-                              return idx === 0 ? "Photographer review" : `Photographer review - Additional link ${String(idx).padStart(2, "0")}`
-                            }
-                          ),
+                          ...buildUrlHistoryItems(clientSelectionUrl, stepNotesClientSelection, "client", resolveUploaderDisplay("client"), clientSelectionUploadedAt, "client_selection", "Client selection"),
                           ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "handprint_lab", resolveUploaderDisplay("handprint_lab"), highResUploadedAt, "handprint_high_res", "High-res selection"),
                         ]),
                   ].map((item, idx) => (
@@ -2169,7 +2124,9 @@ export function CollectionTemplate({
                     onClick={async () => {
                       try {
                         await onConfirmPickup?.("shooting", shootingType)
-                        closeStepModalAndClearUrl()
+                        if (shootingType === "digital") {
+                          closeStepModalAndClearUrl()
+                        }
                         toast.success(
                           shootingType === "digital" ? "Shooting confirmed." : "Pickup confirmed."
                         )
@@ -2184,6 +2141,40 @@ export function CollectionTemplate({
                   </Button>
                 </section>
               )}
+              {canShowModalActions &&
+                openStep.id === "shooting" &&
+                openStep.status === "completed" &&
+                !isCollectionCanceled &&
+                isAnalogHandprintShooting(shootingType) &&
+                onAppendDropoffAdditionalShipment &&
+                (dropoffManagingShippingOptions?.length ?? 0) > 0 && (
+                  <section
+                    className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-8 shadow-xl ring-offset-2 ring-offset-lime-500"
+                    aria-label="Additional negative shipments"
+                  >
+                    <p className="text-center text-base font-semibold text-foreground max-w-md">
+                      Are there more shipments related to this collection?
+                    </p>
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="lg"
+                      className="w-fit rounded-xl"
+                      onClick={() => {
+                        const d =
+                          dropoffManagingShippingOptions?.find((o) => o.value === "noba")?.value ??
+                          dropoffManagingShippingOptions?.[0]?.value ??
+                          ""
+                        setAddShipManaging(d)
+                        setAddShipProvider("")
+                        setAddShipTracking("")
+                        setAddDropoffShippingDialogOpen(true)
+                      }}
+                    >
+                      Add new shipping
+                    </Button>
+                  </section>
+                )}
               {/* Noba team */}
               <section className="flex flex-col gap-3">
                 <h3 className="text-lg font-semibold text-card-foreground">
@@ -2336,6 +2327,93 @@ export function CollectionTemplate({
               disabled={!collectionId}
             >
               Edit collection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add supplemental shipment (producer, Analog Shooting step modal) */}
+      <Dialog open={addDropoffShippingDialogOpen} onOpenChange={setAddDropoffShippingDialogOpen}>
+        <DialogContent className="sm:max-w-2xl" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Add shipping</DialogTitle>
+            <DialogDescription>
+              Additional shipments are informational for the lab. The lab confirms a single delivery to move to the next step.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <RowVariants variant="3">
+              <OptionPicker
+                label="Responsible for shipping"
+                options={dropoffManagingShippingOptions ?? []}
+                value={addShipManaging}
+                onValueChange={(v) => setAddShipManaging(v)}
+                placeholder="Select..."
+              />
+              <OptionPicker
+                label="Shipping provider"
+                options={addShippingProviderMergedOptions}
+                value={addShipProvider}
+                onValueChange={(v) => setAddShipProvider(v)}
+                placeholder="Search and select a provider"
+                allowCreate
+                createActionLabel="Add new provider"
+              />
+              <Field className="w-full">
+                <FieldLabel>Tracking number</FieldLabel>
+                <FieldContent>
+                  <Input
+                    className="h-10 w-full"
+                    placeholder="Paste here the tracking number"
+                    value={addShipTracking}
+                    onChange={(e) => setAddShipTracking(e.target.value)}
+                  />
+                </FieldContent>
+              </Field>
+            </RowVariants>
+          </div>
+          <DialogFooter showCloseButton={false} className="gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setAddDropoffShippingDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={addShipSaving}
+              onClick={async () => {
+                if (!onAppendDropoffAdditionalShipment || !dropoffManagingShippingOptions?.length) return
+                if (!addShipManaging.trim()) {
+                  toast.error("Select who is responsible for shipping.")
+                  return
+                }
+                if (!addShipProvider.trim()) {
+                  toast.error("Enter or select a shipping provider.")
+                  return
+                }
+                if (!addShipTracking.trim()) {
+                  toast.error("Enter a tracking number.")
+                  return
+                }
+                setAddShipSaving(true)
+                try {
+                  await onAppendDropoffAdditionalShipment({
+                    managingShipping: addShipManaging.trim(),
+                    provider: addShipProvider.trim(),
+                    tracking: addShipTracking.trim(),
+                  })
+                  toast.success("Additional shipping saved.")
+                  setAddDropoffShippingDialogOpen(false)
+                } catch {
+                  /* Parent shows error */
+                } finally {
+                  setAddShipSaving(false)
+                }
+              }}
+            >
+              {addShipSaving ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2886,130 +2964,7 @@ export function CollectionTemplate({
         </DialogContent>
       </Dialog>
 
-      {/* Step 6 (Photographer review): Add comments for HR — link first, then comments */}
-      <Dialog
-        open={validateSelectionDialogOpen}
-        onOpenChange={(open) => {
-          setValidateSelectionDialogOpen(open)
-          if (!open) {
-            setValidateSelectionComments("")
-            setValidateSelectionLink("")
-            setUploadSubmitting(false)
-          }
-        }}
-      >
-        <DialogContent showCloseButton className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add comments for HR</DialogTitle>
-            <DialogDescription>
-              Give instructions to lab for converting to high-res and add a link if necessary.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="validate-selection-link">Link</Label>
-              <Input
-                id="validate-selection-link"
-                type="url"
-                placeholder="https://..."
-                value={validateSelectionLink}
-                onChange={(e) => setValidateSelectionLink(e.target.value)}
-                className="w-full"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="validate-selection-comments">Notes and comments</Label>
-              <Textarea
-                id="validate-selection-comments"
-                placeholder="Write here comments and notes for lab"
-                value={validateSelectionComments}
-                onChange={(e) => setValidateSelectionComments(e.target.value)}
-                className="w-full max-h-[94px] overflow-y-auto resize-none"
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter showCloseButton={false} className="justify-start">
-            <Button
-              type="button"
-              variant="default"
-              disabled={(!validateSelectionComments.trim() && !validateSelectionLink.trim()) || uploadSubmitting}
-              onClick={async () => {
-                if (uploadSubmitting) return
-                setUploadSubmitting(true)
-                try {
-                  await onValidateClientSelection?.(
-                    validateSelectionComments.trim() || undefined,
-                    validateSelectionLink.trim() || undefined
-                  )
-                  setValidateSelectionDialogOpen(false)
-                  setValidateSelectionComments("")
-                  setValidateSelectionLink("")
-                  closeStepModalAndClearUrl()
-                  toast.success("Comments sent to lab.")
-                } catch {
-                  // Error surfaced by page if any
-                } finally {
-                  setUploadSubmitting(false)
-                }
-              }}
-            >
-              {uploadSubmitting ? "Sending…" : "Add comments for HR"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Step 6 (Photographer review): Request more photos from client */}
-      <Dialog
-        open={photographerRequestClientPhotosDialogOpen}
-        onOpenChange={(open) => {
-          setPhotographerRequestClientPhotosDialogOpen(open)
-          if (!open) setPhotographerRequestClientPhotosNotes("")
-        }}
-      >
-        <DialogContent showCloseButton className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Request more photos</DialogTitle>
-            <DialogDescription>
-              Provide details so the client can prepare additional options for selection.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="photographer-request-client-photos-notes">Notes and comments</Label>
-              <Textarea
-                id="photographer-request-client-photos-notes"
-                placeholder="Write here comments and notes"
-                value={photographerRequestClientPhotosNotes}
-                onChange={(e) => setPhotographerRequestClientPhotosNotes(e.target.value)}
-                className="w-full max-h-[94px] overflow-y-auto resize-none"
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter showCloseButton={false} className="justify-start">
-            <Button
-              type="button"
-              variant="default"
-              disabled={!photographerRequestClientPhotosNotes.trim()}
-              onClick={async () => {
-                const notes = photographerRequestClientPhotosNotes.trim()
-                if (!notes) return
-                await onRequestMorePhotosFromClient?.(notes)
-                setPhotographerRequestClientPhotosDialogOpen(false)
-                setPhotographerRequestClientPhotosNotes("")
-                closeStepModalAndClearUrl()
-                toast.success("Request sent to the client.")
-              }}
-            >
-              Request additional photos
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Step 7 (Low-res to high-res): Upload high-res selection — URL + optional notes */}
+      {/* Step 6 (Low-res to high-res): Upload high-res selection — URL + optional notes */}
       <Dialog
         open={uploadHighResDialogOpen}
         onOpenChange={(open) => {

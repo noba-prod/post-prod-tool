@@ -21,6 +21,7 @@ export type {
   StepId,
   StepNoteEntry,
   UserForPermission,
+  DropoffAdditionalShipment,
 } from "./types"
 
 export {
@@ -45,6 +46,7 @@ export {
   isParticipantsStepComplete,
   isValidSubstatusTransition,
   resolveUserForPermission,
+  canUseNobaSensitiveCollectionSidebarActions,
 } from "./workflow"
 
 export type { ChronologyConstraint, ChronologyConstraintsResult } from "./workflow"

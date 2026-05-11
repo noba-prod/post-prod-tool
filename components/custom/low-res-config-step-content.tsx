@@ -26,6 +26,7 @@ import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
 import type { Organization } from "@/lib/supabase/database.types"
+import { mergeShippingProviderOptions } from "@/lib/utils/shipping-provider-picker"
 
 function formatEntityLocation(loc: Location): string {
   const parts = [
@@ -155,6 +156,10 @@ export function LowResConfigStepContent({
   className,
 }: LowResConfigStepContentProps) {
   const c = draft.config
+  const shippingProviderOptions = React.useMemo(
+    () => mergeShippingProviderOptions(SHIPPING_PROVIDER_OPTIONS, c.lowResShippingProvider),
+    [c.lowResShippingProvider]
+  )
   const [labName, setLabName] = React.useState<string>("—")
   const [labAddress, setLabAddress] = React.useState<string>("—")
   const [handprintLabAddress, setHandprintLabAddress] = React.useState<string>("—")
@@ -484,7 +489,7 @@ export function LowResConfigStepContent({
               />
               <OptionPicker
                 label="Shipping provider"
-                options={SHIPPING_PROVIDER_OPTIONS}
+                options={shippingProviderOptions}
                 value={c.lowResShippingProvider ?? ""}
                 onValueChange={(v) =>
                   onLowResConfigChange({
@@ -492,6 +497,8 @@ export function LowResConfigStepContent({
                   })
                 }
                 placeholder="MRW"
+                allowCreate
+                createActionLabel="Add new provider"
               />
               <Field className="w-full">
                 <FieldLabel>Tracking number</FieldLabel>

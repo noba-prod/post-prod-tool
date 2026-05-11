@@ -75,10 +75,6 @@ const DEADLINE_FIELD_MAP: Record<string, DeadlineMapping> = {
     dateField: "precheck_studio_final_edits_date",
     timeField: "precheck_studio_final_edits_time",
   },
-  photographer_check_deadline: {
-    dateField: "photographer_check_due_date",
-    timeField: "photographer_check_due_time",
-  },
   photographer_review_deadline: {
     dateField: "check_finals_photographer_check_date",
     timeField: "check_finals_photographer_check_time",
@@ -99,7 +95,6 @@ const DEADLINE_TO_MISSED_EVENT: [string, string, string][] = [
   ["lowres_deadline_date", "lowres_deadline_time", "scanning_deadline_missed"],
   ["photo_selection_photographer_preselection_date", "photo_selection_photographer_preselection_time", "photographer_selection_deadline_missed"],
   ["photo_selection_client_selection_date", "photo_selection_client_selection_time", "client_selection_deadline_missed"],
-  ["photographer_check_due_date", "photographer_check_due_time", "photographer_check_deadline_missed"],
   ["low_to_high_date", "low_to_high_time", "highres_deadline_missed"],
   ["precheck_studio_final_edits_date", "precheck_studio_final_edits_time", "final_edits_deadline_missed"],
   ["check_finals_photographer_check_date", "check_finals_photographer_check_time", "photographer_review_deadline_missed"],
@@ -115,7 +110,6 @@ const MISSED_EVENT_MIN_SUBSTATUS: Record<string, (typeof SUBSTATUS_ORDER)[number
   scanning_deadline_missed: "photographer_selection",
   photographer_selection_deadline_missed: "client_selection",
   client_selection_deadline_missed: "low_res_to_high_res",
-  photographer_check_deadline_missed: "low_res_to_high_res",
   highres_deadline_missed: "edition_request",
   final_edits_deadline_missed: "photographer_last_check",
   photographer_review_deadline_missed: "client_confirmation",
@@ -148,12 +142,8 @@ const DEADLINE_MISSED_GUARDS: Partial<Record<CollectionEventType, DeadlineMissed
     requiresAnyEvents: ["photographer_selection_uploaded"],
     blocksIfAnyEvents: ["client_selection_confirmed"],
   },
-  photographer_check_deadline_missed: {
-    requiresAnyEvents: ["client_selection_confirmed"],
-    blocksIfAnyEvents: ["photographer_check_approved"],
-  },
   highres_deadline_missed: {
-    requiresAnyEvents: ["photographer_check_approved"],
+    requiresAnyEvents: ["client_selection_confirmed"],
     blocksIfAnyEvents: ["highres_ready"],
   },
   final_edits_deadline_missed: {
@@ -199,39 +189,33 @@ const STEP_NOTE_COMMENT_CONFIG: Record<
     stepSlug: "client_selection",
     recipients: ["client", "photographer"],
   },
-  step_note_photographer_review: {
-    stepName: "Photographer review",
-    step: 6,
-    stepSlug: "photographer_check",
-    recipients: ["photographer", "handprint_lab"],
-  },
   step_note_high_res: {
     stepName: "Low-res to high-res",
-    step: 7,
+    step: 6,
     stepSlug: "handprint_high_res",
     recipients: ["handprint_lab", "photographer"],
   },
   step_note_edition_request: {
     stepName: "Retouch request",
-    step: 8,
+    step: 7,
     stepSlug: "edition_request",
     recipients: ["photographer", "retouch_studio"],
   },
   step_note_final_edits: {
     stepName: "Final edits",
-    step: 9,
+    step: 8,
     stepSlug: "final_edits",
     recipients: ["retouch_studio", "photographer"],
   },
   step_note_photographer_last_check: {
     stepName: "Photographer last check",
-    step: 10,
+    step: 9,
     stepSlug: "photographer_last_check",
     recipients: ["photographer", "retouch_studio"],
   },
   step_note_client_confirmation: {
     stepName: "Client confirmation",
-    step: 11,
+    step: 10,
     stepSlug: "client_confirmation",
     recipients: ["client"],
   },
@@ -271,7 +255,6 @@ const TRIGGER_EVENT_TO_COMPLETION: Record<
     minSubstatus: "low_res_to_high_res",
     completionEvent: "client_selection_confirmed",
   },
-  photographer_check_deadline: { completionEvent: "photographer_check_approved" },
   highres_deadline: { minSubstatus: "edition_request", completionEvent: "highres_ready" },
   final_edits_deadline: {
     minSubstatus: "photographer_last_check",
@@ -296,11 +279,10 @@ const STEP_TO_COMPLETED_MIN_SUBSTATUS: Record<number, (typeof SUBSTATUS_ORDER)[n
   3: "photographer_selection",
   4: "client_selection",
   5: "low_res_to_high_res",
-  6: "low_res_to_high_res",
-  7: "edition_request",
-  8: "final_edits",
-  9: "photographer_last_check",
-  10: "client_confirmation",
+  6: "edition_request",
+  7: "final_edits",
+  8: "photographer_last_check",
+  9: "client_confirmation",
 }
 
 /** Map a workflow step slug to the next actionable step slug. */
@@ -309,8 +291,7 @@ const NEXT_STEP_BY_SLUG: Record<string, string> = {
   negatives_dropoff: "low_res_scanning",
   low_res_scanning: "photographer_selection",
   photographer_selection: "client_selection",
-  client_selection: "photographer_check",
-  photographer_check: "handprint_high_res",
+  client_selection: "handprint_high_res",
   handprint_high_res: "edition_request",
   edition_request: "final_edits",
   final_edits: "photographer_last_check",
@@ -323,7 +304,6 @@ const WORKFLOW_STEP_SEQUENCE = [
   "low_res_scanning",
   "photographer_selection",
   "client_selection",
-  "photographer_check",
   "handprint_high_res",
   "edition_request",
   "final_edits",
@@ -345,7 +325,6 @@ const STEP_NAME_BY_SLUG: Record<string, string> = {
   low_res_scanning: "Low-res scanning",
   photographer_selection: "Photographer selection",
   client_selection: "Client selection",
-  photographer_check: "Photographer review",
   handprint_high_res: "Low-res to high-res",
   edition_request: "Retouch request",
   final_edits: "Final edits",
@@ -365,11 +344,7 @@ const COMMENT_STEP_SLUG_BY_NOTE_AND_RECIPIENT: Record<string, Partial<Record<Rec
   },
   step_note_client_selection: {
     client: "client_selection",
-    photographer: "photographer_check",
-  },
-  step_note_photographer_review: {
-    photographer: "photographer_check",
-    handprint_lab: "handprint_high_res",
+    photographer: "handprint_high_res",
   },
   step_note_high_res: {
     handprint_lab: "handprint_high_res",
@@ -406,7 +381,6 @@ const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
     client: "client_selection",
   },
   client_selection_confirmed: {
-    photographer: "photographer_check",
     handprint_lab: "handprint_high_res",
   },
   lab_shared_additional_materials: {
@@ -417,9 +391,6 @@ const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
   },
   retouch_studio_shared_additional_materials: {
     photographer: "photographer_last_check",
-  },
-  photographer_check_ready_for_hr: {
-    handprint_lab: "handprint_high_res",
   },
   highres_deadline_risk: {
     photographer: "handprint_high_res",
@@ -444,9 +415,6 @@ const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
 
 /** Step name override per template+recipient when STEP_NAME_BY_SLUG is not appropriate. */
 const TEMPLATE_STEP_NAME_BY_RECIPIENT: Record<string, Partial<Record<RecipientType, string>>> = {
-  photographer_check_ready_for_hr: {
-    handprint_lab: "Handprint to high-res",
-  },
   highres_deadline_risk: {
     photographer: "Low-res to high-res and retouch request",
   },
@@ -675,7 +643,12 @@ export class NotificationsService implements INotificationsService {
         return
       }
       console.error("[NotificationsService] Failed to record event:", eventError)
-      // Continue anyway to send notifications
+      // Do not continue when the event cannot be persisted: callers must surface
+      // this as a failure (otherwise UI can show false success while workflow
+      // state remains unchanged).
+      throw new Error(
+        `[NotificationsService] Failed to persist event ${eventType} for collection ${collectionId}`
+      )
     } else {
       eventId = event?.id ?? null
     }
@@ -2008,7 +1981,6 @@ export class NotificationsService implements INotificationsService {
   private static normalizeWorkflowStepSlug(stepSlug: string): string {
     const raw = stepSlug.trim().toLowerCase()
     if (raw === "negatives_drop_off") return "negatives_dropoff"
-    if (raw === "photographer_check_client_selection") return "photographer_check"
     return raw
   }
 
@@ -2020,7 +1992,6 @@ export class NotificationsService implements INotificationsService {
     switch (stepSlug) {
       case "negatives_dropoff":
       case "low_res_scanning":
-      case "photographer_check":
         return workflowOptions.hasHandprint
       case "edition_request":
         return workflowOptions.hasEditionStudio && !workflowOptions.isDigitalWithRetouch

@@ -40,11 +40,7 @@ export type CollectionEventType =
   | "final_edits_completed"
   | "final_edits_deadline_missed"
   | "retouch_studio_shared_additional_materials"
-  // Photographer review (validates client selection — step 6)
-  | "photographer_check_approved"
-  | "photographer_check_deadline_missed"
-  // Photographer review events (last check — step 10)
-  | "photographer_review_started"
+  // Photographer last check events (step 9)
   | "photographer_edits_approved"
   | "photographer_last_check_shared_additional_materials"
   | "photographer_review_deadline_missed"

@@ -496,7 +496,7 @@ Gap: 16px | Padding: 40px`,
     id: "side-bar",
     name: "side-bar",
     title: "Side Bar",
-    description: "Sidebar component with four variants: 'default' (custom slot + entity card + action buttons), 'view-entity' (menu + entity card + delete), 'create-entity' (stepper + delete), 'create-collection' (stepper + collection card + delete).",
+    description: "Sidebar with four variants: default, view-entity, create-entity, create-collection. For collections, footer = primary Publish/Save plus optional More menu (edit basic details / cancel / delete).",
     demo: <SideBarDemo />,
   },
   {

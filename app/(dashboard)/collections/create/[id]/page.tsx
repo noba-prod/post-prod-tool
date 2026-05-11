@@ -9,7 +9,6 @@ import { ShootingSetupStepContent } from "@/components/custom/shooting-setup-ste
 import { DropoffPlanStepContent } from "@/components/custom/dropoff-plan-step-content"
 import { LowResConfigStepContent } from "@/components/custom/low-res-config-step-content"
 import { PhotoSelectionStepContent } from "@/components/custom/photo-selection-step-content"
-import { PhotographerCheckClientSelectionStepContent } from "@/components/custom/photographer-check-client-selection-step-content"
 import { LrToHrSetupStepContent } from "@/components/custom/lr-to-hr-setup-step-content"
 import { EditionConfigStepContent } from "@/components/custom/edition-config-step-content"
 import { CheckFinalsStepContent } from "@/components/custom/check-finals-step-content"
@@ -33,6 +32,7 @@ import {
   isCreationStepContentComplete,
   getChronologyConstraints,
   derivePublishedStatus,
+  canUseNobaSensitiveCollectionSidebarActions,
 } from "@/lib/domain/collections/workflow"
 import type {
   CreationBlockId,
@@ -102,7 +102,6 @@ const STEP_LABELS: Record<CreationBlockId, string> = {
   photographer_selection_config: "Photographer selection",
   client_selection_config: "Client selection",
   photo_selection: "Photo selection",
-  photographer_check_client_selection: "Photographer check client selection",
   lr_to_hr_setup: "Low-res to high-res",
   handprint_high_res_config: "Low-res to high-res",
   edition_config: "Pre-check & Edition",
@@ -188,6 +187,10 @@ export default function CollectionCreatePage({
   const [isSavingSettings, setIsSavingSettings] = React.useState(false)
   const [saveChangesDialogOpen, setSaveChangesDialogOpen] = React.useState(false)
   const [isSavingChanges, setIsSavingChanges] = React.useState(false)
+  const [cancelCollectionDialogOpen, setCancelCollectionDialogOpen] = React.useState(false)
+  const [isCancelingCollection, setIsCancelingCollection] = React.useState(false)
+  const [reactivateCollectionDialogOpen, setReactivateCollectionDialogOpen] = React.useState(false)
+  const [isReactivatingCollection, setIsReactivatingCollection] = React.useState(false)
   const { user, isNobaUser } = useUserContext()
   const [participantSummaries, setParticipantSummaries] = React.useState<
     { role: string; name: string; count: number }[]
@@ -245,6 +248,11 @@ export default function CollectionCreatePage({
     if (isNobaAdmin) return false
     return !draft.participants.some((p) => p.userIds?.includes(user.id))
   }, [draft, user?.id, user?.role, isNobaUser])
+
+  const canUseCollectionSensitiveSidebarActions =
+    !!draft &&
+    !!user?.id &&
+    canUseNobaSensitiveCollectionSidebarActions(user.id, user.role, isNobaUser, draft)
 
   React.useEffect(() => {
     if (!draft || !id) return
@@ -566,16 +574,6 @@ export default function CollectionCreatePage({
     [draft, id, service]
   )
 
-  const handlePhotographerCheckChange = React.useCallback(
-    (patch: Partial<Pick<CollectionConfig, "photographerCheckDueDate" | "photographerCheckDueTime">>) => {
-      if (!draft || !id) return
-      service.updateCollection(id, { config: patch }).then((updated) => {
-        if (updated) setDraft(updated)
-      })
-    },
-    [draft, id, service]
-  )
-
   const handleLrToHrSetupChange = React.useCallback(
     (patch: Partial<Pick<CollectionConfig, "lrToHrDueDate" | "lrToHrDueTime">>) => {
       if (!draft || !id) return
@@ -759,7 +757,7 @@ export default function CollectionCreatePage({
     }
   }, [draft, id, router, isPublishing])
 
-  /** Open delete confirmation dialog (sidebar trash icon). */
+  /** Open delete confirmation dialog (sidebar “more” → Delete collection). */
   const handleDeleteCollection = React.useCallback(() => {
     setIsDeleteConfirmOpen(true)
   }, [])
@@ -778,6 +776,55 @@ export default function CollectionCreatePage({
       toast.error(message)
     } finally {
       setIsDeleting(false)
+    }
+  }, [id, service, router])
+
+  const handleOpenCancelCollectionDialog = React.useCallback(() => {
+    if (!draft) return
+    if (draft.status === "canceled") {
+      toast.info("This collection is already canceled.")
+      return
+    }
+    setCancelCollectionDialogOpen(true)
+  }, [draft])
+
+  const handleConfirmCancelCollection = React.useCallback(async () => {
+    if (!id || !service) return
+    setIsCancelingCollection(true)
+    try {
+      await service.cancelCollection(id)
+      toast.success("Collection canceled.")
+      setCancelCollectionDialogOpen(false)
+      router.push("/collections")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to cancel collection"
+      toast.error(message)
+    } finally {
+      setIsCancelingCollection(false)
+    }
+  }, [id, service, router])
+
+  const handleOpenReactivateCollectionDialog = React.useCallback(() => {
+    setReactivateCollectionDialogOpen(true)
+  }, [])
+
+  const handleConfirmReactivateCollection = React.useCallback(async () => {
+    if (!id || !service) return
+    setIsReactivatingCollection(true)
+    try {
+      const next = await service.reactivateCanceledCollection(id)
+      toast.success("Collection reactivated.")
+      setReactivateCollectionDialogOpen(false)
+      if (next.status === "draft") {
+        setDraft(next)
+      } else {
+        router.push(`/collections/${id}`)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to reactivate collection"
+      toast.error(message)
+    } finally {
+      setIsReactivatingCollection(false)
     }
   }, [id, service, router])
 
@@ -972,13 +1019,6 @@ export default function CollectionCreatePage({
             </div>
           ) : isLrToHrStep ? (
             <div className={`flex flex-col gap-5 w-full${isInternalNonInvitedViewer ? " pointer-events-none opacity-60" : ""}`}>
-              {draft.config.hasHandprint && (
-                <PhotographerCheckClientSelectionStepContent
-                  draft={draft}
-                  onPhotographerCheckChange={handlePhotographerCheckChange}
-                  chronologyConstraints={chronology.byBlockId}
-                />
-              )}
               <LrToHrSetupStepContent
                 draft={draft}
                 onLrToHrSetupChange={handleLrToHrSetupChange}
@@ -1004,21 +1044,33 @@ export default function CollectionCreatePage({
           ) : (
             PLACEHOLDER
           ),
-        primaryLabel: isLast ? (isEditionMode ? "Save changes" : "Publish collection") : "Next",
-        onPrimaryClick: isInternalNonInvitedViewer
-          ? undefined
-          : isLast
-          ? (isEditionMode ? handleSaveChanges : handlePublish)
-          : nextStepId
-            ? () => handleNextClick(stepId, nextStepId)
-            : undefined,
+        primaryLabel:
+          draft.status === "canceled"
+            ? "Canceled"
+            : isLast
+              ? isEditionMode
+                ? "Save changes"
+                : "Publish collection"
+              : "Next",
+        onPrimaryClick:
+          isInternalNonInvitedViewer || draft.status === "canceled"
+            ? undefined
+            : isLast
+              ? isEditionMode
+                ? handleSaveChanges
+                : handlePublish
+              : nextStepId
+                ? () => handleNextClick(stepId, nextStepId)
+                : undefined,
         primaryDisabled: isInternalNonInvitedViewer
           ? true
-          : isLast
-          ? isEditionMode
-            ? false
-            : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
-          : !isCreationStepContentComplete(draft, stepId),
+          : draft.status === "canceled"
+            ? true
+            : isLast
+              ? isEditionMode
+                ? false
+                : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
+              : !isCreationStepContentComplete(draft, stepId),
         secondaryLabel: isFirst ? undefined : "Previous",
         onSecondaryClick: isFirst
           ? undefined
@@ -1036,16 +1088,16 @@ export default function CollectionCreatePage({
       return [
         {
           ...p,
-          primaryLabel: "Save changes",
-          onPrimaryClick: handleSaveChanges,
-          primaryDisabled: false,
+          primaryLabel: draft.status === "canceled" ? "Canceled" : "Save changes",
+          onPrimaryClick: draft.status === "canceled" ? undefined : handleSaveChanges,
+          primaryDisabled: draft.status === "canceled",
           secondaryLabel: undefined,
           onSecondaryClick: undefined,
         },
       ]
     }
     return built
-  }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleSaveChanges, isEditionMode, editionParticipantsOnlyMobile, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handlePhotographerCheckChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries, isInternalNonInvitedViewer])
+  }, [draft, steps, activeStep, chronology.byBlockId, setActiveStepHandler, handleParticipantsChange, handleNextClick, handlePublish, handleSaveChanges, isEditionMode, editionParticipantsOnlyMobile, handleShootingSetupChange, handleDropoffPlanChange, handleLowResConfigChange, handlePhotoSelectionChange, handleLrToHrSetupChange, handleEditionConfigChange, handleCheckFinalsChange, participantSummaries, isInternalNonInvitedViewer])
 
   // Map domain status to UI status for sidebar badge (draft | upcoming | in-progress | completed | canceled)
   const collectionStatusForUI = React.useMemo((): "draft" | "upcoming" | "in-progress" | "completed" | "canceled" => {
@@ -1168,17 +1220,39 @@ export default function CollectionCreatePage({
           const canOpen = isCreationStepComplete(selected, draft.creationData.completedBlockIds)
           if (canOpen) setActiveStep(stepId as CreationBlockId)
         }}
-        onDeleteCollection={isInternalNonInvitedViewer ? undefined : handleDeleteCollection}
-        onSettingsCollection={isInternalNonInvitedViewer ? undefined : handleSettingsCollection}
-        onPublishCollection={isInternalNonInvitedViewer ? undefined : (isEditionMode ? handleSaveChanges : handlePublish)}
+        collectionSecondaryActions={
+          canUseCollectionSensitiveSidebarActions
+            ? {
+                onEditBasicDetails: handleSettingsCollection,
+                onCancelCollection: handleOpenCancelCollectionDialog,
+                onReactivateCollection: handleOpenReactivateCollectionDialog,
+                onDeleteCollection: handleDeleteCollection,
+              }
+            : null
+        }
+        onPublishCollection={
+          isInternalNonInvitedViewer || draft.status === "canceled"
+            ? undefined
+            : isEditionMode
+              ? handleSaveChanges
+              : handlePublish
+        }
         publishCollectionDisabled={
           isInternalNonInvitedViewer
             ? true
-            : isEditionMode
-              ? false
-              : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
+            : draft.status === "canceled"
+              ? true
+              : isEditionMode
+                ? false
+                : !isDraftComplete(draft) || !isCreationStepContentComplete(draft, "check_finals")
         }
-        publishCollectionLabel={isEditionMode ? "Save changes" : "Publish"}
+        publishCollectionLabel={
+          draft.status === "canceled"
+            ? "Canceled"
+            : isEditionMode
+              ? "Save changes"
+              : "Publish"
+        }
         blocks={blocks}
       />
       <PublishCollectionDialog
@@ -1207,7 +1281,9 @@ export default function CollectionCreatePage({
           <DialogHeader>
             <DialogTitle>Delete collection?</DialogTitle>
             <DialogDescription>
-              This will permanently delete this draft. You cannot undo this action.
+              {draft.status === "draft"
+                ? "This will permanently delete this draft. You cannot undo this action."
+                : "This will permanently delete this collection. You cannot undo this action."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1225,6 +1301,67 @@ export default function CollectionCreatePage({
               disabled={isDeleting}
             >
               {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel collection — participant access revoked for external roles; Noba still sees canceled rows */}
+      <Dialog open={cancelCollectionDialogOpen} onOpenChange={setCancelCollectionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel collection?</DialogTitle>
+            <DialogDescription>
+              This marks the collection as canceled. Participants that were invited will no longer see it under
+              Collections. Users at noba will still see the collection as canceled. You can re-activate it from
+              the sidebar menu when appropriate.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => setCancelCollectionDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="lg"
+              onClick={handleConfirmCancelCollection}
+              disabled={isCancelingCollection}
+            >
+              {isCancelingCollection ? "Canceling..." : "Cancel collection"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reactivate canceled collection */}
+      <Dialog open={reactivateCollectionDialogOpen} onOpenChange={setReactivateCollectionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Re-activate collection?</DialogTitle>
+            <DialogDescription>
+              {draft.publishedAt?.trim()
+                ? "This restores the collection to your published workflow (upcoming or in progress, matching dates and recorded step progress). Invited participants will see it again on Collections."
+                : "This restores the collection to draft. You can review the setup and publish again when ready."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => setReactivateCollectionDialogOpen(false)}
+            >
+              Back
+            </Button>
+            <Button
+              size="lg"
+              onClick={handleConfirmReactivateCollection}
+              disabled={isReactivatingCollection}
+            >
+              {isReactivatingCollection ? "Re-activating..." : "Re-activate collection"}
             </Button>
           </DialogFooter>
         </DialogContent>

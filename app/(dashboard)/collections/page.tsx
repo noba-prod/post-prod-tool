@@ -338,7 +338,9 @@ export default function CollectionsPage() {
 
   const collectionsBase = React.useMemo(() => {
     if (!isNobaUser) {
-      return collections.filter((c) => c.status !== "draft")
+      return collections.filter(
+        (c) => c.status !== "draft" && c.status !== "canceled"
+      )
     }
     return collections
   }, [collections, isNobaUser])
@@ -450,7 +452,9 @@ export default function CollectionsPage() {
     let result = [...collections]
     // Non-Noba users (client, photo_lab, handprint_lab, photographer, agency, retouch_studio) never see draft collections
     if (!isNobaUser) {
-      result = result.filter((c) => c.status !== "draft")
+      result = result.filter(
+        (c) => c.status !== "draft" && c.status !== "canceled"
+      )
     }
     if (filters.client) {
       result = result.filter((c) => c.config.clientEntityId === filters.client)

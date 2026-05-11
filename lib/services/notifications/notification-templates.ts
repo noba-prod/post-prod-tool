@@ -358,59 +358,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
   },
 
   // ==========================================================================
-  // Step 6: Photographer Review (validates client selection)
-  // ==========================================================================
-  {
-    code: "photographer_review_risk",
-    step: 6,
-    stepName: "Photographer review",
-    title: "Photographer review deadline is coming",
-    description: "Deadline for validating client selection is approaching. Please confirm everything is ok and add comments for high-res.",
-    emailSubject: "⚠️ Photographer review at risk - {collectionName} by {clientName} - {photographerName}",
-    ctaText: "Check HR",
-    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_check",
-    triggerType: "before",
-    triggerEvent: "photographer_check_deadline",
-    triggerOffsetMinutes: -60,
-    triggerCondition: null,
-    emailRecipients: ["photographer"],
-    inappRecipients: ["photographer"],
-  },
-  {
-    code: "photographer_check_delayed",
-    step: 6,
-    stepName: "Photographer review",
-    title: "Photographer review delayed for {collectionName}",
-    description: "Coordinate with the client, photographer and rest of players to update timeline and avoid possible rush-fees.",
-    emailSubject: "🚨 Photographer review delayed - {collectionName} by {clientName} - {photographerName}",
-    ctaText: "Check collection",
-    ctaUrlTemplate: "/collections/{collectionId}?step=photographer_check",
-    triggerType: "on",
-    triggerEvent: "photographer_check_deadline_missed",
-    triggerOffsetMinutes: 0,
-    triggerCondition: null,
-    emailRecipients: ["producer"],
-    inappRecipients: ["producer"],
-  },
-  {
-    code: "photographer_check_ready_for_hr",
-    step: 7,
-    stepName: "Handprint to high-res",
-    title: "Client selection is ready for HR",
-    description: "Check if there are photographer comments before converting client selection to HR.",
-    emailSubject: "✅ Client selection ready for high-res - {collectionName} by {clientName} - {photographerName}",
-    ctaText: "Upload high-res",
-    ctaUrlTemplate: "/collections/{collectionId}?step=handprint_high_res",
-    triggerType: "on",
-    triggerEvent: "photographer_check_approved",
-    triggerOffsetMinutes: 0,
-    triggerCondition: null,
-    emailRecipients: ["handprint_lab"],
-    inappRecipients: ["handprint_lab"],
-  },
-
-  // ==========================================================================
-  // Step 7: Low-res to high-res (Hand print high-res)
+  // Step 6: Low-res to high-res (Hand print high-res)
   // ==========================================================================
   {
     code: "highres_deadline_risk",
@@ -695,9 +643,6 @@ export const TRIGGER_EVENT_TO_DEADLINE_FIELD: Record<string, string> = {
   // Edition
   final_edits_deadline: "precheck_studio_final_edits_date", // + time
   
-  // Photographer check (validates client selection — step 6)
-  photographer_check_deadline: "photographer_check_due_date", // + photographer_check_due_time
-
   // Photographer last check
   photographer_review_deadline: "check_finals_photographer_check_date", // + time
 

@@ -6,9 +6,9 @@
  * - Clears collection step fields (URLs, notes) for steps after the target.
  * - Sets substatus to the target step and resets step_statuses / completion_percentage.
  *
- * Steps (1–11): 1=Shooting, 2=Negatives drop off, 3=Low-res scanning, 4=Photographer selection,
- * 5=Client selection, 6=Photographer check, 7=Handprint high-res, 8=Edition request,
- * 9=Final edits, 10=Photographer last check, 11=Client confirmation.
+ * Steps (1–10): 1=Shooting, 2=Negatives drop off, 3=Low-res scanning, 4=Photographer selection,
+ * 5=Client selection, 6=Handprint high-res, 7=Edition request,
+ * 8=Final edits, 9=Photographer last check, 10=Client confirmation.
  *
  * Usage:
  *   COLLECTION_ID=<uuid> TARGET_STEP=2 npx tsx scripts/rollback-collection-to-step.ts
@@ -21,7 +21,7 @@ import { resolve } from "path"
 import { createAdminClient } from "../lib/supabase/admin"
 import type { CollectionSubstatus } from "../lib/domain/collections/types"
 
-// Step number (1–11) → substatus (canonical order from workflow.ts)
+// Step number (1–10) → substatus (canonical order from workflow.ts)
 const STEP_NUMBER_TO_SUBSTATUS: Record<number, CollectionSubstatus> = {
   1: "shooting",
   2: "negatives_drop_off",
@@ -33,7 +33,6 @@ const STEP_NUMBER_TO_SUBSTATUS: Record<number, CollectionSubstatus> = {
   8: "final_edits",
   9: "photographer_last_check",
   10: "client_confirmation",
-  11: "client_confirmation", // step 11 = same as 10 in workflow
 }
 
 // Event types that advance the workflow to a given step (step index 1-based).
@@ -43,15 +42,14 @@ const EVENT_TYPES_BY_ADVANCE_TO_STEP: Record<number, string[]> = {
   3: ["dropoff_confirmed"],
   4: ["scanning_completed"],
   5: ["photographer_selection_uploaded"],
-  6: ["client_selection_confirmed", "photographer_check_approved"],
+  6: ["client_selection_confirmed"],
   7: ["highres_ready"],
   8: ["edition_request_submitted"],
   9: ["final_edits_completed"],
-  10: ["photographer_edits_approved"],
-  11: ["client_confirmation_confirmed", "collection_completed"],
+  10: ["photographer_edits_approved", "client_confirmation_confirmed", "collection_completed"],
 }
 
-/** Collection fields to clear when rolling back past a given step (step number 3–11). */
+/** Collection fields to clear when rolling back past a given step (step number 3–10). */
 const FIELDS_TO_CLEAR_BY_STEP: Record<number, Record<string, unknown>> = {
   3: {
     lowres_selection_url: [],
@@ -69,31 +67,26 @@ const FIELDS_TO_CLEAR_BY_STEP: Record<number, Record<string, unknown>> = {
     step_notes_client_selection: [],
   },
   6: {
-    photographer_review_url: [],
-    photographer_review_uploaded_at: null,
-    step_notes_photographer_review: [],
-  },
-  7: {
     highres_selection_url: [],
     highres_selection_uploaded_at: null,
     step_notes_high_res: [],
   },
-  8: {
+  7: {
     edition_instructions_url: [],
     edition_instructions_uploaded_at: null,
     step_notes_edition_request: [],
   },
-  9: {
+  8: {
     finals_selection_url: [],
     finals_selection_uploaded_at: null,
     step_notes_final_edits: [],
   },
-  10: {
+  9: {
     photographer_last_check_url: [],
     photographer_last_check_uploaded_at: null,
     step_notes_photographer_last_check: [],
   },
-  11: {
+  10: {
     step_notes_client_confirmation: [],
   },
 }
@@ -147,13 +140,13 @@ async function main() {
   const targetStepRaw = process.env.TARGET_STEP
 
   if (!collectionId) {
-    console.error("Missing COLLECTION_ID. Usage: COLLECTION_ID=<uuid> TARGET_STEP=<1-11> npx tsx scripts/rollback-collection-to-step.ts")
+    console.error("Missing COLLECTION_ID. Usage: COLLECTION_ID=<uuid> TARGET_STEP=<1-10> npx tsx scripts/rollback-collection-to-step.ts")
     process.exit(1)
   }
 
   const targetStep = targetStepRaw ? parseInt(targetStepRaw, 10) : NaN
-  if (!Number.isInteger(targetStep) || targetStep < 1 || targetStep > 11) {
-    console.error("TARGET_STEP must be an integer between 1 and 11.")
+  if (!Number.isInteger(targetStep) || targetStep < 1 || targetStep > 10) {
+    console.error("TARGET_STEP must be an integer between 1 and 10.")
     process.exit(1)
   }
 
@@ -209,7 +202,7 @@ async function main() {
 
   // Event types that advanced the workflow to steps after target (to be deleted)
   const eventTypesToDelete: string[] = []
-  for (let step = targetStep + 1; step <= 11; step++) {
+  for (let step = targetStep + 1; step <= 10; step++) {
     const types = EVENT_TYPES_BY_ADVANCE_TO_STEP[step]
     if (types) eventTypesToDelete.push(...types)
   }
@@ -273,7 +266,7 @@ async function main() {
     updated_at: new Date().toISOString(),
   }
 
-  for (let step = targetStep + 1; step <= 11; step++) {
+  for (let step = targetStep + 1; step <= 10; step++) {
     const fields = FIELDS_TO_CLEAR_BY_STEP[step]
     if (fields) Object.assign(clearPayload, fields)
   }

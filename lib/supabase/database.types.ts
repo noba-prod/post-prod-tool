@@ -67,9 +67,6 @@ export type CollectionEventType =
   | 'final_edits_completed'
   | 'final_edits_deadline_missed'
   | 'retouch_studio_shared_additional_materials'
-  | 'photographer_check_approved'
-  | 'photographer_check_deadline_missed'
-  | 'photographer_review_started'
   | 'photographer_edits_approved'
   | 'photographer_last_check_shared_additional_materials'
   | 'photographer_review_deadline_missed'
@@ -216,6 +213,11 @@ export interface Collection {
   dropoff_managing_shipping: string | null
   dropoff_shipping_carrier: string | null
   dropoff_shipping_tracking: string | null
+  dropoff_additional_shipments: Array<{
+    managingShipping?: string
+    provider?: string
+    tracking?: string
+  }> | null
   // Low-Res Workflow
   lowres_deadline_date: string | null
   lowres_deadline_time: string | null
@@ -235,13 +237,10 @@ export interface Collection {
   photographer_selection_uploaded_at: string | null
   client_selection_url: string[] | null
   client_selection_uploaded_at: string | null
-  photographer_review_url: string[] | null
-  photographer_review_uploaded_at: string | null
   // Step notes conversation columns (JSONB arrays — migration 034)
   step_notes_low_res: Array<{ from: string; text: string; at: string }>
   step_notes_photographer_selection: Array<{ from: string; text: string; at: string }>
   step_notes_client_selection: Array<{ from: string; text: string; at: string }>
-  step_notes_photographer_review: Array<{ from: string; text: string; at: string }>
   step_notes_high_res: Array<{ from: string; text: string; at: string }>
   step_notes_edition_request: Array<{ from: string; text: string; at: string }>
   step_notes_final_edits: Array<{ from: string; text: string; at: string }>
@@ -261,9 +260,6 @@ export interface Collection {
   photo_selection_photographer_preselection_time: string | null
   photo_selection_client_selection_date: string | null
   photo_selection_client_selection_time: string | null
-  // Photographer check client selection (Hand print only)
-  photographer_check_due_date: string | null
-  photographer_check_due_time: string | null
   // Low to High
   low_to_high_date: string | null
   low_to_high_time: string | null
@@ -330,6 +326,11 @@ export interface CollectionInsert {
   dropoff_managing_shipping?: string | null
   dropoff_shipping_carrier?: string | null
   dropoff_shipping_tracking?: string | null
+  dropoff_additional_shipments?: Array<{
+    managingShipping?: string
+    provider?: string
+    tracking?: string
+  }> | null
   lowres_deadline_date?: string | null
   lowres_deadline_time?: string | null
   lowres_shipping_origin_address?: string | null
@@ -347,12 +348,9 @@ export interface CollectionInsert {
   photographer_selection_uploaded_at?: string | null
   client_selection_url?: string[] | null
   client_selection_uploaded_at?: string | null
-  photographer_review_url?: string[] | null
-  photographer_review_uploaded_at?: string | null
   step_notes_low_res?: Array<{ from: string; text: string; at: string }>
   step_notes_photographer_selection?: Array<{ from: string; text: string; at: string }>
   step_notes_client_selection?: Array<{ from: string; text: string; at: string }>
-  step_notes_photographer_review?: Array<{ from: string; text: string; at: string }>
   step_notes_high_res?: Array<{ from: string; text: string; at: string }>
   step_notes_edition_request?: Array<{ from: string; text: string; at: string }>
   step_notes_final_edits?: Array<{ from: string; text: string; at: string }>
@@ -370,8 +368,6 @@ export interface CollectionInsert {
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
   photo_selection_client_selection_time?: string | null
-  photographer_check_due_date?: string | null
-  photographer_check_due_time?: string | null
   low_to_high_date?: string | null
   low_to_high_time?: string | null
   precheck_photographer_comments_date?: string | null
@@ -428,6 +424,11 @@ export interface CollectionUpdate {
   dropoff_managing_shipping?: string | null
   dropoff_shipping_carrier?: string | null
   dropoff_shipping_tracking?: string | null
+  dropoff_additional_shipments?: Array<{
+    managingShipping?: string
+    provider?: string
+    tracking?: string
+  }> | null
   lowres_deadline_date?: string | null
   lowres_deadline_time?: string | null
   lowres_shipping_origin_address?: string | null
@@ -445,12 +446,9 @@ export interface CollectionUpdate {
   photographer_selection_uploaded_at?: string | null
   client_selection_url?: string[] | null
   client_selection_uploaded_at?: string | null
-  photographer_review_url?: string[] | null
-  photographer_review_uploaded_at?: string | null
   step_notes_low_res?: Array<{ from: string; text: string; at: string }>
   step_notes_photographer_selection?: Array<{ from: string; text: string; at: string }>
   step_notes_client_selection?: Array<{ from: string; text: string; at: string }>
-  step_notes_photographer_review?: Array<{ from: string; text: string; at: string }>
   step_notes_high_res?: Array<{ from: string; text: string; at: string }>
   step_notes_edition_request?: Array<{ from: string; text: string; at: string }>
   step_notes_final_edits?: Array<{ from: string; text: string; at: string }>
@@ -468,8 +466,6 @@ export interface CollectionUpdate {
   photo_selection_photographer_preselection_time?: string | null
   photo_selection_client_selection_date?: string | null
   photo_selection_client_selection_time?: string | null
-  photographer_check_due_date?: string | null
-  photographer_check_due_time?: string | null
   low_to_high_date?: string | null
   low_to_high_time?: string | null
   precheck_photographer_comments_date?: string | null

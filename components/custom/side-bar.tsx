@@ -3,10 +3,16 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { ContextualMenu } from "./contextual-menu"
 import { EntitySummaryCard } from "./entity-summary-card"
 import { CollectionSummaryCard } from "./collection-summary-card"
-import { Trash2, Settings, LucideIcon } from "lucide-react"
+import { Trash2, LucideIcon, MoreHorizontal } from "lucide-react"
 
 interface SideBarMenuItem {
   id: string
@@ -74,6 +80,16 @@ interface SideBarCreateEntityProps extends SideBarBaseProps {
   deleteLabel?: string
 }
 
+/** Unified secondary actions — Figma collections sidebar "more" menu (Creation + Edit). */
+export interface CollectionSidebarSecondaryActions {
+  onEditBasicDetails: () => void
+  /** Shown when status is not canceled */
+  onCancelCollection: () => void
+  /** Shown when status is canceled — restores draft or published workflow */
+  onReactivateCollection: () => void
+  onDeleteCollection: () => void
+}
+
 interface SideBarCreateCollectionProps extends SideBarBaseProps {
   type: "create-collection"
   /** Stepper items (no icons) */
@@ -88,10 +104,11 @@ interface SideBarCreateCollectionProps extends SideBarBaseProps {
   }
   /** Array of completed item ids (for stepper) */
   completedItems?: string[]
-  /** Delete button label */
-  deleteLabel?: string
-  /** Call when Settings (collection config) icon is clicked */
-  onSettingsCollection?: () => void
+  /**
+   * When set, renders the secondary icon (“more”) dropdown with Edit / Cancel / Delete.
+   * Omit or pass null when the viewer must not manage the collection — primary only.
+   */
+  collectionSecondaryActions?: CollectionSidebarSecondaryActions | null
   /** Call when Publish collection / Save changes is clicked */
   onPublish?: () => void
   /** Disable Publish button until draft is complete */
@@ -111,7 +128,7 @@ type SideBarProps =
  * - default: Custom slot content + entity summary card + Primary/Secondary buttons
  * - view-entity: ContextualMenu (menu type) + entity summary card + Delete button
  * - create-entity: ContextualMenu (stepper type) + Delete button
- * - create-collection: ContextualMenu (stepper type) + collection summary card + Delete button
+ * - create-collection: stepper + collection summary + Publish/Save primary + optional “more” menu
  */
 export function SideBar(props: SideBarProps) {
   const { type, title, activeId, onItemClick, className } = props
@@ -202,7 +219,15 @@ export function SideBar(props: SideBarProps) {
   }
 
   if (type === "create-collection") {
-    const { items, collection, completedItems = [], deleteLabel = "Delete collection", onDelete, onSettingsCollection, onPublish, publishDisabled = true, publishLabel = "Publish" } = props
+    const {
+      items,
+      collection,
+      completedItems = [],
+      collectionSecondaryActions,
+      onPublish,
+      publishDisabled = true,
+      publishLabel = "Publish",
+    } = props
     return (
       <div
         className={cn("flex flex-col h-full bg-white rounded-xl overflow-hidden", className)}
@@ -231,24 +256,59 @@ export function SideBar(props: SideBarProps) {
             <CollectionSummaryCard {...collection} />
           </div>
           <div className="flex items-center gap-2 w-full max-[759px]:justify-center max-[759px]:flex-wrap">
-            <Button
-              variant="destructive"
-              size="icon"
-              className="h-10 w-10 shrink-0 rounded-xl"
-              onClick={onDelete}
-              aria-label={deleteLabel}
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-10 w-10 shrink-0 rounded-xl"
-              onClick={onSettingsCollection}
-              aria-label="Collection settings"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
+            {collectionSecondaryActions ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    className="h-10 w-10 shrink-0 rounded-xl"
+                    aria-label="More collection actions"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="top"
+                  align="start"
+                  className="min-w-[220px]"
+                >
+                  <DropdownMenuItem
+                    onClick={() =>
+                      collectionSecondaryActions.onEditBasicDetails()
+                    }
+                  >
+                    Edit basic details
+                  </DropdownMenuItem>
+                  {collection.status === "canceled" ? (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        collectionSecondaryActions.onReactivateCollection()
+                      }
+                    >
+                      Re-activate collection
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        collectionSecondaryActions.onCancelCollection()
+                      }
+                    >
+                      Cancel collection
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() =>
+                      collectionSecondaryActions.onDeleteCollection()
+                    }
+                  >
+                    Delete collection
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
             <Button
               variant="default"
               size="lg"
