@@ -197,9 +197,8 @@ export async function GET(
       shooting_city: string | null
       shooting_country: string | null
     }>) {
-      // Non-Noba users never see draft or canceled collections
+      // Non-internal users never see drafts; canceled collections remain listed as canceled.
       if (!isInternal && row.status === "draft") continue
-      if (!isInternal && row.status === "canceled") continue
       const location = [row.shooting_city, row.shooting_country].filter(Boolean).join(", ") || "—"
       collectionsList.push({
         id: row.id,

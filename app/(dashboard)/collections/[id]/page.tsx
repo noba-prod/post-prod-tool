@@ -1013,26 +1013,6 @@ export default function CollectionViewPage({
     )
   }
 
-  if (collection.status === "canceled" && !isNobaUser) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-lg font-medium text-foreground">Collection not found</p>
-          <p className="text-sm text-muted-foreground">
-            This collection may have been removed or the link is invalid.
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push("/collections")}
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            Back to Collections
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   const stageStatus =
     collection.status === "completed"
       ? ("done" as const)

@@ -344,17 +344,20 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     code: "client_selection_confirmed",
     step: 5,
     stepName: "Client selection",
-    title: "Review client selection and validate it",
-    description: "Client has submitted the final image selection. Review it, validate it and give instructions to handprint lab to proceed with high-resolution processing.",
-    emailSubject: "✅ Client selection ready - {collectionName} by {clientName} - {photographerName}",
-    ctaText: "Validate selection",
-    ctaUrlTemplate: "/collections/{collectionId}?step=client_selection",
+    // Analog only (trigger_condition has_handprint in DB — migration 074). After Photographer Review removal (078),
+    // copy targets the HR lab; photographers are included again so they get the same alert and can open Client Selection.
+    title: "Client selection ready for high-res",
+    description:
+      "Client has confirmed the final image selection. Download it and convert it to high-resolution.",
+    emailSubject: "✅ Client selection ready for HR - {collectionName} by {clientName} - {photographerName}",
+    ctaText: "Upload high-res",
+    ctaUrlTemplate: "/collections/{collectionId}?step=handprint_high_res",
     triggerType: "on",
     triggerEvent: "client_selection_confirmed",
     triggerOffsetMinutes: 0,
-    triggerCondition: null,
-    emailRecipients: ["photographer"],
-    inappRecipients: ["photographer"],
+    triggerCondition: "has_handprint",
+    emailRecipients: ["handprint_lab", "photographer"],
+    inappRecipients: ["handprint_lab", "photographer"],
   },
 
   // ==========================================================================

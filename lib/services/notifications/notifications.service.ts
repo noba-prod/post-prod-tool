@@ -372,6 +372,12 @@ const COMMENT_STEP_SLUG_BY_NOTE_AND_RECIPIENT: Record<string, Partial<Record<Rec
  * - "shared additional link": open the step where recipient can see the UrlHistory block.
  * - scanning_completed: photographer goes to step 4 (Photographer selection) to review and upload
  *   their selection, not step 3 (Low-res scanning) where the lab completed the work.
+ *
+ * client_selection_confirmed (Analog):
+ *   Migration 078 removed Photographer Review and routed this template to the HR/handprint lab only.
+ *   Photographers were added back as recipients (migration 080) so they are alerted when the client confirms.
+ *   They still collaborate on Client Selection (view links, notes for the lab); the lab keeps the template CTA
+ *   pointing at handprint_high_res. Recipient-specific overrides implement both behaviours from one row.
  */
 const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientType, string>>> = {
   scanning_completed: {
@@ -382,6 +388,7 @@ const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
   },
   client_selection_confirmed: {
     handprint_lab: "handprint_high_res",
+    photographer: "client_selection",
   },
   lab_shared_additional_materials: {
     photographer: "photographer_selection",

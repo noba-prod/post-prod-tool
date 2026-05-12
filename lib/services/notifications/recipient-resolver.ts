@@ -1,8 +1,28 @@
 /**
  * Recipient Resolver
- * 
+ *
  * Resolves notification recipient types (Producer, Lab, Client, etc.) to actual users
  * based on their collection membership and organization assignments.
+ *
+ * ## Participant mirroring (recipient expansion)
+ *
+ * Templates store *abstract* recipient buckets (e.g. `photographer`) in
+ * `notification_templates.email_recipients` / `in_app_recipients`.
+ * Some buckets must fan out to multiple `collection_members.role` values without
+ * duplicating every template row — that expansion happens **here**, not in triggers.
+ *
+ * Existing pattern: `handprint_lab` recipients also include `photo_lab` members when
+ * both org IDs match (shared lab).
+ *
+ * **Photographer → Agency:** When `collections.photographer_collaborates_with_agency`
+ * is true and the template targets `photographer`, members with role `agency` are
+ * included as well. Agency users are stored separately from `photographer`; without
+ * this rule they would never receive photographer-targeted notifications.
+ * When the flag is false or there is no agency team on the collection, behaviour is
+ * unchanged (only `photographer` role members are resolved).
+ *
+ * Future mirroring (e.g. alias one template bucket to several roles) should extend
+ * `resolveRecipients` or a small helper called from it — keep triggers thin.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -12,7 +32,13 @@ import type { RecipientType } from "./notification-templates"
 /** Subset of `collections` row used here; explicit Pick avoids Supabase `.select()` inferring `never`. */
 type CollectionAssignmentFields = Pick<
   Database["public"]["Tables"]["collections"]["Row"],
-  "id" | "client_id" | "photographer_id" | "photo_lab_id" | "retouch_studio_id" | "handprint_lab_id"
+  | "id"
+  | "client_id"
+  | "photographer_id"
+  | "photo_lab_id"
+  | "retouch_studio_id"
+  | "handprint_lab_id"
+  | "photographer_collaborates_with_agency"
 >
 
 export interface ResolvedRecipient {
@@ -28,7 +54,8 @@ export interface ResolvedRecipient {
  * Recipient mapping:
  * - producer: collection_members with role='noba'
  * - photo_lab: collection_members with role='photo_lab'
- * - photographer: collection_members with role='photographer'
+ * - photographer: collection_members with role='photographer', and role='agency' when
+ *   `photographer_collaborates_with_agency` is true (see module docstring)
  * - client: collection_members with role='client'
  * - handprint_lab: collection_members with role='handprint_lab' (or photo_lab when shared)
  * - retouch_studio: collection_members with role='retouch_studio'
@@ -45,7 +72,9 @@ export async function resolveRecipients(
   // Get collection assignments needed for role-specific recipient resolution.
   const { data: rawCollection, error: collectionError } = await supabase
     .from("collections")
-    .select("id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id")
+    .select(
+      "id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id, photographer_collaborates_with_agency"
+    )
     .eq("id", collectionId)
     .single()
 
@@ -77,6 +106,9 @@ export async function resolveRecipients(
       
       case "photographer":
         memberRoles.push("photographer")
+        if (collectionData.photographer_collaborates_with_agency) {
+          memberRoles.push("agency")
+        }
         break
       
       case "client":

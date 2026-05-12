@@ -1306,15 +1306,15 @@ export default function CollectionCreatePage({
         </DialogContent>
       </Dialog>
 
-      {/* Cancel collection — participant access revoked for external roles; Noba still sees canceled rows */}
+      {/* Cancel collection — invited users keep read-only visibility (card + detail show as canceled) */}
       <Dialog open={cancelCollectionDialogOpen} onOpenChange={setCancelCollectionDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Cancel collection?</DialogTitle>
             <DialogDescription>
-              This marks the collection as canceled. Participants that were invited will no longer see it under
-              Collections. Users at noba will still see the collection as canceled. You can re-activate it from
-              the sidebar menu when appropriate.
+              This marks the collection as canceled. Invited participants will still see this collection in their
+              Collections list with status canceled so it is clear the project was canceled (not removed). They
+              cannot edit participants or settings. You can re-activate it from the sidebar menu when appropriate.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

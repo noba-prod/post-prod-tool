@@ -133,7 +133,7 @@ Sidebar footer (same pattern in Creation draft mode and Edit published mode):
   - **Cancel collection** (when not canceled), or
   - **Re-activate collection** (when canceled) — confirms in a dialog; then:
     - No `published_at` (canceled draft) → status **draft**, `substatus` null.
-    - Had been published → **upcoming** or **in_progress** from `derivePublishedStatus` (dates); if **in_progress**, `substatus` is derived from recorded step progress when available, otherwise initial `shooting`. Invited participants see the collection again on `/collections`.
+    - Had been published → **upcoming** or **in_progress** from `derivePublishedStatus` (dates); if **in_progress**, `substatus` is derived from recorded step progress when available, otherwise initial `shooting`. Invited participants already keep the row on `/collections` while canceled (§6); after reactivation they see it under the active status again and workflow actions resume per roles.
 - **Delete collection** remains the destructive item in the same menu.
 - The dropdown is displayed only for NOBA Org **Admin**, or invited NOBA producer with Edit permission (`nobaEditPermissionByUserId`, §9).
   Users without that scope may still publish/save when the rest of the flow allows it, but do not see the menu.
@@ -171,13 +171,21 @@ Collection main states:
 
 **Canceled — visibility**
 
-Canceled collections stay in the database for audit. Clients, labs, photographers, and studios (non-NOBA entities)
-must not see them on `/collections` or in entity collection lists (`GET /api/organizations/[id]`). Opening
-`/collections/[id]` directly shows “not found” for those users. NOBA internal users continue to see and filter
-them.
+Canceled collections stay in the database for audit.
+
+- **Invited non-NOBA participants** (client, labs, photographer, agency, retouch studio — anyone who is a collection
+  member but not NOBA internal): they **remain able to see** the collection on `/collections` with lifecycle status
+  **Canceled** (same card/badge behaviour as NOBA). Entity-facing lists (`GET /api/organizations/[id]`) include
+  canceled collections for external org viewers too. **Draft** collections remain hidden from externals only (unchanged).
+- **`/collections/[id]`**: opens the Collection View Template (`collection-template.tsx`) in **read-only canceled**
+  mode (Canceled badge, steps non-interactive). Informational layout matches what producers see for context;
+  **Participants** is view-only for externals (no “Edit participants”), and **Settings** is limited to NOBA users with
+  collection edit permission — same permission rules as active collections.
+- **NOBA internal users**: unchanged — continue to see, filter, re-activate, and manage canceled collections.
 
 **Re-activation** (NOBA, with sidebar permissions) reverses cancel as in §5.1: draft vs published rules above.
-After reactivation, external participants regain list and deep-link access when status is no longer canceled.
+External participants already had list and detail visibility while canceled; after reactivation they see the collection
+under **Upcoming** / **In progress** (or draft rules if applicable) again and workflow actions resume per roles (§8–§9).
 
 Status derivation: **Canceled** and **Completed** are fixed first (they are never downgraded to **Draft** just
 because `published_at` is null — e.g. canceling a draft). Then **Draft** applies when there is no `published_at`.
@@ -206,6 +214,8 @@ Step-level statuses:
 ------------------------------------------------------------
 
 Once published, collections are accessed via the Collection View Template <collection-template.tsx>
+
+When status is **Canceled**, invited users still open this route; the template renders **read-only** (lifecycle **Canceled**, steps non-interactive). See §6.
 
 This template includes:
 - Navbar <nav-bar.tsx> from custom components
@@ -479,7 +489,9 @@ Owner:
 - Producer
 
 Modal configuration: When "Handprint different from original lab" is OFF, Photo Lab = Handprint Lab.
-The Photo Lab is the owner of this step and receives all step-related notifications (e.g. client_selection_confirmed).
+The Photo Lab is the owner of this step and receives step-related notifications (e.g. `client_selection_confirmed`).
+The **photographer** receives the same `client_selection_confirmed` notification as well (shared template row,
+distinct deep-links): after Photographer Review was removed they still need visibility into Client Selection.
 Collections store handprint_lab_id = photo_lab_id in this case so notifications resolve correctly.
 
 Analog HR: photo_lab does both low-res scanning and high-res conversion; handprintIsDifferentLab is always false.
