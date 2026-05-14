@@ -33,6 +33,7 @@ const VALID_EVENT_TYPES: CollectionEventType[] = [
   "photographer_requested_additional_photos",
   "client_selection_started",
   "client_selection_confirmed",
+  "client_selection_shared",
   "client_selection_deadline_missed",
   "highres_started",
   "highres_ready",

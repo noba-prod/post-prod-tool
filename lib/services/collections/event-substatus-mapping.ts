@@ -54,6 +54,10 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   // Client selection
   client_selection_started: { action: "none" },
   client_selection_confirmed: { action: "advance", substatus: "low_res_to_high_res" },
+  // Additional links shared after the initial confirmation (mirrors
+  // photographer_selection_shared). Does NOT advance substatus — the workflow
+  // already moved past Client selection on the first confirmation.
+  client_selection_shared: { action: "none" },
   client_selection_deadline_missed: { action: "none" },
 
   // High-res

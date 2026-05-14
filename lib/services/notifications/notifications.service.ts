@@ -390,6 +390,14 @@ const TEMPLATE_STEP_SLUG_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
     handprint_lab: "handprint_high_res",
     photographer: "client_selection",
   },
+  // Additional materials uploaded by the client after the initial confirmation:
+  // HR lab keeps its CTA on the high-res step (mirrors client_selection_confirmed
+  // and the template's cta_url_template default), photographer goes back to
+  // Client selection to review the new link.
+  client_shared_additional_materials: {
+    handprint_lab: "handprint_high_res",
+    photographer: "client_selection",
+  },
   lab_shared_additional_materials: {
     photographer: "photographer_selection",
   },
@@ -446,6 +454,7 @@ const TEMPLATE_STEP_NAME_BY_RECIPIENT: Record<string, Partial<Record<RecipientTy
 const USER_ACTOR_TITLE_TEMPLATE_CODES = new Set([
   "lab_shared_additional_materials",
   "photographer_shared_additional_materials",
+  "client_shared_additional_materials",
   "retouch_studio_shared_additional_materials",
   "photographer_last_check_shared_additional_materials",
 ])

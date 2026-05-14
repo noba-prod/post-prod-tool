@@ -1,0 +1,31 @@
+-- ============================================================================
+-- Migration 081: Add `client_selection_shared` event type
+-- ============================================================================
+-- CONTEXT
+--   When the client confirms their selection we fire `client_selection_confirmed`
+--   and the collection substatus advances out of `client_selection`.
+--   If the client later uploads additional links/notes from the same step the
+--   notification service silently skipped them because:
+--     1) `notification_templates.client_selection_confirmed` has step=5 and the
+--        `isStepCompleted` guard considers step 5 already done.
+--     2) The comment notification is suppressed when URL + note ship together
+--        in the same PATCH (`hasStepUrlInSameRequest`).
+--   As a result the HR lab and photographer received the first link only —
+--   matches the production incident on collection 49fef169-e00f-4591-847f-1c7884efbc19.
+--
+--   We mirror the existing Photographer-selection pattern, which already has
+--   `photographer_selection_uploaded` (first time) and `photographer_selection_shared`
+--   (subsequent links → notifies via the `_shared_additional_materials` template,
+--   which is exempt from the step-completed guard).
+--
+--   This migration only adds the new enum value. The matching template insert
+--   ships in migration 082, separated to comply with the Postgres restriction
+--   that prevents using a freshly added enum value inside the same transaction.
+--
+-- ROLLOUT
+--   Applied to noba-prod-dev (project prneklhdbujxmbuswplp). Apply to
+--   noba-prod-prod (project kgmbxzpevtwcgolhwuud) only after the corresponding
+--   code changes are deployed.
+-- ============================================================================
+
+ALTER TYPE public.collection_event_type ADD VALUE IF NOT EXISTS 'client_selection_shared';

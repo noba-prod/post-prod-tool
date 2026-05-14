@@ -577,6 +577,12 @@ export default function CollectionViewPage({
       try {
         const url = payload.url.trim()
         if (!url) throw new Error("URL is required")
+        // First upload fires `client_selection_confirmed` (closes step 5).
+        // Subsequent uploads fire `client_selection_shared` so the HR lab and
+        // photographer are notified through the additional-materials template,
+        // bypassing the "step already completed" guard that suppresses
+        // re-firing `client_selection_confirmed` once substatus has advanced.
+        const hadExistingSelection = (collection?.clientSelectionUrl?.length ?? 0) > 0
         const body: Record<string, unknown> = {
           client_selection_url: url,
         }
@@ -584,14 +590,18 @@ export default function CollectionViewPage({
           body.step_note_client_selection = { from: "client", text: payload.notes.trim(), url }
         }
         await patchCollection(body)
-        await fireEvent("client_selection_confirmed", { url, notes: payload.notes })
+        if (hadExistingSelection) {
+          await fireEvent("client_selection_shared", { url, notes: payload.notes })
+        } else {
+          await fireEvent("client_selection_confirmed", { url, notes: payload.notes })
+        }
         await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Upload client selection error:", err)
         toast.error("Failed to save selection")
       }
     },
-    [id, patchCollection, fireEvent, refetchCollection]
+    [id, collection?.clientSelectionUrl, patchCollection, fireEvent, refetchCollection]
   )
 
   // =============================================================================

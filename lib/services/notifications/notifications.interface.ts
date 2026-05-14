@@ -28,6 +28,7 @@ export type CollectionEventType =
   // Client selection events
   | "client_selection_started"
   | "client_selection_confirmed"
+  | "client_selection_shared"
   | "client_selection_deadline_missed"
   // High-res events
   | "highres_started"

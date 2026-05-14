@@ -112,6 +112,9 @@ export const CollectionEvents = {
   clientSelectionConfirmed: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "client_selection_confirmed", options),
 
+  clientSelectionShared: (collectionId: string, options?: TriggerEventOptions) =>
+    triggerCollectionEvent(collectionId, "client_selection_shared", options),
+
   // High-res events
   highresReady: (collectionId: string, options?: TriggerEventOptions) =>
     triggerCollectionEvent(collectionId, "highres_ready", options),
