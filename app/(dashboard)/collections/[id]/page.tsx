@@ -17,6 +17,7 @@ import {
   getDeadlineForStep,
   getStepOwner,
   STEP_IDS,
+  VIEW_STEP_IDS,
 } from "@/lib/domain/collections"
 import type {
   StepId,
@@ -25,6 +26,7 @@ import type {
   StepStage,
   StepHealth,
   ViewStepId,
+  DropoffAdditionalShipment,
 } from "@/lib/domain/collections"
 import type { CollectionMemberRole } from "@/lib/supabase/database.types"
 import type {
@@ -34,6 +36,26 @@ import type {
 import { toast } from "sonner"
 
 const NOTIFICATIONS_REFRESH_EVENT = "noba:notifications:refresh"
+
+/** Lab/HR steps that can be closed when the photographer bypasses (metadata source photographer_external). */
+function getPhotographerBypassEventForStep(stepId: ViewStepId, isAnalog: boolean): string | null {
+  switch (stepId) {
+    case "shooting":
+      return isAnalog ? "negatives_pickup_marked" : "shooting_ended"
+    case "negatives_dropoff":
+      return "dropoff_confirmed"
+    case "low_res_scanning":
+      return "scanning_completed"
+    case "handprint_high_res":
+      return "highres_ready"
+    case "edition_request":
+      return "edition_request_submitted"
+    case "final_edits":
+      return "final_edits_completed"
+    default:
+      return null
+  }
+}
 
 /** Maps StepStage from DB to the template's stageStatus display value. */
 function stageToDisplay(stage: StepStage | undefined, fallbackStatus: string): "upcoming" | "in-progress" | "done" {
@@ -271,9 +293,9 @@ export default function CollectionViewPage({
   )
 
   // Use backend-provided completion_percentage when available; fall back to client-side calculation.
-  // Completed/canceled collections always show 100%.
+  // Completed collections show 100% (progress pill hidden for canceled in CollectionTemplate).
   const progress = React.useMemo(() => {
-    if (collection?.status === "completed" || collection?.status === "canceled") {
+    if (collection?.status === "completed") {
       return 100
     }
     if (collection?.completionPercentage != null && collection.completionPercentage > 0) {
@@ -285,6 +307,18 @@ export default function CollectionViewPage({
     ).length
     return Math.round((completedCount / visibleStepIds.length) * 100)
   }, [collection?.status, collection?.completionPercentage, collection?.stepStatuses, visibleStepIds])
+
+  const dropoffManagingShippingOptionsForView = React.useMemo(() => {
+    const opts: { value: string; label: string }[] = []
+    const raw = (clientName ?? "—").trim()
+    const withoutAt = raw.replace(/^@/, "").trim()
+    if (withoutAt && withoutAt !== "—") {
+      const label = raw.startsWith("@") ? raw : `@${withoutAt}`
+      opts.push({ value: withoutAt, label })
+    }
+    opts.push({ value: "noba", label: "noba*" })
+    return opts
+  }, [clientName])
 
   // =============================================================================
   // HELPER: fire event + patch collection
@@ -355,6 +389,34 @@ export default function CollectionViewPage({
       }
     },
     [id, fireEvent, refetchCollection]
+  )
+
+  // ===========================================================================
+  // BYPASS CHAIN: cuando el fotógrafo toma una acción para no bloquear el flujo
+  // (lab no usó la plataforma), cerramos los pasos **anteriores** al paso objetivo
+  // (orden VIEW_STEP_IDS) que tengan evento de bypass, nunca posteriores. Las
+  // columnas de los pasos bypassed quedan vacías (trade-off aceptado).
+  // Pasos sin evento en getPhotographerBypassEventForStep (p. ej. client_selection)
+  // se saltan pero actúan como barrera de orden: subir selección en paso 4 solo
+  // completa 1→3, no dispara highres_ready (paso 6).
+  // ===========================================================================
+  const fireBypassChainUpTo = React.useCallback(
+    async (targetStepId: string) => {
+      const stage = (stepId: string) => collection?.stepStatuses?.[stepId]?.stage
+      const isAnalog = !!collection?.config?.hasHandprint
+      const targetIdx = VIEW_STEP_IDS.indexOf(targetStepId as ViewStepId)
+      if (targetIdx <= 0) return
+      for (let i = 0; i < targetIdx; i++) {
+        const stepId = VIEW_STEP_IDS[i]!
+        const event = getPhotographerBypassEventForStep(stepId, isAnalog)
+        if (!event) continue
+        const s = stage(stepId)
+        if (s && s !== "done") {
+          await fireEvent(event, { source: "photographer_external" })
+        }
+      }
+    },
+    [collection?.stepStatuses, collection?.config?.hasHandprint, fireEvent]
   )
 
   const handleConfirmDropoffDelivery = React.useCallback(
@@ -428,6 +490,25 @@ export default function CollectionViewPage({
     [id, patchCollection, fireEvent, refetchCollection]
   )
 
+  /** Analog: producer adds supplemental negative shipments after pickup (informational for lab). */
+  const handleAppendDropoffAdditionalShipment = React.useCallback(
+    async (row: DropoffAdditionalShipment) => {
+      if (!id || !collection) return
+      const prev = collection.config.dropoffAdditionalShipments ?? []
+      try {
+        await patchCollection({
+          dropoff_additional_shipments: [...prev, row],
+        })
+        await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Append dropoff additional shipment error:", err)
+        toast.error(err instanceof Error ? err.message : "Failed to save additional shipping")
+        throw err
+      }
+    },
+    [id, collection, patchCollection, refetchCollection]
+  )
+
   // =============================================================================
   // STEP 4: Upload photographer selection (append URL + note)
   // =============================================================================
@@ -445,6 +526,10 @@ export default function CollectionViewPage({
           body.step_note_photographer_selection = { from: "photographer", text: payload.notes.trim(), url }
         }
         await patchCollection(body)
+        // Bypass: cierra todos los pasos previos pendientes (shooting / negatives /
+        // low-res scanning) para no bloquear el flujo cuando el lab no usó la
+        // plataforma. Sus columnas correspondientes quedan vacías.
+        await fireBypassChainUpTo("photographer_selection")
         if (hadExistingSelection) {
           await fireEvent("photographer_selection_shared", { url, notes: payload.notes })
         } else {
@@ -456,7 +541,7 @@ export default function CollectionViewPage({
         toast.error("Failed to upload selection")
       }
     },
-    [id, collection?.photographerSelectionUrl, patchCollection, fireEvent, refetchCollection]
+    [id, collection?.photographerSelectionUrl, patchCollection, fireEvent, fireBypassChainUpTo, refetchCollection]
   )
 
   // =============================================================================
@@ -541,92 +626,7 @@ export default function CollectionViewPage({
   )
 
   // =============================================================================
-  // STEP 6: Validate client selection (photographer review)
-  // =============================================================================
-  /** Step 6: Photographer adds comments/link for lab. When URL is provided, advances to step 7 (same as "Validate client selection"). */
-  const handleValidateClientSelection = React.useCallback(
-    async (comments?: string, url?: string) => {
-      if (!id) return
-      try {
-        const body: Record<string, unknown> = {}
-        if (comments?.trim()) {
-          body.step_note_photographer_review = {
-            from: "photographer",
-            text: comments.trim(),
-            ...(url?.trim() && { url: url.trim() }),
-          }
-        }
-        if (url?.trim()) {
-          body.photographer_review_url = url.trim()
-        }
-        if (Object.keys(body).length > 0) {
-          await patchCollection(body)
-        }
-        if (url?.trim()) {
-          await fireEvent("photographer_check_approved", {})
-        }
-        await refetchCollection()
-      } catch (err) {
-        console.error("[CollectionViewPage] Validate client selection error:", err)
-        toast.error("Failed to validate selection")
-      }
-    },
-    [id, patchCollection, fireEvent, refetchCollection]
-  )
-
-  /** Step 6: Photographer approves client selection directly — copy client URLs to photographer_review, advance to step 7. */
-  const handleValidateClientSelectionDirect = React.useCallback(
-    async (selectedUrls?: string[]) => {
-      if (!id) return
-      try {
-        const body: Record<string, unknown> = { photographer_review_copy_from_client_selection: true }
-        if (selectedUrls && selectedUrls.length > 0) {
-          body.photographer_review_selected_urls = selectedUrls
-        }
-        await patchCollection(body)
-        await fireEvent("photographer_check_approved", {})
-        await refetchCollection()
-      } catch (err) {
-        console.error("[CollectionViewPage] Validate client selection (direct) error:", err)
-        toast.error("Failed to validate selection")
-      }
-    },
-    [id, patchCollection, fireEvent, refetchCollection]
-  )
-
-  // =============================================================================
-  // STEP 6: Request more photos from client (revert to client_selection)
-  // =============================================================================
-  const handleRequestMorePhotosFromClient = React.useCallback(
-    async (notes: string) => {
-      if (!id) return
-      try {
-        const isHighResStage = collection?.substatus === "low_res_to_high_res"
-        if (notes.trim()) {
-          await patchCollection({
-            ...(isHighResStage
-              ? { step_note_photographer_review: { from: "lab", text: notes.trim() } }
-              : { step_note_client_selection: { from: "photographer", text: notes.trim() } }),
-          })
-        }
-        // Revert back:
-        // - from photographer review => client_selection
-        // - from low-res to high-res => photographer review (substatus client_selection)
-        await fireEvent("photographer_requested_additional_photos", {
-          source: isHighResStage ? "high_res" : "photographer_review",
-          notes: notes.trim(),
-        })
-        await refetchCollection()
-      } catch (err) {
-        console.error("[CollectionViewPage] Request more photos from client error:", err)
-        toast.error("Failed to save request")
-      }
-    },
-    [id, collection?.substatus, patchCollection, fireEvent, refetchCollection]
-  )
-
-  // =============================================================================
-  // STEP 7: Upload high-res (append URL + note, fire event)
+  // STEP 6: Upload high-res (append URL + note, fire event)
   // =============================================================================
   const handleUploadHighRes = React.useCallback(
     async (payload: { url: string; notes?: string }) => {
@@ -709,6 +709,10 @@ export default function CollectionViewPage({
           }
         }
         await patchCollection(body)
+        // Bypass: cierra todos los pasos previos pendientes (incluido handprint_high_res)
+        // para no bloquear el flujo cuando el lab no usó la plataforma. Sus columnas
+        // correspondientes quedan vacías.
+        await fireBypassChainUpTo("edition_request")
         await fireEvent("edition_request_submitted", { url: payload.url, details: payload.details })
         await refetchCollection()
       } catch (err) {
@@ -716,7 +720,7 @@ export default function CollectionViewPage({
         toast.error("Failed to save instructions")
       }
     },
-    [id, patchCollection, fireEvent, refetchCollection]
+    [id, patchCollection, fireEvent, fireBypassChainUpTo, refetchCollection]
   )
 
   // =============================================================================
@@ -772,6 +776,11 @@ export default function CollectionViewPage({
           const step10AlreadyDone = collection?.stepStatuses?.["photographer_last_check"]?.stage === "done"
           await patchCollection(body)
           if ((payload.url?.trim() || payload.comments?.trim()) && !step10AlreadyDone) {
+            // Bypass: cierra todos los pasos previos pendientes para no bloquear
+            // el flujo. Para flows con edition studio, edition_request y final_edits
+            // suelen estar ya completos antes de step 9 — el helper sólo dispara
+            // los que sigan pending.
+            await fireBypassChainUpTo("photographer_last_check")
             await fireEvent("photographer_edits_approved")
           } else if (payload.url?.trim() && step10AlreadyDone) {
             await fireEvent("photographer_last_check_shared_additional_materials", {
@@ -786,7 +795,7 @@ export default function CollectionViewPage({
         toast.error("Failed to save link or comment")
       }
     },
-    [id, collection?.stepStatuses, patchCollection, fireEvent, refetchCollection]
+    [id, collection?.stepStatuses, patchCollection, fireEvent, fireBypassChainUpTo, refetchCollection]
   )
 
   // =============================================================================
@@ -799,6 +808,9 @@ export default function CollectionViewPage({
         if (selectedUrls && selectedUrls.length > 0) {
           await patchCollection({ photographer_approved_material_urls: selectedUrls })
         }
+        // Bypass: cierra todos los pasos previos pendientes para no bloquear
+        // el flujo (incluye handprint_high_res cuando no hay edition studio).
+        await fireBypassChainUpTo("photographer_last_check")
         await fireEvent("photographer_edits_approved")
         await refetchCollection()
       } catch (err) {
@@ -806,7 +818,7 @@ export default function CollectionViewPage({
         toast.error("Failed to validate finals")
       }
     },
-    [id, patchCollection, fireEvent, refetchCollection]
+    [id, patchCollection, fireEvent, fireBypassChainUpTo, refetchCollection]
   )
 
   // =============================================================================
@@ -1001,19 +1013,20 @@ export default function CollectionViewPage({
     )
   }
 
-  const stageStatus = collection.status === "completed"
-    ? "done" as const
-    : collection.status === "canceled"
-      ? "done" as const
-      : collection.status === "in_progress"
-        ? ("in-progress" as const)
-        : deriveStageStatusFromShootingStart(
-            {
-              shootingStartDate: collection.config.shootingStartDate ?? collection.config.shootingDate,
-              shootingStartTime: collection.config.shootingStartTime,
-            },
-            "upcoming"
-          )
+  const stageStatus =
+    collection.status === "completed"
+      ? ("done" as const)
+      : collection.status === "canceled"
+        ? ("upcoming" as const)
+        : collection.status === "in_progress"
+          ? ("in-progress" as const)
+          : deriveStageStatusFromShootingStart(
+              {
+                shootingStartDate: collection.config.shootingStartDate ?? collection.config.shootingDate,
+                shootingStartTime: collection.config.shootingStartTime,
+              },
+              "upcoming"
+            )
   const shootingType = collection.config.hasHandprint
     ? (collection.config.handprintVariant === "hr" ? "handprint_hr" : "handprint_hp")
     : "digital"
@@ -1024,6 +1037,7 @@ export default function CollectionViewPage({
       clientName={clientName}
       progress={progress}
       stageStatus={stageStatus}
+      isCollectionCanceled={collection.status === "canceled"}
       shootingType={shootingType}
       photographerName={photographerName}
       showPhotographerName={!!photographerName}
@@ -1052,6 +1066,9 @@ export default function CollectionViewPage({
       dropoffShippingDestinationAddress={collection.config.dropoff_shipping_destination_address}
       dropoffDeliveryDate={collection.config.dropoff_delivery_date}
       dropoffDeliveryTime={collection.config.dropoff_delivery_time}
+      dropoffAdditionalShipments={collection.config.dropoffAdditionalShipments ?? []}
+      dropoffManagingShippingOptions={dropoffManagingShippingOptionsForView}
+      onAppendDropoffAdditionalShipment={handleAppendDropoffAdditionalShipment}
       onConfirmPickup={handleConfirmPickup}
       onConfirmDropoffDelivery={handleConfirmDropoffDelivery}
       onUploadLowRes={handleUploadLowRes}
@@ -1080,13 +1097,7 @@ export default function CollectionViewPage({
       onRequestMorePhotosFromPhotographer={handleRequestMorePhotosFromPhotographer}
       clientSelectionUrl={collection.clientSelectionUrl ?? undefined}
       clientSelectionUploadedAt={collection.clientSelectionUploadedAt ?? undefined}
-      photographerReviewUrl={collection.photographerReviewUrl ?? undefined}
-      photographerReviewUploadedAt={collection.photographerReviewUploadedAt ?? undefined}
       stepNotesClientSelection={collection.stepNotesClientSelection}
-      onValidateClientSelection={handleValidateClientSelection}
-      onValidateClientSelectionDirect={handleValidateClientSelectionDirect}
-      onRequestMorePhotosFromClient={handleRequestMorePhotosFromClient}
-      stepNotesPhotographerReview={collection.stepNotesPhotographerReview}
       onUploadHighRes={handleUploadHighRes}
       onUploadHighResAndInstructions={handleUploadHighResAndInstructions}
       highResSelectionUrl={collection.highResSelectionUrl ?? undefined}

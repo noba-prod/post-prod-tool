@@ -16,7 +16,6 @@ export const VIEW_STEP_IDS = [
   "low_res_scanning",
   "photographer_selection",
   "client_selection",
-  "photographer_check_client_selection",
   "handprint_high_res",
   "edition_request",
   "final_edits",
@@ -32,7 +31,6 @@ const VIEW_STEP_TITLES: Record<ViewStepId, string> = {
   low_res_scanning: "Low-res scanning",
   photographer_selection: "Photographer selection",
   client_selection: "Client selection",
-  photographer_check_client_selection: "Photographer review",
   handprint_high_res: "Low-res to high-res",
   edition_request: "Retouch request",
   final_edits: "Final edits",
@@ -99,9 +97,6 @@ export function getViewStepDefinitions(
         if (id === "low_res_scanning" && !inactive && lowResNoShippingDetails) {
           annotation = "No shipping details"
         }
-        break
-      case "photographer_check_client_selection":
-        inactive = !hasHandprint
         break
       case "handprint_high_res":
         if (hasHandprint && handprintIsDifferentLab) {
@@ -180,11 +175,6 @@ function getDeadlineIsoFromConfig(
         date: config.photoSelectionClientDueDate,
         time: config.photoSelectionClientDueTime,
       }
-    case "photographer_check_client_selection":
-      return {
-        date: config.photographerCheckDueDate,
-        time: config.photographerCheckDueTime,
-      }
     case "handprint_high_res":
       return { date: config.lrToHrDueDate, time: config.lrToHrDueTime }
     case "edition_request":
@@ -238,7 +228,6 @@ const DEFAULT_DEADLINES: Record<ViewStepId, string> = {
   low_res_scanning: "2025-12-10",
   photographer_selection: "2025-12-18",
   client_selection: "2025-12-24",
-  photographer_check_client_selection: "2026-01-04",
   handprint_high_res: "2026-01-06",
   edition_request: "2026-01-12",
   final_edits: "2026-01-20",
@@ -307,17 +296,15 @@ export const EVENT_TYPE_TO_STEP_ID: Record<string, ViewStepId> = {
   photographer_selection_uploaded: "photographer_selection",
   // Step 5: Client selection
   client_selection_confirmed: "client_selection",
-  // Step 6: Photographer review (validates client selection)
-  photographer_check_approved: "photographer_check_client_selection",
-  // Step 7: Low-res to high-res
+  // Step 6: Low-res to high-res
   highres_ready: "handprint_high_res",
-  // Step 8: Edition request
+  // Step 7: Edition request
   edition_request_submitted: "edition_request",
-  // Step 9: Final edits
+  // Step 8: Final edits
   final_edits_completed: "final_edits",
-  // Step 10: Photographer last check
+  // Step 9: Photographer last check
   photographer_edits_approved: "photographer_last_check",
-  // Step 11: Client confirmation
+  // Step 10: Client confirmation
   client_confirmation_confirmed: "client_confirmation",
   collection_completed: "client_confirmation",
 }

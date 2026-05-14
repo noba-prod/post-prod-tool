@@ -125,7 +125,18 @@ Edit Permission:
 - It remains disabled until all required configuration is complete (all steps completed)
 - Appears both:
   - In the last block (Check Finals)
-  - In the sidebar -> When the "Check Finals" step is active, the sidebar transforms into two CTA (a squared secondary icon-button to delete + a primary button to publish collection)
+  - In the collection sidebar footer alongside the primary control (see below).
+
+Sidebar footer (same pattern in Creation draft mode and Edit published mode):
+- Primary button: "Publish" (draft), "Save changes" (edition), or **"Canceled"** (disabled) when the collection is canceled — until **Re-activate collection** from the menu restores it.
+- Secondary: one icon-only control (Lucide MoreHorizontal / “⋯”) opens a dropdown with **Edit basic details** and **Delete collection** always when allowed, plus either:
+  - **Cancel collection** (when not canceled), or
+  - **Re-activate collection** (when canceled) — confirms in a dialog; then:
+    - No `published_at` (canceled draft) → status **draft**, `substatus` null.
+    - Had been published → **upcoming** or **in_progress** from `derivePublishedStatus` (dates); if **in_progress**, `substatus` is derived from recorded step progress when available, otherwise initial `shooting`. Invited participants already keep the row on `/collections` while canceled (§6); after reactivation they see it under the active status again and workflow actions resume per roles.
+- **Delete collection** remains the destructive item in the same menu.
+- The dropdown is displayed only for NOBA Org **Admin**, or invited NOBA producer with Edit permission (`nobaEditPermissionByUserId`, §9).
+  Users without that scope may still publish/save when the rest of the flow allows it, but do not see the menu.
 
 5.2 Publish Confirmation Overlay
 
@@ -158,7 +169,27 @@ Collection main states:
 - Completed
 - Canceled
 
-Status derivation: "In Progress" is set when (a) shooting start date has passed, OR (b) the
+**Canceled — visibility**
+
+Canceled collections stay in the database for audit.
+
+- **Invited non-NOBA participants** (client, labs, photographer, agency, retouch studio — anyone who is a collection
+  member but not NOBA internal): they **remain able to see** the collection on `/collections` with lifecycle status
+  **Canceled** (same card/badge behaviour as NOBA). Entity-facing lists (`GET /api/organizations/[id]`) include
+  canceled collections for external org viewers too. **Draft** collections remain hidden from externals only (unchanged).
+- **`/collections/[id]`**: opens the Collection View Template (`collection-template.tsx`) in **read-only canceled**
+  mode (Canceled badge, steps non-interactive). Informational layout matches what producers see for context;
+  **Participants** is view-only for externals (no “Edit participants”), and **Settings** is limited to NOBA users with
+  collection edit permission — same permission rules as active collections.
+- **NOBA internal users**: unchanged — continue to see, filter, re-activate, and manage canceled collections.
+
+**Re-activation** (NOBA, with sidebar permissions) reverses cancel as in §5.1: draft vs published rules above.
+External participants already had list and detail visibility while canceled; after reactivation they see the collection
+under **Upcoming** / **In progress** (or draft rules if applicable) again and workflow actions resume per roles (§8–§9).
+
+Status derivation: **Canceled** and **Completed** are fixed first (they are never downgraded to **Draft** just
+because `published_at` is null — e.g. canceling a draft). Then **Draft** applies when there is no `published_at`.
+Then published rows use dates and workflow progress. "In Progress" is set when (a) shooting start date has passed, OR (b) the
 workflow has progressed (substatus is set or completion_percentage > 0). This ensures that
 collections with completed steps never show "Upcoming" even if shooting dates were configured
 for the future. Applies to all collection types.
@@ -183,6 +214,8 @@ Step-level statuses:
 ------------------------------------------------------------
 
 Once published, collections are accessed via the Collection View Template <collection-template.tsx>
+
+When status is **Canceled**, invited users still open this route; the template renders **read-only** (lifecycle **Canceled**, steps non-interactive). See §6.
 
 This template includes:
 - Navbar <nav-bar.tsx> from custom components
@@ -332,7 +365,6 @@ The View Mode shows 11 canonical steps. Some are inactive (greyed out) per type:
 | Low-res scanning          | inactive| active    | active    |
 | Photographer selection    | active  | active    | active    |
 | Client selection          | active  | active    | active    |
-| Photographer review       | inactive| active    | active    |
 | Low-res to high-res       | active  | active    | active    |
 | Retouch request           | if hasEditionStudio | if hasEditionStudio | if hasEditionStudio |
 | Final edits               | if hasEditionStudio | if hasEditionStudio | if hasEditionStudio |
@@ -386,7 +418,7 @@ visible step is photographer_selection, and substatus is synced accordingly.
 
 Section 10 describes each step in detail. Which steps apply to each collection
 type is defined in §9.5. The "most complete" flow below is Analog (HP or HR);
-Digital omits negatives drop-off, low-res scanning, and photographer review
+Digital omits negatives drop-off and low-res scanning
 (see §9.5.2, §9.5.3).
 
 10.1 Shooting
@@ -450,36 +482,27 @@ Action:
 - Upload final selection URL
 - Add notes
 
-10.6 Photographer Check Client Selection – Analog only (both HP and HR)
-Owner:
-- Photographer
-- Producer
-
-Action:
-- Set deadline and time for the photographer to review and validate the client selection.
-- The photographer must analyse the client’s final selection and validate or give comments to the lab before the lab converts the selection to high resolution.
-- This step appears only when the collection is Hand print; it is placed before “Handprint High-Res” (LR to HR).
-- Form in creation: Due date, Time, Owner (Photographer, locked). See Figma 791-60709.
-
-10.7 Low-res to High-Res — Analog (HP or HR)
+10.6 Low-res to High-Res — Analog (HP or HR)
 Owner:
 - Handprint Lab (if hand-print lab differs from original lab) — Analog HP only
 - Photo Lab (if low-res lab is the same as high-res, or Analog HR)
 - Producer
 
 Modal configuration: When "Handprint different from original lab" is OFF, Photo Lab = Handprint Lab.
-The Photo Lab is the owner of this step and receives all step-related notifications (e.g. photographer_check_ready_for_hr).
+The Photo Lab is the owner of this step and receives step-related notifications (e.g. `client_selection_confirmed`).
+The **photographer** receives the same `client_selection_confirmed` notification as well (shared template row,
+distinct deep-links): after Photographer Review was removed they still need visibility into Client Selection.
 Collections store handprint_lab_id = photo_lab_id in this case so notifications resolve correctly.
 
 Analog HR: photo_lab does both low-res scanning and high-res conversion; handprintIsDifferentLab is always false.
 
 Action:
-- Download client selection (after photographer has validated it, in Analog)
+- Download client selection
 - Convert to high-res the selected photos
 - Upload high-res URL
 - Add notes
 
-10.7b Low-res to High-Res — Digital
+10.6b Low-res to High-Res — Digital
 Owner:
 - Photographer
 - Producer
@@ -492,7 +515,7 @@ Action:
 - Upload high-res URL
 - Add notes
 
-10.8 Retouch Request
+10.7 Retouch Request
 Owner:
 - Photographer
 - Producer
@@ -502,7 +525,7 @@ Action:
 - Upload retouch instructions (URL)
 - Add notes for edition studio
 
-10.9 Final Edits
+10.8 Final Edits
 Owner:
 - Edition / Retouch Studio
 - Producer
@@ -518,7 +541,7 @@ Feedback Loop:
 - This step might be re-open if Photographer request additional improvements
 - Edition / Retouch Studio uploads new URL with improvements
 
-10.10 Photographer Last Check
+10.9 Photographer Last Check
 Owner:
 - Photographer
 - Producer
@@ -535,7 +558,7 @@ Feedback Loop:
 - Can return to Final Edits step
 - Multiple iterations allowed
 
-10.11 Client Confirmation
+10.10 Client Confirmation
 Owner:
 - Client
 - Producer

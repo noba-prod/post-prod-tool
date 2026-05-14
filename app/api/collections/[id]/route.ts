@@ -13,17 +13,13 @@ import { NotificationsService } from "@/lib/services/notifications/notifications
 import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 import type { StepNoteEntry } from "@/lib/domain/collections"
 import { appendToUrlArray, appendNote, isDuplicateNote } from "@/lib/utils/collection-mappers"
+import type { DropoffAdditionalShipment } from "@/lib/domain/collections"
 
 interface PatchBody {
   // URL appends (single URL string → appended to JSONB array)
   lowres_selection_url?: string
   photographer_selection_url?: string
   client_selection_url?: string
-  photographer_review_url?: string
-  /** When true, replace photographer_review_url with client_selection_url (direct approval). */
-  photographer_review_copy_from_client_selection?: boolean
-  /** When photographer_review_copy_from_client_selection is true, only copy these URLs (subset of client_selection_url). */
-  photographer_review_selected_urls?: string[]
   highres_selection_url?: string
   edition_instructions_url?: string
   finals_selection_url?: string
@@ -34,19 +30,19 @@ interface PatchBody {
   step_note_low_res?: { from: string; text: string; url?: string }
   step_note_photographer_selection?: { from: string; text: string; url?: string }
   step_note_client_selection?: { from: string; text: string; url?: string }
-  step_note_photographer_review?: { from: string; text: string; url?: string }
   step_note_high_res?: { from: string; text: string; url?: string }
   step_note_edition_request?: { from: string; text: string; url?: string }
   step_note_final_edits?: { from: string; text: string; url?: string }
   step_note_photographer_last_check?: { from: string; text: string; url?: string }
   step_note_client_confirmation?: { from: string; text: string; url?: string }
+  /** Replace supplemental drop-off shipments (Analog). Producer-only use case; full array replace. */
+  dropoff_additional_shipments?: DropoffAdditionalShipment[]
 }
 
 const NOTE_KEY_TO_URL_FIELD: Partial<Record<keyof PatchBody, keyof PatchBody>> = {
   step_note_low_res: "lowres_selection_url",
   step_note_photographer_selection: "photographer_selection_url",
   step_note_client_selection: "client_selection_url",
-  step_note_photographer_review: "photographer_review_url",
   step_note_high_res: "highres_selection_url",
   step_note_edition_request: "edition_instructions_url",
   step_note_final_edits: "finals_selection_url",
@@ -113,6 +109,26 @@ function toColumnCompatibleNotesValue(
   return Array.isArray(rawColumnValue) ? next : JSON.stringify(next)
 }
 
+function sanitizeDropoffAdditionalShipmentsInput(
+  raw: unknown
+): DropoffAdditionalShipment[] {
+  if (!Array.isArray(raw)) return []
+  const out: DropoffAdditionalShipment[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue
+    const o = item as Record<string, unknown>
+    const row: DropoffAdditionalShipment = {}
+    const m = o.managingShipping
+    const p = o.provider
+    const t = o.tracking
+    if (typeof m === "string" && m.trim()) row.managingShipping = m.trim()
+    if (typeof p === "string" && p.trim()) row.provider = p.trim()
+    if (typeof t === "string" && t.trim()) row.tracking = t.trim()
+    if (Object.keys(row).length > 0) out.push(row)
+  }
+  return out
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -154,7 +170,6 @@ export async function PATCH(
         lowres_selection_url,
         photographer_selection_url,
         client_selection_url,
-        photographer_review_url,
         highres_selection_url,
         edition_instructions_url,
         finals_selection_url,
@@ -163,7 +178,6 @@ export async function PATCH(
         step_notes_low_res,
         step_notes_photographer_selection,
         step_notes_client_selection,
-        step_notes_photographer_review,
         step_notes_high_res,
         step_notes_edition_request,
         step_notes_final_edits,
@@ -204,22 +218,6 @@ export async function PATCH(
       )
       dbUpdate.client_selection_url = toColumnCompatibleArrayValue(raw.client_selection_url, next)
       dbUpdate.client_selection_uploaded_at = now
-    }
-    if (body.photographer_review_copy_from_client_selection) {
-      const clientUrls = parseStoredStringArray(raw.client_selection_url)
-      const selectedUrls =
-        Array.isArray(body.photographer_review_selected_urls) && body.photographer_review_selected_urls.length > 0
-          ? body.photographer_review_selected_urls.filter((u) => typeof u === "string" && clientUrls.includes(u.trim()))
-          : clientUrls
-      dbUpdate.photographer_review_url = toColumnCompatibleArrayValue(raw.photographer_review_url, selectedUrls)
-      dbUpdate.photographer_review_uploaded_at = now
-    } else if (body.photographer_review_url !== undefined) {
-      const next = appendToUrlArray(
-        parseStoredStringArray(raw.photographer_review_url),
-        body.photographer_review_url.trim()
-      )
-      dbUpdate.photographer_review_url = toColumnCompatibleArrayValue(raw.photographer_review_url, next)
-      dbUpdate.photographer_review_uploaded_at = now
     }
     if (body.highres_selection_url !== undefined) {
       const next = appendToUrlArray(
@@ -277,7 +275,6 @@ export async function PATCH(
       { bodyKey: "step_note_low_res", rawKey: "step_notes_low_res", patchKey: "stepNotesLowRes" },
       { bodyKey: "step_note_photographer_selection", rawKey: "step_notes_photographer_selection", patchKey: "stepNotesPhotographerSelection" },
       { bodyKey: "step_note_client_selection", rawKey: "step_notes_client_selection", patchKey: "stepNotesClientSelection" },
-      { bodyKey: "step_note_photographer_review", rawKey: "step_notes_photographer_review", patchKey: "stepNotesPhotographerReview" },
       { bodyKey: "step_note_high_res", rawKey: "step_notes_high_res", patchKey: "stepNotesHighRes" },
       { bodyKey: "step_note_edition_request", rawKey: "step_notes_edition_request", patchKey: "stepNotesEditionRequest" },
       { bodyKey: "step_note_final_edits", rawKey: "step_notes_final_edits", patchKey: "stepNotesFinalEdits" },
@@ -302,7 +299,6 @@ export async function PATCH(
           stepNotesLowRes: "step_notes_low_res",
           stepNotesPhotographerSelection: "step_notes_photographer_selection",
           stepNotesClientSelection: "step_notes_client_selection",
-          stepNotesPhotographerReview: "step_notes_photographer_review",
           stepNotesHighRes: "step_notes_high_res",
           stepNotesEditionRequest: "step_notes_edition_request",
           stepNotesFinalEdits: "step_notes_final_edits",
@@ -315,6 +311,18 @@ export async function PATCH(
           appendedNoteKeys.push(bodyKey)
         }
       }
+    }
+
+    if (body.dropoff_additional_shipments !== undefined) {
+      if (!Array.isArray(body.dropoff_additional_shipments)) {
+        return NextResponse.json(
+          { error: "dropoff_additional_shipments must be an array" },
+          { status: 400 }
+        )
+      }
+      dbUpdate.dropoff_additional_shipments = sanitizeDropoffAdditionalShipmentsInput(
+        body.dropoff_additional_shipments
+      )
     }
 
     if (Object.keys(dbUpdate).length === 0) {

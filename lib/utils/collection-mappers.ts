@@ -10,6 +10,7 @@ import type {
   CurrentOwnerRole,
   CreationBlockId,
   CreationData,
+  DropoffAdditionalShipment,
   ParticipantRole,
   StepNoteEntry,
 } from "@/lib/domain/collections"
@@ -82,6 +83,50 @@ function parseCurrentOwners(raw: unknown): CurrentOwnerRole[] {
     v === "retouch_studio" ||
     v === "handprint_lab"
   )
+}
+
+/** Parse dropoff_additional_shipments JSONB (camelCase or legacy snake keys per entry). */
+export function parseDropoffAdditionalShipments(raw: unknown): DropoffAdditionalShipment[] {
+  if (!raw) return []
+  let arr: unknown[] = []
+  if (Array.isArray(raw)) arr = raw
+  else if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) arr = parsed
+    } catch {
+      return []
+    }
+  } else return []
+  const out: DropoffAdditionalShipment[] = []
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue
+    const o = item as Record<string, unknown>
+    const managingShipping =
+      typeof o.managingShipping === "string"
+        ? o.managingShipping.trim()
+        : typeof o.dropoff_managing_shipping === "string"
+          ? o.dropoff_managing_shipping.trim()
+          : ""
+    const provider =
+      typeof o.provider === "string"
+        ? o.provider.trim()
+        : typeof o.dropoff_shipping_carrier === "string"
+          ? o.dropoff_shipping_carrier.trim()
+          : ""
+    const tracking =
+      typeof o.tracking === "string"
+        ? o.tracking.trim()
+        : typeof o.dropoff_shipping_tracking === "string"
+          ? o.dropoff_shipping_tracking.trim()
+          : ""
+    const row: DropoffAdditionalShipment = {}
+    if (managingShipping) row.managingShipping = managingShipping
+    if (provider) row.provider = provider
+    if (tracking) row.tracking = tracking
+    if (Object.keys(row).length > 0) out.push(row)
+  }
+  return out
 }
 
 /** Append a URL to an existing URL array (non-destructive). */
@@ -180,6 +225,12 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     dropoff_managing_shipping: row.dropoff_managing_shipping ?? undefined,
     dropoff_shipping_carrier: row.dropoff_shipping_carrier ?? undefined,
     dropoff_shipping_tracking: row.dropoff_shipping_tracking ?? undefined,
+    dropoffAdditionalShipments: (() => {
+      const list = parseDropoffAdditionalShipments(
+        (row as { dropoff_additional_shipments?: unknown }).dropoff_additional_shipments
+      )
+      return list.length > 0 ? list : undefined
+    })(),
     lowResScanDeadlineDate: dbDateToIso(row.lowres_deadline_date),
     lowResScanDeadlineTime: row.lowres_deadline_time ?? undefined,
     lowResShippingOriginAddress: row.lowres_shipping_origin_address ?? undefined,
@@ -195,8 +246,6 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     photoSelectionPhotographerDueTime: row.photo_selection_photographer_preselection_time ?? undefined,
     photoSelectionClientDueDate: dbDateToIso(row.photo_selection_client_selection_date),
     photoSelectionClientDueTime: row.photo_selection_client_selection_time ?? undefined,
-    photographerCheckDueDate: dbDateToIso(row.photographer_check_due_date ?? null),
-    photographerCheckDueTime: row.photographer_check_due_time ?? undefined,
     lrToHrDueDate: dbDateToIso(row.low_to_high_date),
     lrToHrDueTime: row.low_to_high_time ?? undefined,
     editionPhotographerDueDate: dbDateToIso(row.precheck_photographer_comments_date),
@@ -411,12 +460,10 @@ export function deriveCompletedBlockIds(
     completed.push("client_selection_config")
   }
 
-  // LR to HR setup: needs due date. Hand print block also includes photographer check form (both required).
+  // LR to HR setup: needs due date.
   const hasLrToHrSetup = !!config.lrToHrDueDate?.trim()
-  const hasPhotographerCheck =
-    !!config.photographerCheckDueDate?.trim() && !!config.photographerCheckDueTime?.trim()
   if (config.hasHandprint) {
-    if (hasPhotographerCheck && hasLrToHrSetup) {
+    if (hasLrToHrSetup) {
       completed.push("handprint_high_res_config")
     }
   } else if (hasLrToHrSetup) {
@@ -470,8 +517,6 @@ export function mapDbCollectionToDomain(
   const photographerSelectionUploadedAt = (r.photographer_selection_uploaded_at as string | null) ?? null
   const clientSelectionUrl = parseJsonbStringArray(r.client_selection_url)
   const clientSelectionUploadedAt = (r.client_selection_uploaded_at as string | null) ?? null
-  const photographerReviewUrl = parseJsonbStringArray(r.photographer_review_url)
-  const photographerReviewUploadedAt = (r.photographer_review_uploaded_at as string | null) ?? null
   const highresSelectionUrl = parseJsonbStringArray(r.highres_selection_url)
   const highresSelectionUploadedAt = (r.highres_selection_uploaded_at as string | null) ?? null
   const editionInstructionsUrl = parseJsonbStringArray(r.edition_instructions_url)
@@ -487,7 +532,6 @@ export function mapDbCollectionToDomain(
   const stepNotesLowRes = parseJsonbNoteArray(r.step_notes_low_res)
   const stepNotesPhotographerSelection = parseJsonbNoteArray(r.step_notes_photographer_selection)
   const stepNotesClientSelection = parseJsonbNoteArray(r.step_notes_client_selection)
-  const stepNotesPhotographerReview = parseJsonbNoteArray(r.step_notes_photographer_review)
   const stepNotesHighRes = parseJsonbNoteArray(r.step_notes_high_res)
   const stepNotesEditionRequest = parseJsonbNoteArray(r.step_notes_edition_request)
   const stepNotesFinalEdits = parseJsonbNoteArray(r.step_notes_final_edits)
@@ -516,8 +560,6 @@ export function mapDbCollectionToDomain(
     photographerSelectionUploadedAt: photographerSelectionUploadedAt ?? undefined,
     clientSelectionUrl: clientSelectionUrl.length > 0 ? clientSelectionUrl : undefined,
     clientSelectionUploadedAt: clientSelectionUploadedAt ?? undefined,
-    photographerReviewUrl: photographerReviewUrl.length > 0 ? photographerReviewUrl : undefined,
-    photographerReviewUploadedAt: photographerReviewUploadedAt ?? undefined,
     highResSelectionUrl: highresSelectionUrl.length > 0 ? highresSelectionUrl : undefined,
     highResSelectionUploadedAt: highresSelectionUploadedAt ?? undefined,
     editionInstructionsUrl: editionInstructionsUrl.length > 0 ? editionInstructionsUrl : undefined,
@@ -531,7 +573,6 @@ export function mapDbCollectionToDomain(
     stepNotesLowRes: stepNotesLowRes.length > 0 ? stepNotesLowRes : undefined,
     stepNotesPhotographerSelection: stepNotesPhotographerSelection.length > 0 ? stepNotesPhotographerSelection : undefined,
     stepNotesClientSelection: stepNotesClientSelection.length > 0 ? stepNotesClientSelection : undefined,
-    stepNotesPhotographerReview: stepNotesPhotographerReview.length > 0 ? stepNotesPhotographerReview : undefined,
     stepNotesHighRes: stepNotesHighRes.length > 0 ? stepNotesHighRes : undefined,
     stepNotesEditionRequest: stepNotesEditionRequest.length > 0 ? stepNotesEditionRequest : undefined,
     stepNotesFinalEdits: stepNotesFinalEdits.length > 0 ? stepNotesFinalEdits : undefined,
@@ -599,6 +640,7 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     dropoff_managing_shipping: conf.dropoff_managing_shipping ?? null,
     dropoff_shipping_carrier: conf.dropoff_shipping_carrier ?? null,
     dropoff_shipping_tracking: conf.dropoff_shipping_tracking ?? null,
+    dropoff_additional_shipments: conf.dropoffAdditionalShipments ?? [],
     lowres_deadline_date: isoToDbDate(conf.lowResScanDeadlineDate),
     lowres_deadline_time: conf.lowResScanDeadlineTime ?? null,
     lowres_shipping_origin_address: conf.lowResShippingOriginAddress ?? null,
@@ -614,10 +656,6 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     photo_selection_photographer_preselection_time: conf.photoSelectionPhotographerDueTime ?? null,
     photo_selection_client_selection_date: isoToDbDate(conf.photoSelectionClientDueDate),
     photo_selection_client_selection_time: conf.photoSelectionClientDueTime ?? null,
-    // Omit photographer_check_due_date/time on INSERT so create works when migration 018 is not yet
-    // applied or PostgREST schema cache is stale. They are set on first UPDATE (e.g. when saving the step).
-    // photographer_check_due_date: isoToDbDate(conf.photographerCheckDueDate),
-    // photographer_check_due_time: conf.photographerCheckDueTime ?? null,
     low_to_high_date: isoToDbDate(conf.lrToHrDueDate),
     low_to_high_time: conf.lrToHrDueTime ?? null,
     precheck_photographer_comments_date: isoToDbDate(conf.editionPhotographerDueDate),
@@ -653,8 +691,6 @@ export function mapDomainPatchToDbUpdate(
     photographerSelectionUploadedAt?: string
     clientSelectionUrl?: string[]
     clientSelectionUploadedAt?: string
-    photographerReviewUrl?: string[]
-    photographerReviewUploadedAt?: string
     highResSelectionUrl?: string[]
     highResSelectionUploadedAt?: string
     editionInstructionsUrl?: string[]
@@ -667,7 +703,6 @@ export function mapDomainPatchToDbUpdate(
     stepNotesLowRes?: StepNoteEntry[]
     stepNotesPhotographerSelection?: StepNoteEntry[]
     stepNotesClientSelection?: StepNoteEntry[]
-    stepNotesPhotographerReview?: StepNoteEntry[]
     stepNotesHighRes?: StepNoteEntry[]
     stepNotesEditionRequest?: StepNoteEntry[]
     stepNotesFinalEdits?: StepNoteEntry[]
@@ -693,8 +728,6 @@ export function mapDomainPatchToDbUpdate(
   if (patch.photographerSelectionUploadedAt !== undefined) u.photographer_selection_uploaded_at = patch.photographerSelectionUploadedAt ?? null
   if (patch.clientSelectionUrl !== undefined) u.client_selection_url = patch.clientSelectionUrl
   if (patch.clientSelectionUploadedAt !== undefined) u.client_selection_uploaded_at = patch.clientSelectionUploadedAt ?? null
-  if (patch.photographerReviewUrl !== undefined) u.photographer_review_url = patch.photographerReviewUrl
-  if (patch.photographerReviewUploadedAt !== undefined) u.photographer_review_uploaded_at = patch.photographerReviewUploadedAt ?? null
   if (patch.highResSelectionUrl !== undefined) u.highres_selection_url = patch.highResSelectionUrl
   if (patch.highResSelectionUploadedAt !== undefined) u.highres_selection_uploaded_at = patch.highResSelectionUploadedAt ?? null
   if (patch.editionInstructionsUrl !== undefined) u.edition_instructions_url = patch.editionInstructionsUrl
@@ -707,7 +740,6 @@ export function mapDomainPatchToDbUpdate(
   if (patch.stepNotesLowRes !== undefined) u.step_notes_low_res = patch.stepNotesLowRes
   if (patch.stepNotesPhotographerSelection !== undefined) u.step_notes_photographer_selection = patch.stepNotesPhotographerSelection
   if (patch.stepNotesClientSelection !== undefined) u.step_notes_client_selection = patch.stepNotesClientSelection
-  if (patch.stepNotesPhotographerReview !== undefined) u.step_notes_photographer_review = patch.stepNotesPhotographerReview
   if (patch.stepNotesHighRes !== undefined) u.step_notes_high_res = patch.stepNotesHighRes
   if (patch.stepNotesEditionRequest !== undefined) u.step_notes_edition_request = patch.stepNotesEditionRequest
   if (patch.stepNotesFinalEdits !== undefined) u.step_notes_final_edits = patch.stepNotesFinalEdits
@@ -745,6 +777,9 @@ export function mapDomainPatchToDbUpdate(
     if (conf.dropoff_managing_shipping !== undefined) u.dropoff_managing_shipping = conf.dropoff_managing_shipping ?? null
     if (conf.dropoff_shipping_carrier !== undefined) u.dropoff_shipping_carrier = conf.dropoff_shipping_carrier ?? null
     if (conf.dropoff_shipping_tracking !== undefined) u.dropoff_shipping_tracking = conf.dropoff_shipping_tracking ?? null
+    if (conf.dropoffAdditionalShipments !== undefined) {
+      u.dropoff_additional_shipments = conf.dropoffAdditionalShipments ?? []
+    }
     if (conf.lowResScanDeadlineDate !== undefined) u.lowres_deadline_date = isoToDbDate(conf.lowResScanDeadlineDate)
     if (conf.lowResScanDeadlineTime !== undefined) u.lowres_deadline_time = conf.lowResScanDeadlineTime ?? null
     if (conf.lowResShippingOriginAddress !== undefined) u.lowres_shipping_origin_address = conf.lowResShippingOriginAddress ?? null
@@ -760,8 +795,6 @@ export function mapDomainPatchToDbUpdate(
     if (conf.photoSelectionPhotographerDueTime !== undefined) u.photo_selection_photographer_preselection_time = conf.photoSelectionPhotographerDueTime ?? null
     if (conf.photoSelectionClientDueDate !== undefined) u.photo_selection_client_selection_date = isoToDbDate(conf.photoSelectionClientDueDate)
     if (conf.photoSelectionClientDueTime !== undefined) u.photo_selection_client_selection_time = conf.photoSelectionClientDueTime ?? null
-    if (conf.photographerCheckDueDate !== undefined) u.photographer_check_due_date = isoToDbDate(conf.photographerCheckDueDate)
-    if (conf.photographerCheckDueTime !== undefined) u.photographer_check_due_time = conf.photographerCheckDueTime ?? null
     if (conf.lrToHrDueDate !== undefined) u.low_to_high_date = isoToDbDate(conf.lrToHrDueDate)
     if (conf.lrToHrDueTime !== undefined) u.low_to_high_time = conf.lrToHrDueTime ?? null
     if (conf.editionPhotographerDueDate !== undefined) u.precheck_photographer_comments_date = isoToDbDate(conf.editionPhotographerDueDate)

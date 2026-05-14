@@ -41,7 +41,6 @@ export const STEP_IDS = [
   "low_res_scanning",
   "photographer_selection",
   "client_selection",
-  "photographer_check_client_selection",
   "handprint_high_res",
   "edition_request",
   "final_edits",
@@ -63,7 +62,6 @@ export const CREATION_BLOCK_IDS = [
   "photographer_selection_config",
   "client_selection_config",
   "photo_selection", // UI step "Photo selection" — requiredBlocks: [photographer_selection_config, client_selection_config]
-  "photographer_check_client_selection", // Hand print only: photographer validates client selection before LR→HR
   "lr_to_hr_setup",
   "handprint_high_res_config",
   "edition_config",
@@ -75,6 +73,13 @@ export type CreationBlockId = (typeof CREATION_BLOCK_IDS)[number]
 // =============================================================================
 // COLLECTION CONFIG — Output of "New Collection" modal (collections-logic §3.2)
 // =============================================================================
+
+/** Supplemental negative shipments (Analog). Primary shipment uses dropoff_shipping_* columns. */
+export interface DropoffAdditionalShipment {
+  managingShipping?: string
+  provider?: string
+  tracking?: string
+}
 
 export interface CollectionConfig {
   /** Collection name */
@@ -132,6 +137,11 @@ export interface CollectionConfig {
   dropoff_managing_shipping?: string
   dropoff_shipping_carrier?: string
   dropoff_shipping_tracking?: string
+  /**
+   * Analog (HP/HR): extra shipments added by producer after confirming pickup — informational only for the lab.
+   * Primary shipment remains in dropoff_shipping_carrier / dropoff_shipping_tracking.
+   */
+  dropoffAdditionalShipments?: DropoffAdditionalShipment[]
   // Low-res scan (Figma node 707-1732747)
   lowResScanDeadlineDate?: string
   lowResScanDeadlineTime?: string
@@ -149,9 +159,6 @@ export interface CollectionConfig {
   photoSelectionPhotographerDueTime?: string
   photoSelectionClientDueDate?: string
   photoSelectionClientDueTime?: string
-  // Photographer check client selection (Hand print only; Figma 791-60709 — before LR→HR)
-  photographerCheckDueDate?: string
-  photographerCheckDueTime?: string
   // LR to HR setup (Figma node 712-1735600; collections-logic §10.6 — lab sends high-res selection to photographer)
   lrToHrDueDate?: string
   lrToHrDueTime?: string
@@ -242,11 +249,7 @@ export interface Collection {
   clientSelectionUrl?: string[]
   /** When the client selection URL was last set (ISO timestamp). */
   clientSelectionUploadedAt?: string
-  /** URLs uploaded by photographer during review/validation of client selection (step 6). JSONB array. */
-  photographerReviewUrl?: string[]
-  /** When the photographer review URL was last set (ISO timestamp). */
-  photographerReviewUploadedAt?: string
-  /** URLs for high-res selection (step 7). JSONB array. */
+  /** URLs for high-res selection (step 6). JSONB array. */
   highResSelectionUrl?: string[]
   /** When the high-res URL was last set (ISO timestamp). */
   highResSelectionUploadedAt?: string
@@ -268,7 +271,6 @@ export interface Collection {
   stepNotesLowRes?: StepNoteEntry[]
   stepNotesPhotographerSelection?: StepNoteEntry[]
   stepNotesClientSelection?: StepNoteEntry[]
-  stepNotesPhotographerReview?: StepNoteEntry[]
   stepNotesHighRes?: StepNoteEntry[]
   stepNotesEditionRequest?: StepNoteEntry[]
   stepNotesFinalEdits?: StepNoteEntry[]

@@ -116,6 +116,24 @@ interface Filters {
   sortOrder: "asc" | "desc"
 }
 
+type PhotographerFilterSelection =
+  | { kind: "entity"; id: string }
+  | { kind: "user"; id: string }
+
+function parsePhotographerFilter(value: string | null): PhotographerFilterSelection | null {
+  if (!value) return null
+  if (value.startsWith("entity:")) {
+    const id = value.slice("entity:".length).trim()
+    return id ? { kind: "entity", id } : null
+  }
+  if (value.startsWith("user:")) {
+    const id = value.slice("user:".length).trim()
+    return id ? { kind: "user", id } : null
+  }
+  // Backward compatibility with legacy values saved as plain entity id.
+  return { kind: "entity", id: value }
+}
+
 // ============================================================================
 // DRAFT → CARD HELPERS
 // ============================================================================
@@ -386,14 +404,47 @@ export default function CollectionsPage() {
   }, [scopeAfterStatus, filters.jobReference])
 
   const photographerOptionsForBar = React.useMemo(() => {
-    const idSet = new Set<string>()
+    const entityNamesById = new Map(photographerOptions.map((p) => [p.id, p.name]))
+    const optionsById = new Map<string, string>()
+
+    const addOption = (id: string, name: string | undefined) => {
+      const trimmedName = name?.trim()
+      if (!trimmedName) return
+      if (!optionsById.has(id)) optionsById.set(id, trimmedName)
+    }
+
     for (const c of scopeAfterJobRef) {
-      for (const p of c.participants) {
-        if (p.role === "photographer" && p.entityId) idSet.add(p.entityId)
+      const photographerParticipant = c.participants.find((p) => p.role === "photographer")
+      if (!photographerParticipant) continue
+
+      const localEntityLabels = new Set<string>()
+      const entityId = photographerParticipant.entityId?.trim()
+      if (entityId) {
+        const entityName =
+          entityNamesById.get(entityId) ??
+          (photographerParticipant.userIds ?? [])
+            .map((userId) => photographerNamesByUserId[userId]?.trim())
+            .find((name): name is string => Boolean(name))
+        if (entityName) {
+          addOption(`entity:${entityId}`, entityName)
+          localEntityLabels.add(entityName.toLowerCase())
+        }
+      }
+
+      for (const userId of photographerParticipant.userIds ?? []) {
+        const userName = photographerNamesByUserId[userId]?.trim()
+        if (!userName) continue
+        if (localEntityLabels.has(userName.toLowerCase())) continue
+        addOption(`user:${userId}`, userName)
       }
     }
-    return photographerOptions.filter((p) => idSet.has(p.id))
-  }, [photographerOptions, scopeAfterJobRef])
+
+    return Array.from(optionsById.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      )
+  }, [photographerNamesByUserId, photographerOptions, scopeAfterJobRef])
 
   const clientOptionsForBar = React.useMemo(() => {
     const ids = new Set(
@@ -448,7 +499,7 @@ export default function CollectionsPage() {
 
   const filteredCollections = React.useMemo(() => {
     let result = [...collections]
-    // Non-Noba users (client, photo_lab, handprint_lab, photographer, agency, retouch_studio) never see draft collections
+    // Non-Noba users never see drafts; canceled collections stay visible as canceled.
     if (!isNobaUser) {
       result = result.filter((c) => c.status !== "draft")
     }
@@ -459,10 +510,15 @@ export default function CollectionsPage() {
       const domainStatus = filters.status === "in-progress" ? "in_progress" : filters.status
       result = result.filter((c) => c.status === domainStatus)
     }
-    if (filters.photographer) {
+    const photographerFilter = parsePhotographerFilter(filters.photographer)
+    if (photographerFilter) {
       result = result.filter((c) =>
         c.participants.some(
-          (p) => p.role === "photographer" && p.entityId === filters.photographer
+          (p) =>
+            p.role === "photographer" &&
+            (photographerFilter.kind === "entity"
+              ? p.entityId === photographerFilter.id
+              : (p.userIds ?? []).includes(photographerFilter.id))
         )
       )
     }

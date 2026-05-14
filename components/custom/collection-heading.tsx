@@ -3,10 +3,11 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Titles } from "./titles"
-import { 
-  CollectionProgressTag, 
-  StageStatusTag, 
-  TimeStampTag, 
+import {
+  CollectionProgressTag,
+  CollectionStatusTag,
+  StageStatusTag,
+  TimeStampTag,
   DateIndicatorTag,
   PhotographerNameTag,
   ShootingTypeTag,
@@ -34,6 +35,10 @@ interface CollectionHeadingMainProps {
   stageStatus?: StageStatus
   /** Show stage status tag */
   showStageStatus?: boolean
+  /** When true, hide the collection progress percentage pill (e.g. canceled collection). */
+  hideProgress?: boolean
+  /** When set, shows collection lifecycle (e.g. Canceled) instead of workflow StageStatusTag. */
+  collectionLifecycleStatus?: "draft" | "upcoming" | "in-progress" | "completed" | "canceled"
   /** Shooting type: Digital or Analog HP/HR (tag to the left of photographer tag) */
   shootingType?: "digital" | "handprint_hp" | "handprint_hr"
   /** Photographer name (shown in photographer tag) */
@@ -77,6 +82,36 @@ interface CollectionHeadingStageProps {
 }
 
 type CollectionHeadingProps = CollectionHeadingMainProps | CollectionHeadingStageProps
+
+/** Viewport width strictly below this → “mobile” for title/client stacking. */
+const COLLECTION_HEADING_SM_BREAKPOINT = 640
+/** Collection name + client name + glue “by” must exceed this to stack on mobile. */
+const COLLECTION_HEADING_TITLE_CHAR_THRESHOLD = 24
+
+function useViewportBelowWidth(widthPx: number): boolean {
+  const query = React.useMemo(
+    () => `(max-width: ${widthPx - 1}px)`,
+    [widthPx]
+  )
+
+  const subscribe = React.useCallback(
+    (onStoreChange: () => void) => {
+      if (typeof window === "undefined") return () => {}
+      const mq = window.matchMedia(query)
+      const onChange = () => onStoreChange()
+      mq.addEventListener("change", onChange)
+      return () => mq.removeEventListener("change", onChange)
+    },
+    [query]
+  )
+
+  const getSnapshot = React.useCallback(() => {
+    if (typeof window === "undefined") return false
+    return window.matchMedia(query).matches
+  }, [query])
+
+  return React.useSyncExternalStore(subscribe, getSnapshot, () => false)
+}
 
 /**
  * Collection Heading Component
@@ -139,6 +174,8 @@ export function CollectionHeading(props: CollectionHeadingProps) {
     progress = 0,
     stageStatus = "upcoming",
     showStageStatus = true,
+    hideProgress = false,
+    collectionLifecycleStatus,
     shootingType,
     photographerName,
     showPhotographerName = false,
@@ -148,20 +185,44 @@ export function CollectionHeading(props: CollectionHeadingProps) {
     onSettings,
   } = props as CollectionHeadingMainProps
 
+  const isBelowSm = useViewportBelowWidth(COLLECTION_HEADING_SM_BREAKPOINT)
+  const namePart = (collectionName ?? "").trim()
+  const clientPart = (clientName ?? "").trim()
+  /* Include literal “by” (2 chars) so long single-line headings match visual width vs threshold. */
+  const titleCharCount =
+    namePart.length +
+    clientPart.length +
+    (namePart.length > 0 && clientPart.length > 0 ? 2 : 0)
+  const stackTitleBlock =
+    isBelowSm && titleCharCount > COLLECTION_HEADING_TITLE_CHAR_THRESHOLD
+
   return (
-    <div className={cn("flex items-center justify-between w-full", className)}>
+    <div
+      className={cn(
+        "flex justify-between w-full",
+        isBelowSm ? "items-end" : "items-center",
+        className
+      )}
+    >
       {/* Left: Title + Tags */}
       <div className="flex flex-col gap-2">
         {/* Heading: [collection] by [client] */}
-        <div className="flex items-start gap-1.5 text-2xl font-semibold">
-          <span className="text-foreground">{collectionName}</span>
-          <span className="text-foreground">by</span>
+        <div
+          className={cn(
+            "flex items-start text-2xl font-semibold",
+            stackTitleBlock ? "flex-col gap-0" : "flex-row gap-1.5"
+          )}
+        >
+          <div className="flex flex-row items-start gap-1.5">
+            <span className="text-foreground">{collectionName}</span>
+            <span className="text-foreground">by</span>
+          </div>
           <span className="text-lime-500">{clientName}</span>
         </div>
 
         {/* Sub-heading: progress + shooting type + photographer name + stage status */}
         <div className="flex items-center gap-2">
-          <CollectionProgressTag progress={progress} />
+          {!hideProgress && <CollectionProgressTag progress={progress} />}
           {shootingType && (
             <ShootingTypeTag type={shootingType} />
           )}
@@ -170,8 +231,14 @@ export function CollectionHeading(props: CollectionHeadingProps) {
               <PhotographerNameTag name={photographerName} />
             </span>
           )}
-          {showStageStatus && (
-            <StageStatusTag status={stageStatus} />
+          {collectionLifecycleStatus ? (
+            <CollectionStatusTag
+              type="default"
+              status={collectionLifecycleStatus}
+              className="inline-flex items-center justify-center px-2 py-1 text-sm font-semibold rounded-lg whitespace-nowrap"
+            />
+          ) : (
+            showStageStatus && <StageStatusTag status={stageStatus} />
           )}
         </div>
       </div>

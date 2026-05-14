@@ -87,7 +87,6 @@ const STEP_ID_TO_SUBSTATUS: Partial<Record<string, CollectionSubstatus>> = {
   low_res_scanning: "low_res_scanning",
   photographer_selection: "photographer_selection",
   client_selection: "client_selection",
-  photographer_check_client_selection: "client_selection",
   handprint_high_res: "low_res_to_high_res",
   edition_request: "edition_request",
   final_edits: "final_edits",
@@ -101,7 +100,6 @@ const STEP_IDS_ORDER: string[] = [
   "low_res_scanning",
   "photographer_selection",
   "client_selection",
-  "photographer_check_client_selection",
   "handprint_high_res",
   "edition_request",
   "final_edits",
@@ -264,9 +262,6 @@ export class CollectionsService {
     if (!collection) {
       throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
     }
-    if (collection.status !== "draft") {
-      throw new CollectionsServiceError("Only draft collections can be deleted", "INVALID_STATUS")
-    }
     await this.repository.delete(id)
   }
 
@@ -381,6 +376,74 @@ export class CollectionsService {
       console.warn("[CollectionsService] Notifications after publish failed (collection was published):", err)
     }
 
+    return updated
+  }
+
+  /**
+   * Reverts cancel: restores a canceled collection to an active workflow state.
+   * - Never published (no publishedAt): back to **draft**
+   * - Was published: **upcoming** or **in_progress** via derivePublishedStatus; substatus restored from
+   *   step progress when entering in_progress (same recovery idea as getCollectionById).
+   */
+  async reactivateCanceledCollection(
+    collectionId: string,
+    now: Date = new Date()
+  ): Promise<Collection> {
+    const collection = await this.repository.getById(collectionId)
+    if (!collection) {
+      throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
+    }
+    if (collection.status !== "canceled") {
+      throw new CollectionsServiceError(
+        "Only canceled collections can be reactivated",
+        "INVALID_STATUS"
+      )
+    }
+
+    const hadPublished = Boolean(collection.publishedAt?.trim())
+
+    if (!hadPublished) {
+      const updated = await this.repository.update(collectionId, {
+        status: "draft",
+        substatus: null,
+      })
+      if (!updated) {
+        throw new CollectionsServiceError(
+          "Failed to reactivate collection",
+          "UPDATE_FAILED"
+        )
+      }
+      return updated
+    }
+
+    const newStatus = derivePublishedStatus(collection.config, now)
+    const hasWorkflowProgress =
+      (collection.completionPercentage ?? 0) > 0 ||
+      Boolean(
+        collection.stepStatuses &&
+          Object.values(collection.stepStatuses).some((e) => {
+            const stage = (e as { stage?: string }).stage
+            return stage === "done" || stage === "in-progress"
+          })
+      )
+
+    const substatusToSet =
+      newStatus === "in_progress"
+        ? hasWorkflowProgress
+          ? deriveSubstatusFromStepStatuses(collection.stepStatuses)
+          : getInitialSubstatus()
+        : null
+
+    const updated = await this.repository.update(collectionId, {
+      status: newStatus,
+      substatus: substatusToSet,
+    })
+    if (!updated) {
+      throw new CollectionsServiceError(
+        "Failed to reactivate collection",
+        "UPDATE_FAILED"
+      )
+    }
     return updated
   }
 
@@ -621,7 +684,6 @@ export class CollectionsService {
       low_res_scanning: "low_res_scanning",
       photographer_selection: "photographer_selection",
       client_selection: "client_selection",
-      photographer_check_client_selection: "client_selection",
       handprint_high_res: "low_res_to_high_res",
       edition_request: "edition_request",
       final_edits: "final_edits",

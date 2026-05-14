@@ -33,6 +33,16 @@ export function SideBarDemo() {
   const [createEntityActive, setCreateEntityActive] = React.useState("step1")
   const [createCollectionActive, setCreateCollectionActive] = React.useState("participants")
 
+  const collectionDemoActions = React.useMemo(
+    () => ({
+      onEditBasicDetails: () => {},
+      onCancelCollection: () => {},
+      onReactivateCollection: () => {},
+      onDeleteCollection: () => {},
+    }),
+    []
+  )
+
   return (
     <div className="flex flex-col gap-8 w-full">
       {/* Grid of all variants */}
@@ -111,7 +121,8 @@ export function SideBarDemo() {
                 publishingDate: "Dec 14, 2025",
                 lastUpdate: "5 minutes ago",
               }}
-              deleteLabel="Delete collection"
+              publishLabel="Publish"
+              collectionSecondaryActions={collectionDemoActions}
             />
           </div>
         </div>
@@ -124,7 +135,7 @@ export function SideBarDemo() {
           <li><strong>Default:</strong> Custom slot + Entity summary card + Primary/Secondary buttons</li>
           <li><strong>View Entity:</strong> ContextualMenu (menu) + Entity summary card + Delete button</li>
           <li><strong>Create Entity:</strong> ContextualMenu (stepper) + Delete button</li>
-          <li><strong>Create Collection:</strong> ContextualMenu (stepper) + Collection summary card + Delete button</li>
+          <li><strong>Create Collection:</strong> Stepper + collection summary + Publish/Save (or disabled “Canceled”) + “more” menu: Edit basic details, Cancel or Re-activate, Delete</li>
         </ul>
       </div>
     </div>

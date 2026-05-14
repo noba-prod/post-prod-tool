@@ -140,10 +140,10 @@ function parseDateTimeMs(
 /**
  * Derives the canonical collection status from config and publish state.
  * Used to sync the DB status column when dates have passed.
- * - draft: not published (no publishedAt)
- * - canceled: keep as-is (manual)
- * - completed: only when explicitly set (client or producer clicked "Complete collection"
- *              in the last step); deadline alone does NOT mark as completed.
+ * - canceled: keep as-is (manual) — MUST be evaluated before unpublished/draft logic so
+ *   drafts canceled from "Cancel collection" are not rewritten to "draft".
+ * - completed: keep as-is (explicit user action); same precedence as canceled.
+ * - draft: not published (no publishedAt) and not in a terminal state above
  * - in_progress: published AND (shooting start has passed OR workflow has progressed)
  * - upcoming: published AND shooting start not yet passed AND no workflow progress
  *
@@ -163,10 +163,11 @@ export function deriveCanonicalCollectionStatus(
     hasAnyStepDone?: boolean
   }
 ): CollectionStatus {
-  if (!publishedAt?.trim()) return "draft"
+  // Terminal states first: unpublished drafts can be canceled/completed explicitly;
+  // do not derive "draft" from missing publishedAt in those cases.
   if (currentStatus === "canceled") return "canceled"
-  // Completed only via explicit user action (last step confirmation), not by deadline.
   if (currentStatus === "completed") return "completed"
+  if (!publishedAt?.trim()) return "draft"
 
   // If substatus is set or any step is done, we have workflow progress.
   // Must stay in_progress — never downgrade to upcoming or we lose substatus.
@@ -245,7 +246,6 @@ export function computeCreationTemplate(
   })
 
   // 6. LR to HR setup — digital path uses lr_to_hr_setup; handprint uses handprint_high_res_config
-  // (Hand print: photographer check client selection form is inside this block, not a separate step)
   if (config.hasHandprint) {
     steps.push({
       stepId: "handprint_high_res_config",
@@ -460,13 +460,8 @@ export function isCreationStepContentComplete(
 
     case "lr_to_hr_setup":
       return !!c.lrToHrDueDate?.trim()
-    case "handprint_high_res_config": {
-      // Hand print: block includes photographer check form + LR to HR form; both required
-      const hasPhotographerCheck =
-        !!c.photographerCheckDueDate?.trim() && !!c.photographerCheckDueTime?.trim()
-      const hasLrToHr = !!c.lrToHrDueDate?.trim()
-      return hasPhotographerCheck && hasLrToHr
-    }
+    case "handprint_high_res_config":
+      return !!c.lrToHrDueDate?.trim()
 
     case "edition_config": {
       const hasPhotographerDue = !!c.editionPhotographerDueDate?.trim()
@@ -523,10 +518,6 @@ export function getStepOwner(
         : (["photographer", producer] as ParticipantRole[])
     case "client_selection":
       return ["client", producer]
-    case "photographer_check_client_selection":
-      return config.hasAgency
-        ? (["photographer", "agency", producer] as ParticipantRole[])
-        : (["photographer", producer] as ParticipantRole[])
     case "handprint_high_res":
       // Digital: photographer converts LR→HR; Analog HP/HR: handprint_lab or photo_lab
       if (!config.hasHandprint) {
@@ -609,6 +600,23 @@ export function resolveUserForPermission(
   return { role: "client", hasEditPermission: false }
 }
 
+/**
+ * Sidebar command box (Edit basic details / Cancel collection / Delete collection):
+ * Noba admins, or Noba producers invited with edit permission (collections-logic §8–§9).
+ */
+export function canUseNobaSensitiveCollectionSidebarActions(
+  userId: string | undefined,
+  nobaUserRole: Role | undefined,
+  isNobaUser: boolean,
+  draft: CollectionDraft
+): boolean {
+  if (!userId || !isNobaUser) return false
+  const roleLc = String(nobaUserRole ?? "").toLowerCase()
+  if (roleLc === "admin") return true
+  const resolved = resolveUserForPermission(userId, true, draft, nobaUserRole)
+  return resolved.role === "producer" && resolved.hasEditPermission === true
+}
+
 // =============================================================================
 // CHRONOLOGY CONSTRAINTS — Creation Template date/time pickers (linear flow)
 // Dates/times must never go backwards. Uses derived steps order from config.
@@ -642,7 +650,6 @@ function getOrderedDateSlots(
   steps: CreationTemplateStep[]
 ): { key: string; dateKey: ConfigKey; timeKey?: ConfigKey }[] {
   const slots: { key: string; dateKey: ConfigKey; timeKey?: ConfigKey }[] = []
-  const hasHandprint = steps.some((s) => s.stepId === "handprint_high_res_config")
   for (const step of steps) {
     switch (step.stepId) {
       case "shooting_setup":
@@ -677,9 +684,6 @@ function getOrderedDateSlots(
         })
         break
       case "photo_selection":
-        // Photo selection must always depend on low_res_config as previous milestone.
-        // Do not place photographer_check before these slots, because that would make
-        // photoSelectionPhotographerDueDate depend on a later step in handprint flow.
         slots.push({
           key: "photo_selection_photographer",
           dateKey: "photoSelectionPhotographerDueDate",
@@ -692,21 +696,7 @@ function getOrderedDateSlots(
         })
         break
       case "lr_to_hr_setup":
-        slots.push({
-          key: step.stepId,
-          dateKey: "lrToHrDueDate",
-          timeKey: "lrToHrDueTime",
-        })
-        break
       case "handprint_high_res_config":
-        // Handprint-only sub-step rendered before LR->HR date fields.
-        // Keep it before handprint_high_res_config in chronology so LR->HR cannot be
-        // scheduled earlier than photographer check.
-        slots.push({
-          key: "photographer_check_client_selection",
-          dateKey: "photographerCheckDueDate",
-          timeKey: "photographerCheckDueTime",
-        })
         slots.push({
           key: step.stepId,
           dateKey: "lrToHrDueDate",

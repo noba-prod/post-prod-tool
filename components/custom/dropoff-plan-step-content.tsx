@@ -25,6 +25,7 @@ import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
 import type { Organization } from "@/lib/supabase/database.types"
+import { mergeShippingProviderOptions } from "@/lib/utils/shipping-provider-picker"
 
 // ============================================================================
 // SUPABASE HELPERS
@@ -170,6 +171,10 @@ export function DropoffPlanStepContent({
   className,
 }: DropoffPlanStepContentProps) {
   const c = draft.config
+  const shippingProviderOptions = React.useMemo(
+    () => mergeShippingProviderOptions(SHIPPING_PROVIDER_OPTIONS, c.dropoff_shipping_carrier),
+    [c.dropoff_shipping_carrier]
+  )
   const [labAddress, setLabAddress] = React.useState<string>("—")
   const shippingConstraint = chronologyConstraints?.["dropoff_plan_shipping"]
   const deliveryConstraint = chronologyConstraints?.["dropoff_plan_delivery"]
@@ -401,12 +406,14 @@ export function DropoffPlanStepContent({
             />
             <OptionPicker
               label="Shipping provider"
-              options={SHIPPING_PROVIDER_OPTIONS}
+              options={shippingProviderOptions}
               value={c.dropoff_shipping_carrier ?? ""}
               onValueChange={(v) =>
                 onDropoffPlanChange({ dropoff_shipping_carrier: v || undefined })
               }
               placeholder="Search and select a provider"
+              allowCreate
+              createActionLabel="Add new provider"
             />
             <Field className="w-full">
               <FieldLabel>Tracking number</FieldLabel>

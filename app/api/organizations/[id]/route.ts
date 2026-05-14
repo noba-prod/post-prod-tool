@@ -197,7 +197,7 @@ export async function GET(
       shooting_city: string | null
       shooting_country: string | null
     }>) {
-      // Non-Noba users never see draft collections (client, photo_lab, handprint_lab, photographer, agency, retouch_studio)
+      // Non-internal users never see drafts; canceled collections remain listed as canceled.
       if (!isInternal && row.status === "draft") continue
       const location = [row.shooting_city, row.shooting_country].filter(Boolean).join(", ") || "—"
       collectionsList.push({
