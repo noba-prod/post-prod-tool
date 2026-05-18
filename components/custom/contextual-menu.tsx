@@ -36,6 +36,14 @@ interface ContextualMenuMenuProps extends ContextualMenuBaseProps {
 interface ContextualMenuStepperProps extends ContextualMenuBaseProps {
   /** Type of contextual menu */
   type: "stepper"
+  /**
+   * When true, every step (including those visually marked as `disabled`)
+   * is clickable. The disabled visual is preserved so the user still sees
+   * which steps are incomplete; gating decisions (e.g. read-only viewers)
+   * are owned by the consumer via `onItemClick`. Used by the collection
+   * creation sidebar.
+   */
+  allowDisabledClick?: boolean
 }
 
 type ContextualMenuProps = ContextualMenuMenuProps | ContextualMenuStepperProps
@@ -45,15 +53,18 @@ type ContextualMenuProps = ContextualMenuMenuProps | ContextualMenuStepperProps
  * - menu: List of MenuItems with gap-2 (8px) spacing
  * - stepper: List of ProgressItems connected with StepConnector (no spacing)
  */
-export function ContextualMenu({
-  type,
-  items,
-  activeId,
-  completedItems = [],
-  onItemClick,
-  className,
-}: ContextualMenuProps) {
+export function ContextualMenu(props: ContextualMenuProps) {
+  const {
+    type,
+    items,
+    activeId,
+    completedItems = [],
+    onItemClick,
+    className,
+  } = props
   if (type === "stepper") {
+    const allowDisabledClick =
+      (props as ContextualMenuStepperProps).allowDisabledClick ?? false
     return (
       <div className={cn("flex flex-col max-[759px]:items-center", className)}>
         {items.map((item, index) => {
@@ -78,6 +89,7 @@ export function ContextualMenu({
                 label={item.label}
                 status={status}
                 onClick={() => onItemClick?.(item.id)}
+                interactive={allowDisabledClick}
               />
               {!isLast && (
                 <div className="flex justify-start pl-5 py-0 max-[759px]:justify-center max-[759px]:pl-0">

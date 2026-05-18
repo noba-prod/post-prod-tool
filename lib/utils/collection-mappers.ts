@@ -679,26 +679,27 @@ export function mapDomainPatchToDbUpdate(
     config?: Partial<CollectionConfig>
     participants?: CollectionParticipant[]
     status?: import("@/lib/domain/collections").CollectionStatus
-    publishedAt?: string
+    publishedAt?: string | null
     substatus?: import("@/lib/domain/collections").CollectionSubstatus | null
     stepStatuses?: Record<string, { stage: string; health: string | null }>
     completionPercentage?: number
     currentOwners?: import("@/lib/domain/collections").CurrentOwnerRole[]
     // URL arrays (JSONB)
     lowResSelectionUrl?: string[]
-    lowResSelectionUploadedAt?: string
+    lowResSelectionUploadedAt?: string | null
     photographerSelectionUrl?: string[]
-    photographerSelectionUploadedAt?: string
+    photographerSelectionUploadedAt?: string | null
     clientSelectionUrl?: string[]
-    clientSelectionUploadedAt?: string
+    clientSelectionUploadedAt?: string | null
     highResSelectionUrl?: string[]
-    highResSelectionUploadedAt?: string
+    highResSelectionUploadedAt?: string | null
     editionInstructionsUrl?: string[]
-    editionInstructionsUploadedAt?: string
+    editionInstructionsUploadedAt?: string | null
     finalsSelectionUrl?: string[]
-    finalsSelectionUploadedAt?: string
+    finalsSelectionUploadedAt?: string | null
     photographerLastCheckUrl?: string[]
-    photographerLastCheckUploadedAt?: string
+    photographerLastCheckUploadedAt?: string | null
+    photographerApprovedMaterialUrls?: string[]
     // Step notes conversations (JSONB arrays)
     stepNotesLowRes?: StepNoteEntry[]
     stepNotesPhotographerSelection?: StepNoteEntry[]
@@ -736,6 +737,9 @@ export function mapDomainPatchToDbUpdate(
   if (patch.finalsSelectionUploadedAt !== undefined) u.finals_selection_uploaded_at = patch.finalsSelectionUploadedAt ?? null
   if (patch.photographerLastCheckUrl !== undefined) u.photographer_last_check_url = patch.photographerLastCheckUrl
   if (patch.photographerLastCheckUploadedAt !== undefined) u.photographer_last_check_uploaded_at = patch.photographerLastCheckUploadedAt ?? null
+  if (patch.photographerApprovedMaterialUrls !== undefined) {
+    ;(u as Record<string, unknown>).photographer_approved_material_urls = patch.photographerApprovedMaterialUrls
+  }
   // Step notes conversations
   if (patch.stepNotesLowRes !== undefined) u.step_notes_low_res = patch.stepNotesLowRes
   if (patch.stepNotesPhotographerSelection !== undefined) u.step_notes_photographer_selection = patch.stepNotesPhotographerSelection

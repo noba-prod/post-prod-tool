@@ -246,6 +246,11 @@ export function SideBar(props: SideBarProps) {
               activeId={activeId}
               completedItems={completedItems}
               onItemClick={onItemClick}
+              // Producers can jump between any creation steps regardless of
+              // completion order. Gating (e.g. read-only viewers) lives in
+              // the consumer's `onItemClick` handler, not in the visual
+              // disabled state of the stepper.
+              allowDisabledClick
             />
           </div>
         </div>

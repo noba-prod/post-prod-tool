@@ -49,6 +49,11 @@ export type CollectionEventType =
   | "client_confirmation_confirmed"
   // Comment events
   | "comment_added"
+  // Structural workflow reconfiguration (plan §17). Fired by
+  // CollectionsService.applyStructuralWorkflowChange when a producer toggles
+  // structural CollectionConfig keys (type of shoot, agency, edition, etc.).
+  // Backed by template `workflow_reconfiguration_announcement` (migration 085).
+  | "collection_workflow_reconfigured"
   // Final events
   | "collection_completed"
   | "collection_cancelled"

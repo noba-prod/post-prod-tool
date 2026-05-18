@@ -84,6 +84,21 @@ export interface SendInvitationEmailResult {
 
 export type InvitationEmailKind = "collection" | "platform"
 
+/**
+ * Intent of a collection invitation email. Used to swap the wording while
+ * keeping the same activation infrastructure.
+ *
+ *   • `"invite"` — first publication; the recipient is being invited to a
+ *     new collection.
+ *   • `"reconfigured"` — the collection had been published, the producer
+ *     applied a structural workflow change (it rewound to draft) and is now
+ *     republishing it. The recipient already belongs to the collection;
+ *     the email should announce that the configuration / timeline changed
+ *     and invite them to review the new workflow rather than pitching a
+ *     "new" collection.
+ */
+export type InvitationEmailIntent = "invite" | "reconfigured"
+
 /** Context for collection invitation emails. All fields except collectionName are optional. */
 export interface CollectionInvitationContext {
   collectionName: string
@@ -126,7 +141,8 @@ function buildInvitationEmailHtml(
   activationUrl: string,
   displayName: string,
   kind: InvitationEmailKind,
-  context?: CollectionInvitationContext
+  context?: CollectionInvitationContext,
+  intent: InvitationEmailIntent = "invite"
 ): string {
   const name = displayName?.trim() || (kind === "platform" ? "noba*" : "a collection")
   const logoSrc = getLogoUrl()
@@ -211,9 +227,25 @@ function buildInvitationEmailHtml(
   </div>
 `
 
-  const invitationLine = ctx.creatorName
-    ? `${escapeHtml(ctx.creatorName)} invited you to a new collection`
-    : "You've been invited to a new collection"
+  const isReconfigured = intent === "reconfigured"
+
+  const headline = isReconfigured
+    ? ctx.creatorName
+      ? `${escapeHtml(ctx.creatorName)} updated this collection`
+      : "This collection has been updated"
+    : ctx.creatorName
+      ? `${escapeHtml(ctx.creatorName)} invited you to a new collection`
+      : "You've been invited to a new collection"
+
+  const bodyHeadingText = isReconfigured
+    ? "Review the new timeline and deadlines"
+    : "Click the link below to join the collection"
+
+  const bodySupportingText = isReconfigured
+    ? "The configuration of this collection has changed — steps, participants or deadlines may have been added, removed or rescheduled. Open the collection to review the updated workflow before continuing your work."
+    : "If it's your first time working with noba* post-production tool, set up your profile to be better recognised during the collection progress."
+
+  const ctaLabel = isReconfigured ? "Review changes" : "Join collection"
 
   return `
 <!DOCTYPE html>
@@ -237,12 +269,12 @@ function buildInvitationEmailHtml(
 <body class="email-body" style="${BODY_STYLES}">
   <div class="content-pad" style="padding: ${CONTENT_PADDING};">
     <p style="margin: 0 0 32px; text-align: center;">${logoImg}</p>
-    <p style="margin: 0 0 24px; font-size: 16px; font-weight: 600;">${invitationLine}</p>
+    <p style="margin: 0 0 24px; font-size: 16px; font-weight: 600;">${headline}</p>
     ${detailsBlock}
-    <p style="margin: 24px 0 8px; font-size: 15px; font-weight: 600;">Click the link below to join the collection</p>
-    <p style="margin: 0 0 24px; font-size: 14px; color: #666; line-height: 1.5;">If it's your first time working with noba* post-production tool, set up your profile to be better recognised during the collection progress.</p>
+    <p style="margin: 24px 0 8px; font-size: 15px; font-weight: 600;">${bodyHeadingText}</p>
+    <p style="margin: 0 0 24px; font-size: 14px; color: #666; line-height: 1.5;">${bodySupportingText}</p>
     <p class="cta-wrap" style="margin: 28px 0;">
-      <a href="${escapeHtml(activationUrl)}" class="cta-btn" style="display: inline-block; background: ${CTA_BG_COLOR}; color: ${CTA_TEXT_COLOR}; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: 600; font-size: 16px;">Join collection</a>
+      <a href="${escapeHtml(activationUrl)}" class="cta-btn" style="display: inline-block; background: ${CTA_BG_COLOR}; color: ${CTA_TEXT_COLOR}; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: 600; font-size: 16px;">${ctaLabel}</a>
     </p>
     <p style="font-size: 13px; color: #999;">This link expires in 7 days.</p>
   </div>
@@ -267,6 +299,13 @@ export interface SendInvitationEmailOptions {
   kind?: InvitationEmailKind
   collectionName?: string
   context?: CollectionInvitationContext
+  /**
+   * Tone of the email. Defaults to `"invite"` (first-time invitation).
+   * Set to `"reconfigured"` when republishing a collection that has been
+   * structurally reconfigured so recipients see "this collection has been
+   * updated" instead of "you've been invited to a new collection".
+   */
+  intent?: InvitationEmailIntent
 }
 
 /**
@@ -308,11 +347,20 @@ export async function sendInvitationEmail(
     const masked = from.includes("@") ? `***@${from.split("@")[1]}` : "***"
     console.log("[sendInvitationEmail] .env path:", envPath, "| Using from:", masked)
   }
+  const finalIntent: InvitationEmailIntent = options.intent ?? "invite"
   const subject =
     finalKind === "platform"
       ? "You're invited to join noba*"
-      : `You're invited to join "${displayName}" on noba*`
-  const html = buildInvitationEmailHtml(activationUrl, displayName, finalKind, options.context)
+      : finalIntent === "reconfigured"
+        ? `"${displayName}" has been updated on noba*`
+        : `You're invited to join "${displayName}" on noba*`
+  const html = buildInvitationEmailHtml(
+    activationUrl,
+    displayName,
+    finalKind,
+    options.context,
+    finalIntent
+  )
 
   const sendOnce = async (): Promise<
     SendInvitationEmailResult | { sent: false; error: string; statusCode: number }

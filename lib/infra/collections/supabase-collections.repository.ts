@@ -94,6 +94,7 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
       finalsSelectionUploadedAt: patch.finalsSelectionUploadedAt,
       photographerLastCheckUrl: patch.photographerLastCheckUrl,
       photographerLastCheckUploadedAt: patch.photographerLastCheckUploadedAt,
+      photographerApprovedMaterialUrls: patch.photographerApprovedMaterialUrls,
       // Step notes conversations
       stepNotesLowRes: patch.stepNotesLowRes,
       stepNotesPhotographerSelection: patch.stepNotesPhotographerSelection,

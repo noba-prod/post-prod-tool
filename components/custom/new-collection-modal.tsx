@@ -82,6 +82,51 @@ export interface NewCollectionModalProps {
   onSubmit: (config: CollectionConfig, clientDisplayName?: string) => void
   /** Disable primary button while submitting */
   isSubmitting?: boolean
+  /**
+   * Edit mode signals (plan §3, §4). When the collection has been published,
+   * a destructive copy is surfaced next to the Type-of-shoot section and the
+   * primary CTA label changes to reflect that saving rewinds the collection
+   * to draft.
+   */
+  wasPublished?: boolean
+}
+
+/**
+ * Pure helper — keeps the modal aligned with `STRUCTURAL_CONFIG_KEYS` (single
+ * source of truth in `lib/domain/collections/structural-workflow-change.ts`)
+ * without importing the domain module at render time. Normalization mirrors
+ * `normalizeStructuralValue` in that module so the inline callout and the
+ * parent's `diffStructuralConfigs` agree about what counts as a structural
+ * change — i.e. `null`, `undefined` and `false` collapse to `false` for
+ * booleans, and `handprintVariant` is meaningless without `hasHandprint`.
+ */
+function hasStructuralDiff(
+  initial: Partial<CollectionConfig> | undefined,
+  current: {
+    hasAgency: boolean
+    hasLowResLab: boolean
+    hasHandprint: boolean
+    handprintVariant: "hp" | "hr" | undefined
+    handprintIsDifferentLab: boolean
+    hasEditionStudio: boolean
+  }
+): boolean {
+  if (!initial) return false
+  const initialVariant: "hp" | "hr" | undefined = initial.hasHandprint
+    ? initial.handprintVariant === "hr"
+      ? "hr"
+      : initial.handprintVariant === "hp"
+        ? "hp"
+        : undefined
+    : undefined
+  const currentVariant = current.hasHandprint ? current.handprintVariant : undefined
+  if (Boolean(initial.hasAgency) !== current.hasAgency) return true
+  if (Boolean(initial.hasLowResLab) !== current.hasLowResLab) return true
+  if (Boolean(initial.hasHandprint) !== current.hasHandprint) return true
+  if (initialVariant !== currentVariant) return true
+  if (Boolean(initial.handprintIsDifferentLab) !== current.handprintIsDifferentLab) return true
+  if (Boolean(initial.hasEditionStudio) !== current.hasEditionStudio) return true
+  return false
 }
 
 const EMPTY_CONFIG: CollectionConfig = {
@@ -102,6 +147,7 @@ export function NewCollectionModal({
   initialConfig,
   onSubmit,
   isSubmitting = false,
+  wasPublished = false,
 }: NewCollectionModalProps) {
   const isEditMode = Boolean(initialConfig && Object.keys(initialConfig).length > 0)
 
@@ -118,10 +164,14 @@ export function NewCollectionModal({
   const [hasEditionStudio, setHasEditionStudio] = React.useState(false)
   const [selectedManagerUserId, setSelectedManagerUserId] = React.useState("")
 
-  // Keep form state synced with the latest collection config.
-  // This avoids showing stale values from a previously visited collection
-  // on the first render after opening settings.
+  // Sync form state with the canonical config every time the modal opens or
+  // `initialConfig` changes (e.g. after a refetch). Resetting on `open` flip
+  // avoids carrying over uncommitted toggles from a previous cancelled
+  // session — that lingering state used to cause the structural confirm
+  // dialog to fire on a fresh open even when the user only edited the
+  // Basic-information section.
   React.useEffect(() => {
+    if (!open) return
     if (initialConfig) {
       setName(initialConfig.name ?? "")
       setClientEntityId(initialConfig.clientEntityId ?? "")
@@ -151,7 +201,7 @@ export function NewCollectionModal({
       setHasEditionStudio(false)
       setSelectedManagerUserId("")
     }
-  }, [initialConfig])
+  }, [open, initialConfig])
 
   const [clientOptions, setClientOptions] = React.useState<
     { id: string; name: string }[]
@@ -299,21 +349,52 @@ export function NewCollectionModal({
       (selectedManagerUserId.trim() || managerOptions[0]?.value)
   )
 
+  // Structural section is editable in BOTH create and edit modes (plan §3).
+  // The parent page detects the structural diff after onSubmit and routes the
+  // change through `/api/collections/{id}/apply-workflow-change`.
   const switchItems = React.useMemo(() => {
     const items: { id: string; label: string; checked: boolean; disabled?: boolean }[] = [
-      { id: "agency", label: "Photographer collaborates with photo agency", checked: hasAgency, disabled: isEditMode },
+      { id: "agency", label: "Photographer collaborates with photo agency", checked: hasAgency },
     ]
     if (hasHandprint && handprintVariant === "hp") {
       items.push({
         id: "handprint-lab",
         label: "Handprint different from original lab",
         checked: handprintIsDifferentLab,
-        disabled: isEditMode,
       })
     }
-    items.push({ id: "edition", label: "Photographer requests edition", checked: hasEditionStudio, disabled: isEditMode })
+    items.push({ id: "edition", label: "Photographer requests edition", checked: hasEditionStudio })
     return items
-  }, [hasEditionStudio, hasAgency, hasHandprint, handprintVariant, handprintIsDifferentLab, isEditMode])
+  }, [hasEditionStudio, hasAgency, hasHandprint, handprintVariant, handprintIsDifferentLab])
+
+  const pendingStructuralChange = React.useMemo(
+    () =>
+      isEditMode &&
+      hasStructuralDiff(initialConfig, {
+        hasAgency,
+        hasLowResLab,
+        hasHandprint,
+        handprintVariant,
+        handprintIsDifferentLab,
+        hasEditionStudio,
+      }),
+    [
+      isEditMode,
+      initialConfig,
+      hasAgency,
+      hasLowResLab,
+      hasHandprint,
+      handprintVariant,
+      handprintIsDifferentLab,
+      hasEditionStudio,
+    ]
+  )
+
+  const structuralCalloutCopy = pendingStructuralChange
+    ? wasPublished
+      ? "These changes update the workflow. Saving will move the collection back to draft until you complete the missing steps and republish — external participants temporarily lose access and will be re-invited on republish."
+      : "These changes update the workflow. Affected steps, participants and deadlines will be reconciled automatically before you publish."
+    : null
 
   const handleSwitchChange = React.useCallback(
     (id: string, checked: boolean) => {
@@ -331,7 +412,15 @@ export function NewCollectionModal({
       title={isEditMode ? "Collection settings" : "New collection"}
       subtitle={isEditMode ? "Change the main characteristics of the collection." : "Specify the basic details to get started."}
       showSubtitle={true}
-      primaryLabel={isEditMode ? "Save" : "Create collection"}
+      primaryLabel={
+        isEditMode
+          ? pendingStructuralChange
+            ? wasPublished
+              ? "Apply workflow change…"
+              : "Apply changes…"
+            : "Save"
+          : "Create collection"
+      }
       secondaryLabel="Cancel"
       showPrimary={true}
       showSecondary={true}
@@ -410,19 +499,15 @@ export function NewCollectionModal({
 
           <Separator className="w-full" />
 
-          {/* Type of shoot — disabled in edit mode to avoid changing workflow config */}
-          <div
-            className={cn(
-              "flex flex-col gap-4 w-full",
-              isEditMode && "opacity-30 pointer-events-none"
-            )}
-          >
+          {/* Type of shoot — fully editable; structural diffs are surfaced via the
+              callout below and confirmed by the parent dialog (plan §3, §4). */}
+          <div className="flex flex-col gap-4 w-full">
             <Titles type="form" title="Type of shoot" showSubtitle={false} />
             <RowVariants variant="3">
               <CheckSelection
                 label="Digital"
                 selected={shootType === "digital"}
-                status={isEditMode ? "disabled" : "default"}
+                status="default"
                 onClick={() =>
                   setShootType((prev) =>
                     prev === "digital" ? null : "digital"
@@ -432,7 +517,7 @@ export function NewCollectionModal({
               <CheckSelection
                 label="Analog (HP)"
                 selected={shootType === "handprint_hp"}
-                status={isEditMode ? "disabled" : "default"}
+                status="default"
                 onClick={() =>
                   setShootType((prev) =>
                     prev === "handprint_hp" ? null : "handprint_hp"
@@ -442,7 +527,7 @@ export function NewCollectionModal({
               <CheckSelection
                 label="Analog (HR)"
                 selected={shootType === "handprint_hr"}
-                status={isEditMode ? "disabled" : "default"}
+                status="default"
                 onClick={() =>
                   setShootType((prev) =>
                     prev === "handprint_hr" ? null : "handprint_hr"
@@ -455,6 +540,19 @@ export function NewCollectionModal({
               onItemChange={handleSwitchChange}
               showSeparators={true}
             />
+            {structuralCalloutCopy ? (
+              <div
+                role="alert"
+                className={cn(
+                  "text-xs leading-relaxed rounded-md border px-3 py-2",
+                  wasPublished
+                    ? "bg-destructive/5 border-destructive/40 text-destructive"
+                    : "bg-muted text-muted-foreground border-border"
+                )}
+              >
+                {structuralCalloutCopy}
+              </div>
+            ) : null}
           </div>
         </FieldGroup>
       </div>

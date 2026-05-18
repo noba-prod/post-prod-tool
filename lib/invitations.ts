@@ -40,6 +40,13 @@ type CollectionRowForContext = {
   publishing_date?: string | null
   shooting_city?: string | null
   shooting_country?: string | null
+  /**
+   * Incremented by `/api/collections/[id]/apply-workflow-change` every time
+   * a structural workflow reconfiguration is applied. When `> 0` the next
+   * publish event is a republish-after-reconfiguration and the invitation
+   * email must be reworded.
+   */
+  workflow_revision?: number | null
 }
 
 /** Build invitation email context from collection data. */
@@ -195,14 +202,38 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
   const supabase = createAdminClient()
 
   try {
-    const { data: collectionData, error: collError } = await supabase
-      .from("collections")
-      .select(
-        "id, client_id, name, status, shooting_start_date, shooting_end_date, publishing_date, shooting_city, shooting_country"
-      )
-      .eq("id", collectionId)
-      .single()
-    const collection = collectionData as CollectionRowForContext | null
+    // Try to include `workflow_revision` for the reconfigured-intent gate;
+    // fall back gracefully when the column does not exist yet (e.g. migration
+    // 083 not applied on this remote DB) so we never break the publish path.
+    let collection: CollectionRowForContext | null = null
+    let collError: { message?: string } | null = null
+    {
+      const withRevision = await supabase
+        .from("collections")
+        .select(
+          "id, client_id, name, status, shooting_start_date, shooting_end_date, publishing_date, shooting_city, shooting_country, workflow_revision"
+        )
+        .eq("id", collectionId)
+        .single()
+      if (withRevision.error) {
+        const msg = (withRevision.error as { message?: string }).message ?? ""
+        if (/workflow_revision/i.test(msg) || /column .* does not exist/i.test(msg)) {
+          const legacy = await supabase
+            .from("collections")
+            .select(
+              "id, client_id, name, status, shooting_start_date, shooting_end_date, publishing_date, shooting_city, shooting_country"
+            )
+            .eq("id", collectionId)
+            .single()
+          collection = legacy.data as CollectionRowForContext | null
+          collError = legacy.error as { message?: string } | null
+        } else {
+          collError = withRevision.error as { message?: string }
+        }
+      } else {
+        collection = withRevision.data as CollectionRowForContext | null
+      }
+    }
     if (collError || !collection?.client_id) {
       return {
         success: false,
@@ -213,6 +244,11 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
 
     const organizationId = collection.client_id
     const invitationContext = await buildInvitationContext(supabase, collection)
+    // Republish after a structural workflow change → reword the email instead
+    // of pitching it as a brand-new invitation. The activation token plumbing
+    // stays identical; only subject + body copy switch (see send-invitation.ts).
+    const emailIntent: "invite" | "reconfigured" =
+      (collection.workflow_revision ?? 0) > 0 ? "reconfigured" : "invite"
 
     const { data: membersData, error: membersError } = await supabase
       .from("collection_members")
@@ -272,6 +308,7 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
         const emailResult = await sendInvitationEmail(email, result.activationUrl, {
           kind: "collection",
           context: invitationContext,
+          intent: emailIntent,
         })
         if (emailResult.sent) sent++
         await sleep(RESEND_RATE_LIMIT_DELAY_MS)

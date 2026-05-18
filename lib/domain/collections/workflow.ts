@@ -346,7 +346,11 @@ export function isDraftComplete(draft: CollectionDraft): boolean {
   return true
 }
 
-function getRequiredParticipantRoles(config: CollectionConfig): ParticipantRole[] {
+/**
+ * Roles required to publish a Collection given its structural config.
+ * Source of truth for participants-step completeness AND for structural reconfiguration.
+ */
+export function getRequiredParticipantRoles(config: CollectionConfig): ParticipantRole[] {
   const roles: ParticipantRole[] = ["producer", "client", "photographer"]
   if (config.hasAgency) roles.push("agency")
   // Lab only in handprint workflow; digital-only has no lab (collections-logic)

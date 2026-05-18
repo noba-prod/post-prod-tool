@@ -10,7 +10,18 @@ import type { Database } from "@/lib/supabase/database.types"
 
 // Type aliases for the enums
 export type TriggerType = "before" | "after" | "on" | "if" | "first_time"
-export type RecipientType = "producer" | "photo_lab" | "photographer" | "client" | "handprint_lab" | "retouch_studio"
+// "agency" is added by migration 084 — see recipient-resolver.ts for the
+// resolution rules. Until then, the legacy mirroring rule (photographer
+// → agency when `photographer_collaborates_with_agency=true`) remains the
+// only path for agency users to receive notifications.
+export type RecipientType =
+  | "producer"
+  | "photo_lab"
+  | "photographer"
+  | "agency"
+  | "client"
+  | "handprint_lab"
+  | "retouch_studio"
 
 export interface NotificationTemplateConfig {
   code: string
@@ -618,6 +629,37 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateConfig[] = [
     triggerCondition: "client_not_confirmed_completion",
     emailRecipients: ["producer", "client"],
     inappRecipients: ["producer", "client"],
+  },
+
+  // ==========================================================================
+  // Cross-cutting: Structural workflow reconfiguration (plan §17, mig. 084/085)
+  // step=1 is a sentinel because the `notification_templates.step` constraint
+  // requires 1..11; this notification is not tied to a single workflow step.
+  // ==========================================================================
+  {
+    code: "workflow_reconfiguration_announcement",
+    step: 1,
+    stepName: "Workflow change",
+    title: "Collection workflow updated",
+    description:
+      "The producer updated the configuration of this collection. Some steps, deadlines or participants may have changed — open the collection to review the new workflow.",
+    emailSubject: null,
+    ctaText: "Review collection",
+    ctaUrlTemplate: "/collections/{collectionId}",
+    triggerType: "on",
+    triggerEvent: "collection_workflow_reconfigured",
+    triggerOffsetMinutes: 0,
+    triggerCondition: null,
+    emailRecipients: [],
+    inappRecipients: [
+      "producer",
+      "client",
+      "photographer",
+      "agency",
+      "photo_lab",
+      "handprint_lab",
+      "retouch_studio",
+    ],
   },
 ]
 

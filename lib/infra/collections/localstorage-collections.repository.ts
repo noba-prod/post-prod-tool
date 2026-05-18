@@ -72,6 +72,12 @@ export class LocalStorageCollectionsRepository implements ICollectionsRepository
     const current = items[index]
     const substatus =
       patch.substatus === null ? undefined : (patch.substatus ?? current.substatus)
+    const publishedAt =
+      patch.publishedAt === null ? undefined : (patch.publishedAt ?? current.publishedAt)
+    const normalizeNullableTimestamp = (
+      patchValue: string | null | undefined,
+      currentValue: string | undefined
+    ): string | undefined => (patchValue === null ? undefined : patchValue ?? currentValue)
     const updated: Collection = {
       ...current,
       ...patch,
@@ -81,6 +87,35 @@ export class LocalStorageCollectionsRepository implements ICollectionsRepository
       creationData:
         patch.creationData !== undefined ? patch.creationData : current.creationData,
       substatus,
+      publishedAt,
+      lowResSelectionUploadedAt: normalizeNullableTimestamp(
+        patch.lowResSelectionUploadedAt,
+        current.lowResSelectionUploadedAt
+      ),
+      photographerSelectionUploadedAt: normalizeNullableTimestamp(
+        patch.photographerSelectionUploadedAt,
+        current.photographerSelectionUploadedAt
+      ),
+      clientSelectionUploadedAt: normalizeNullableTimestamp(
+        patch.clientSelectionUploadedAt,
+        current.clientSelectionUploadedAt
+      ),
+      highResSelectionUploadedAt: normalizeNullableTimestamp(
+        patch.highResSelectionUploadedAt,
+        current.highResSelectionUploadedAt
+      ),
+      editionInstructionsUploadedAt: normalizeNullableTimestamp(
+        patch.editionInstructionsUploadedAt,
+        current.editionInstructionsUploadedAt
+      ),
+      finalsSelectionUploadedAt: normalizeNullableTimestamp(
+        patch.finalsSelectionUploadedAt,
+        current.finalsSelectionUploadedAt
+      ),
+      photographerLastCheckUploadedAt: normalizeNullableTimestamp(
+        patch.photographerLastCheckUploadedAt,
+        current.photographerLastCheckUploadedAt
+      ),
       updatedAt: new Date().toISOString(),
     }
     const next = [...items]

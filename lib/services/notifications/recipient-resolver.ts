@@ -110,7 +110,16 @@ export async function resolveRecipients(
           memberRoles.push("agency")
         }
         break
-      
+
+      case "agency":
+        // Direct agency bucket (migration 084). Used by templates that explicitly
+        // target agency users — e.g. the cross-cutting workflow reconfiguration
+        // announcement (plan §17). Independent from the photographer mirroring
+        // rule above so it works even when `photographer_collaborates_with_agency`
+        // was toggled OFF in the same structural change.
+        memberRoles.push("agency")
+        break
+
       case "client":
         memberRoles.push("client")
         break

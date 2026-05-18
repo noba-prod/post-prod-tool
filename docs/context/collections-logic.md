@@ -588,6 +588,128 @@ Loops are allowed in three areas:
 Actually, with the new comments logic, we allow loops to happen in almost all steps of the process, but naturally, main loops will be there.
 
 ------------------------------------------------------------
+11.B STRUCTURAL WORKFLOW RECONFIGURATION (post-creation / post-publish)
+------------------------------------------------------------
+
+Producers can change the structural configuration of a Collection AFTER
+it has been created and even AFTER it has been published. This covers
+the real-world scenarios where a project pivots operationally: a
+handprint shoot becomes fully digital, an agency is added, retouching
+gets dropped, the handprint lab changes, etc.
+
+11.B.1 What is a "structural" change
+
+The set of CollectionConfig keys that trigger this flow lives in
+`STRUCTURAL_CONFIG_KEYS` (lib/domain/collections/structural-workflow-change.ts).
+At the time of writing:
+
+  - shootType
+  - hasLowResLab
+  - hasHandprint
+  - handprintVariant
+  - handprintIsDifferentLab
+  - hasAgency
+  - hasEditionStudio
+
+Editing any other CollectionConfig field (deadlines, names, photographer
+identity, etc.) continues to flow through the existing "safe-edit" path
+(`POST /api/collections/:id/save-changes`).
+
+11.B.2 Entry point in the UI
+
+The "Type of shoot" section of the New Collection / Collection Settings
+modal is fully editable in both create and edit modes. When the producer
+toggles a structural key:
+
+  - An inline callout appears under the section explaining the impact.
+  - If the collection has never been published, the callout is
+    informational ("affected steps, participants and deadlines will be
+    reconciled automatically before you publish").
+  - If the collection IS published, the callout is destructive in tone
+    ("saving will move the collection back to draft until you complete
+    the missing setup and republish — external participants temporarily
+    lose access and will be re-invited on republish").
+
+On submit, the parent page detects the structural diff
+(`diffStructuralConfigs`) and opens a confirmation dialog instead of
+silently saving. The confirmation copy mirrors the callout and the
+primary button is destructive when the collection was published.
+
+11.B.3 Server-side pipeline
+
+The confirmation dialog calls
+`POST /api/collections/:id/apply-workflow-change` which:
+
+  1. Verifies the user is internal and invited to the collection
+     (`checkInternalUserCollectionMutationScope`).
+  2. Honours the feature gate (`STRUCTURAL_RECONFIG_ENABLED` and
+     `STRUCTURAL_RECONFIG_USER_ALLOWLIST`).
+  3. Delegates the domain reconciliation to
+     `CollectionsService.applyStructuralWorkflowChange`, which:
+       - Loads the canonical collection.
+       - Runs `reconcileStructuralChange` (pure) to produce the diff,
+         the migrated step_statuses, the new completion_percentage, the
+         new completedBlockIds, and a purge spec for the steps that
+         become inactive.
+       - Applies the structural keys of the patch (only those keys).
+       - Purges artefacts (URL arrays, notes, uploadedAt fields) for
+         removed steps via the repository.
+       - If the collection was published, nulls `published_at` so the
+         collection rewinds to draft. External participants lose access
+         immediately ("Cero externo hasta republicar").
+       - Preserves the progress of surviving steps (their stage and
+         health remain), including the completion_percentage scoped to
+         the new step set.
+  4. Performs the cleanups the repository cannot do via the regular
+     patch path, using the admin Supabase client:
+       - NULLs deadline columns (date / time / datetime) of removed
+         steps via `getDeadlineDbColumnsToClear`.
+       - Deletes `collection_events` whose `event_type` corresponds to
+         a removed step (`getEventTypesToPurgeForRemovedSteps`).
+       - Deletes pending / unsent notifications scoped to those steps,
+         preserving already-read notifications as historical record.
+       - Deletes the matching `scheduled_notification_tracking` rows so
+         the reminder cron doesn't fire orphans.
+  5. Increments `collections.workflow_revision` (migration 083).
+  6. Triggers the `collection_workflow_reconfigured` event, which fans
+     out the `workflow_reconfiguration_announcement` in-app
+     notification (migrations 084/085) to all invited recipients
+     (photographer, agency, edition_studio, low-res lab, handprint lab,
+     client). The CTA opens the collection view so participants can
+     inspect the new workflow.
+
+After the API responds, the UI shows a remediation checklist with:
+  - Steps removed / steps added.
+  - Required participants that became missing (if any).
+  - Existing participants whose role is no longer required.
+
+Republish: when the collection was published, it now needs to pass
+`isDraftComplete` again, which forces the producer to fill in any newly
+required fields / participants. Republishing fires the standard
+`collection_published` event, which re-invites all external
+participants by email.
+
+11.B.4 Conflict & failure handling
+
+  - Optimistic locking via `updated_at` returns 409 VERSION_MISMATCH if
+    the collection was modified by someone else; the client reloads.
+  - `INVALID_STATUS` (cancelled / completed) returns 409 and blocks the
+    flow at the API layer.
+  - Cleanup failures (deadline columns, events, notifications) are
+    best-effort and logged with the
+    `structural-reconfig` structured logger; the canonical state
+    (`step_statuses`, config, completion) is always consistent because
+    the in-band repository call drives the source of truth.
+
+11.B.5 Observability & rollout
+
+The `structural-reconfig` logger emits one JSON line per outcome
+(`applied`, `rejected`, `cleanup_failed`, `notification_failed`,
+`feature_disabled`). Use those events to derive
+`count_structural_migrations`, validation-error ratios and per-user
+adoption.
+
+------------------------------------------------------------
 12. EXTRAORDINARY CASE: ADDITIONAL PHOTOS
 ------------------------------------------------------------
 
@@ -616,6 +738,10 @@ Triggered when:
 - Ownership passes to next step
 - Uploads or confirmations occur
 - Deadlines are at risk or delayed
+- The workflow is structurally reconfigured
+  (`collection_workflow_reconfigured` →
+  `workflow_reconfiguration_announcement`, fanned out to every invited
+  recipient with a CTA to the collection view; see §11.B)
 
 ------------------------------------------------------------
 14. CORE PRINCIPLES

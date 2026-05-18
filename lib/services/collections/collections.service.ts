@@ -7,10 +7,12 @@
 import type {
   Collection,
   CollectionConfig,
+  CollectionUpdatePatch,
   CurrentOwnerRole,
   CollectionSubstatus,
   ICollectionsRepository,
   ListCollectionsFilters,
+  StructuralReconciliationResult,
 } from "@/lib/domain/collections"
 import {
   isDraftComplete,
@@ -20,6 +22,11 @@ import {
   getInitialSubstatus,
   getStepOwner,
 } from "@/lib/domain/collections/workflow"
+import {
+  isStructuralChangeBlockedByStatus,
+  reconcileStructuralChange,
+  STRUCTURAL_CONFIG_KEYS,
+} from "@/lib/domain/collections/structural-workflow-change"
 import {
   computeStepStatuses,
   buildEventCreatedAtMap,
@@ -558,6 +565,137 @@ export class CollectionsService {
       )
     }
     return updated
+  }
+
+  /**
+   * Applies a *structural* workflow reconfiguration to a collection's
+   * `CollectionConfig` (plan §3, Option A — "Migración procedural en servicio").
+   *
+   * Behavior contract:
+   *   • Rejects when the collection is in a terminal status (canceled/completed)
+   *     or when no structural key actually changed (no-op).
+   *   • Supports optimistic locking via `expectedUpdatedAt`.
+   *   • Computes the deterministic reconciliation (pure `reconcileStructuralChange`)
+   *     and persists in a single repository.update call:
+   *       - replaces ONLY the structural keys of `config` (rest of config stays)
+   *       - migrates `step_statuses` preserving survivors (plan §8)
+   *       - recomputes `completion_percentage` against the new active set
+   *       - reconciles `creationData.completedBlockIds` against the new template
+   *       - purges URL arrays / step notes / uploadedAt for inactive steps (plan §5)
+   *       - when the collection WAS published, rewinds `status='draft'`,
+   *         `published_at=null`, `substatus=null` (plan §4)
+   *
+   * Out of scope for this method (handled by the API route via admin client
+   * because the mapper cannot null deadline string fields):
+   *   • Clearing CollectionConfig deadline date/time fields for inactive steps
+   *     (see `lib/services/collections/structural-purge-db.ts`).
+   *   • Incrementing `collections.workflow_revision` (migration 083).
+   *   • Cleaning up `collection_events`, `notifications`,
+   *     `scheduled_notification_tracking` rows scoped to removed steps.
+   *   • Triggering the `collection_workflow_reconfigured` in-app notification
+   *     (plan §17).
+   */
+  async applyStructuralWorkflowChange(
+    collectionId: string,
+    newConfig: CollectionConfig,
+    options?: { expectedUpdatedAt?: string }
+  ): Promise<{
+    collection: Collection
+    reconciliation: StructuralReconciliationResult
+    wasPublished: boolean
+  }> {
+    const current = await this.repository.getById(collectionId)
+    if (!current) {
+      throw new CollectionsServiceError("Collection not found", "NOT_FOUND")
+    }
+
+    if (isStructuralChangeBlockedByStatus(current.status)) {
+      throw new CollectionsServiceError(
+        `Cannot reconfigure a ${current.status} collection`,
+        "INVALID_STATUS"
+      )
+    }
+
+    if (
+      options?.expectedUpdatedAt &&
+      options.expectedUpdatedAt !== current.updatedAt
+    ) {
+      throw new CollectionsServiceError(
+        "Collection was modified concurrently. Reload and try again.",
+        "VERSION_MISMATCH"
+      )
+    }
+
+    const reconciliation = reconcileStructuralChange(current, newConfig)
+    if (!reconciliation.isStructural) {
+      throw new CollectionsServiceError(
+        "No structural change detected",
+        "NO_OP"
+      )
+    }
+
+    const wasPublished = Boolean(current.publishedAt?.trim())
+
+    // Build a *minimal* config patch: replace only structural keys + the
+    // Basic-information fields the producer may have edited in the same modal
+    // session (name / reference / publishing date+time). The rest of the
+    // existing config is preserved so we don't accidentally wipe deadlines or
+    // addresses the producer set on previous safe edits. Inactive-step
+    // deadlines are cleared by the route via admin SQL because the mapper
+    // cannot translate `undefined` into `NULL`.
+    const structuralConfigPatch: Partial<CollectionConfig> = {}
+    for (const key of STRUCTURAL_CONFIG_KEYS) {
+      ;(structuralConfigPatch as Record<string, unknown>)[key] = newConfig[key]
+    }
+    // Basic-information passthrough — these fields share the settings modal
+    // with the structural switches, so a producer changing the publishing
+    // date while flipping shoot type expects BOTH to land. They go through
+    // the regular mapper, identical to the safe-edit path.
+    const BASIC_INFO_PASSTHROUGH_KEYS: Array<keyof CollectionConfig> = [
+      "name",
+      "reference",
+      "publishingDate",
+      "publishingTime",
+    ]
+    for (const key of BASIC_INFO_PASSTHROUGH_KEYS) {
+      ;(structuralConfigPatch as Record<string, unknown>)[key] = newConfig[key]
+    }
+
+    const patch: CollectionUpdatePatch = {
+      config: structuralConfigPatch,
+      stepStatuses: reconciliation.stepStatuses,
+      completionPercentage: reconciliation.completionPercentage,
+      creationData: { completedBlockIds: reconciliation.completedBlockIds },
+    }
+
+    // Adapter-safe artefact purge (URL arrays / *UploadedAt / step notes).
+    for (const field of reconciliation.purge.urlFieldsToEmpty) {
+      ;(patch as Record<string, unknown>)[field] = []
+    }
+    for (const field of reconciliation.purge.uploadedAtFieldsToClear) {
+      ;(patch as Record<string, unknown>)[field] = null
+    }
+    for (const field of reconciliation.purge.noteFieldsToEmpty) {
+      ;(patch as Record<string, unknown>)[field] = []
+    }
+
+    if (wasPublished) {
+      patch.status = "draft"
+      patch.publishedAt = null
+      patch.substatus = null
+      // Owner badge resets — the new draft has no active step.
+      patch.currentOwners = []
+    }
+
+    const updated = await this.repository.update(collectionId, patch)
+    if (!updated) {
+      throw new CollectionsServiceError(
+        "Failed to apply structural change",
+        "UPDATE_FAILED"
+      )
+    }
+
+    return { collection: updated, reconciliation, wasPublished }
   }
 
   /**

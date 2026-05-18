@@ -39,6 +39,7 @@ export {
   getChronologyConstraints,
   getInitialSubstatus,
   getNextSubstatus,
+  getRequiredParticipantRoles,
   getStepOwner,
   isCreationStepComplete,
   isCreationStepContentComplete,
@@ -50,6 +51,33 @@ export {
 } from "./workflow"
 
 export type { ChronologyConstraint, ChronologyConstraintsResult } from "./workflow"
+
+// Structural workflow reconfiguration (post-create / post-publish)
+export {
+  STRUCTURAL_CONFIG_KEYS,
+  STRUCTURAL_KEYS_DB_COLUMNS,
+  STRUCTURAL_CHANGE_BLOCKED_STATUSES,
+  EVENT_TYPES_FOR_VIEW_STEP,
+  diffStructuralConfigs,
+  diffViewSteps,
+  getActiveViewStepIds,
+  getEventTypesToPurgeForRemovedSteps,
+  getStepArtifactPurgePatch,
+  isStructuralChangeBlockedByStatus,
+  migrateCreationCompletedBlocks,
+  migrateStepStatusesForStructuralChange,
+  reconcileStructuralChange,
+  validateParticipantsForConfig,
+} from "./structural-workflow-change"
+export type {
+  ParticipantValidationResult,
+  StepArtifactPurgePatch,
+  StepStatusesMigrationResult,
+  StructuralConfigKey,
+  StructuralDiff,
+  StructuralReconciliationResult,
+  ViewStepDiff,
+} from "./structural-workflow-change"
 
 // Repository interface only
 export type {

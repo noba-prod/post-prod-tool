@@ -37,6 +37,8 @@ export type NotificationRecipientType =
   | 'producer'
   | 'photo_lab'
   | 'photographer'
+  // Added by migration 084 (workflow reconfiguration announcement).
+  | 'agency'
   | 'client'
   | 'handprint_lab'
   | 'retouch_studio'
@@ -73,6 +75,8 @@ export type CollectionEventType =
   | 'photographer_review_deadline_missed'
   | 'client_confirmation_confirmed'
   | 'comment_added'
+  // Cross-cutting structural workflow reconfiguration (migration 084, plan §17).
+  | 'collection_workflow_reconfigured'
   | 'collection_completed'
   | 'collection_cancelled'
 

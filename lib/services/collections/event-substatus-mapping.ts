@@ -83,6 +83,12 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   // Client confirmation (step 11)
   client_confirmation_confirmed: { action: "complete" },
 
+  // Cross-cutting structural reconfiguration (plan §17). Status change is
+  // performed by `CollectionsService.applyStructuralWorkflowChange` itself
+  // (draft rewind for published collections); the event is fired purely to
+  // route the in-app announcement template — it must NOT mutate substatus.
+  collection_workflow_reconfigured: { action: "none" },
+
   // Final events
   collection_completed: { action: "complete" },
   collection_cancelled: { action: "cancel" },

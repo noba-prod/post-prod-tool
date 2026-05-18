@@ -14,10 +14,35 @@ export interface ListCollectionsFilters {
 }
 
 /** Patch for update: top-level fields optional; config is merged (partial). */
-export type CollectionUpdatePatch = Partial<Omit<Collection, "id" | "config" | "substatus">> & {
+export type CollectionUpdatePatch = Partial<
+  Omit<
+    Collection,
+    | "id"
+    | "config"
+    | "substatus"
+    | "publishedAt"
+    | "lowResSelectionUploadedAt"
+    | "photographerSelectionUploadedAt"
+    | "clientSelectionUploadedAt"
+    | "highResSelectionUploadedAt"
+    | "editionInstructionsUploadedAt"
+    | "finalsSelectionUploadedAt"
+    | "photographerLastCheckUploadedAt"
+  >
+> & {
   config?: Partial<Collection["config"]>
   /** Substatus when status=in_progress; pass null to clear when changing status away from in_progress. */
   substatus?: CollectionSubstatus | null
+  /** Pass null to clear (e.g. structural reconfiguration rewinds publish). */
+  publishedAt?: string | null
+  /** uploaded_at columns: null clears the timestamp when the related URL array is also reset. */
+  lowResSelectionUploadedAt?: string | null
+  photographerSelectionUploadedAt?: string | null
+  clientSelectionUploadedAt?: string | null
+  highResSelectionUploadedAt?: string | null
+  editionInstructionsUploadedAt?: string | null
+  finalsSelectionUploadedAt?: string | null
+  photographerLastCheckUploadedAt?: string | null
 }
 
 /**

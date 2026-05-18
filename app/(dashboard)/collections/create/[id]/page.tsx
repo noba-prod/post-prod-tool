@@ -34,11 +34,13 @@ import {
   derivePublishedStatus,
   canUseNobaSensitiveCollectionSidebarActions,
 } from "@/lib/domain/collections/workflow"
+import { diffStructuralConfigs } from "@/lib/domain/collections/structural-workflow-change"
 import type {
   CreationBlockId,
   CollectionParticipant,
   CollectionConfig,
   ChronologyConstraint,
+  StructuralReconciliationResult,
 } from "@/lib/domain/collections"
 import { createClient } from "@/lib/supabase/client"
 import type { Organization } from "@/lib/supabase/database.types"
@@ -185,6 +187,23 @@ export default function CollectionCreatePage({
   const [isDeleting, setIsDeleting] = React.useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = React.useState(false)
   const [isSavingSettings, setIsSavingSettings] = React.useState(false)
+  // Structural workflow change (plan §3, §4). When a producer toggles
+  // structural CollectionConfig keys (type of shoot, agency, edition, etc.) in
+  // the settings modal, we route the save through a confirmation dialog and
+  // the dedicated `/apply-workflow-change` endpoint. The pending config is
+  // stashed here while the dialog is open.
+  const [structuralConfirmDialog, setStructuralConfirmDialog] = React.useState<{
+    open: boolean
+    pendingConfig: CollectionConfig | null
+    wasPublished: boolean
+  }>({ open: false, pendingConfig: null, wasPublished: false })
+  const [isApplyingStructural, setIsApplyingStructural] = React.useState(false)
+  const [structuralRemediation, setStructuralRemediation] = React.useState<{
+    open: boolean
+    summary: StructuralReconciliationResult["participants"] | null
+    removedSteps: string[]
+    addedSteps: string[]
+  }>({ open: false, summary: null, removedSteps: [], addedSteps: [] })
   const [saveChangesDialogOpen, setSaveChangesDialogOpen] = React.useState(false)
   const [isSavingChanges, setIsSavingChanges] = React.useState(false)
   const [cancelCollectionDialogOpen, setCancelCollectionDialogOpen] = React.useState(false)
@@ -833,10 +852,26 @@ export default function CollectionCreatePage({
     setIsSettingsModalOpen(true)
   }, [])
 
-  /** Save collection config from settings modal. */
+  /** Save collection config from settings modal.
+   *
+   * When the producer toggles a structural CollectionConfig key (type of
+   * shoot, agency, edition, etc. — see STRUCTURAL_CONFIG_KEYS) we route the
+   * save through the apply-workflow-change endpoint with a confirmation
+   * dialog. Otherwise we keep the safe-edit path through `updateCollection`.
+   */
   const handleSettingsSubmit = React.useCallback(
     (config: CollectionConfig) => {
       if (!id || !draft) return
+      const structuralDiff = diffStructuralConfigs(draft.config, config)
+      if (structuralDiff.isStructural) {
+        setIsSettingsModalOpen(false)
+        setStructuralConfirmDialog({
+          open: true,
+          pendingConfig: config,
+          wasPublished: Boolean(draft.publishedAt?.trim()),
+        })
+        return
+      }
       setIsSavingSettings(true)
       service
         .updateCollection(id, { config })
@@ -850,6 +885,82 @@ export default function CollectionCreatePage({
     },
     [id, draft, service]
   )
+
+  /** Confirm structural workflow change → POST /apply-workflow-change. */
+  const handleConfirmStructuralChange = React.useCallback(async () => {
+    if (!id || !draft || !structuralConfirmDialog.pendingConfig || isApplyingStructural) return
+    setIsApplyingStructural(true)
+    try {
+      const res = await fetch(`/api/collections/${id}/apply-workflow-change`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: structuralConfirmDialog.pendingConfig,
+          expectedUpdatedAt: draft.updatedAt,
+        }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        code?: string
+        success?: boolean
+        wasPublished?: boolean
+        workflowRevision?: number
+        message?: string
+        reconciliation?: {
+          changedKeys: string[]
+          removedViewStepIds: string[]
+          addedViewStepIds: string[]
+          missingRequiredRoles: string[]
+          orphanedRoles: string[]
+          newRequiredRoles: string[]
+          completionPercentage: number
+        }
+      }
+      if (!res.ok) {
+        if (data.code === "VERSION_MISMATCH") {
+          toast.error(
+            "The collection was modified by someone else. Reload to see the latest version."
+          )
+        } else if (data.code === "INVALID_STATUS") {
+          toast.error(data.error ?? "Cannot reconfigure this collection right now.")
+        } else if (data.code === "NO_OP") {
+          toast.error("No structural change detected. Try again.")
+        } else {
+          toast.error(data.error ?? "Failed to apply workflow change.")
+        }
+        return
+      }
+      toast.success(data.message ?? "Workflow updated.")
+      setStructuralConfirmDialog({ open: false, pendingConfig: null, wasPublished: false })
+
+      // Show remediation checklist for the producer.
+      const r = data.reconciliation
+      if (r) {
+        setStructuralRemediation({
+          open:
+            r.removedViewStepIds.length > 0 ||
+            r.addedViewStepIds.length > 0 ||
+            r.missingRequiredRoles.length > 0 ||
+            r.orphanedRoles.length > 0,
+          summary: {
+            missingRequiredRoles: r.missingRequiredRoles as never,
+            orphanedRoles: r.orphanedRoles as never,
+            nowRequiredRoles: r.newRequiredRoles as never,
+          },
+          removedSteps: r.removedViewStepIds,
+          addedSteps: r.addedViewStepIds,
+        })
+      }
+
+      // Refetch the canonical collection so creation flow renders the new template.
+      const updated = await service.getCollectionById(id)
+      if (updated) setDraft(updated)
+    } catch {
+      toast.error("Failed to apply workflow change.")
+    } finally {
+      setIsApplyingStructural(false)
+    }
+  }, [id, draft, structuralConfirmDialog.pendingConfig, isApplyingStructural, service])
 
   // Edition mode: collection is already published (accessed via Settings → Edit collection). Must be before blocks useMemo.
   const isEditionMode = Boolean(draft && draft.status !== "draft")
@@ -1376,7 +1487,125 @@ export default function CollectionCreatePage({
         initialConfig={draft.config}
         onSubmit={handleSettingsSubmit}
         isSubmitting={isSavingSettings}
+        wasPublished={Boolean(draft.publishedAt?.trim())}
       />
+
+      {/* Structural workflow change — destructive confirm dialog (plan §4.3). */}
+      <Dialog
+        open={structuralConfirmDialog.open}
+        onOpenChange={(open) =>
+          setStructuralConfirmDialog((prev) =>
+            open ? prev : { open: false, pendingConfig: null, wasPublished: false }
+          )
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {structuralConfirmDialog.wasPublished
+                ? "Apply workflow change and move to draft?"
+                : "Apply workflow change?"}
+            </DialogTitle>
+            <DialogDescription>
+              {structuralConfirmDialog.wasPublished
+                ? "This change updates the steps, deadlines and required participants of the collection. The collection will move back to draft until you complete the missing setup and republish — external participants temporarily lose access and will be re-invited automatically on republish."
+                : "This change updates the steps, deadlines and required participants of the collection. Complete the missing setup before publishing — affected artefacts of removed steps will be cleared."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() =>
+                setStructuralConfirmDialog({
+                  open: false,
+                  pendingConfig: null,
+                  wasPublished: false,
+                })
+              }
+              disabled={isApplyingStructural}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="lg"
+              variant={structuralConfirmDialog.wasPublished ? "destructive" : "default"}
+              onClick={handleConfirmStructuralChange}
+              disabled={isApplyingStructural}
+            >
+              {isApplyingStructural
+                ? "Applying…"
+                : structuralConfirmDialog.wasPublished
+                  ? "Apply and move to draft"
+                  : "Apply workflow change"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Structural workflow change — remediation checklist (plan §3 final). */}
+      <Dialog
+        open={structuralRemediation.open}
+        onOpenChange={(open) =>
+          setStructuralRemediation((prev) =>
+            open ? prev : { ...prev, open: false }
+          )
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Workflow updated</DialogTitle>
+            <DialogDescription>
+              Review the impact below and finish the missing setup before publishing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {structuralRemediation.removedSteps.length > 0 ? (
+              <div>
+                <p className="font-medium">Steps removed</p>
+                <p className="text-muted-foreground">
+                  {structuralRemediation.removedSteps.join(", ")}
+                </p>
+              </div>
+            ) : null}
+            {structuralRemediation.addedSteps.length > 0 ? (
+              <div>
+                <p className="font-medium">New steps</p>
+                <p className="text-muted-foreground">
+                  {structuralRemediation.addedSteps.join(", ")}
+                </p>
+              </div>
+            ) : null}
+            {structuralRemediation.summary?.missingRequiredRoles &&
+            structuralRemediation.summary.missingRequiredRoles.length > 0 ? (
+              <div>
+                <p className="font-medium">Participants to invite</p>
+                <p className="text-muted-foreground">
+                  {structuralRemediation.summary.missingRequiredRoles.join(", ")}
+                </p>
+              </div>
+            ) : null}
+            {structuralRemediation.summary?.orphanedRoles &&
+            structuralRemediation.summary.orphanedRoles.length > 0 ? (
+              <div>
+                <p className="font-medium">Participants no longer required</p>
+                <p className="text-muted-foreground">
+                  {structuralRemediation.summary.orphanedRoles.join(", ")} — you can remove them
+                  from the Participants step or keep them for record.
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              size="lg"
+              onClick={() => setStructuralRemediation((prev) => ({ ...prev, open: false }))}
+            >
+              Got it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edition mode: Save changes confirmation */}
       <Dialog open={saveChangesDialogOpen} onOpenChange={setSaveChangesDialogOpen}>
