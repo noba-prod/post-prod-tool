@@ -71,7 +71,13 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     const current = await this.getById(id)
     if (!current) return null
 
-    const updatePayload = mapDomainPatchToDbUpdate({
+    const existingPhotoLabId =
+      patch.participants?.find((p) => p.role === "photo_lab")?.entityId ??
+      current.participants.find((p) => p.role === "photo_lab")?.entityId ??
+      null
+
+    const updatePayload = mapDomainPatchToDbUpdate(
+      {
       config: patch.config,
       participants: patch.participants,
       status: patch.status,
@@ -104,7 +110,12 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
       stepNotesFinalEdits: patch.stepNotesFinalEdits,
       stepNotesPhotographerLastCheck: patch.stepNotesPhotographerLastCheck,
       stepNotesClientConfirmation: patch.stepNotesClientConfirmation,
-    })
+      },
+      {
+        existingPhotoLabId,
+        existingHandprintIsDifferentLab: current.config.handprintIsDifferentLab,
+      }
+    )
     if (Object.keys(updatePayload).length > 0) {
       ;(updatePayload as Record<string, unknown>).updated_at = new Date().toISOString()
     }

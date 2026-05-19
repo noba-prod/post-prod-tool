@@ -674,6 +674,26 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
 }
 
 /** Domain patch → DB update (partial). */
+/** Context for syncing handprint_lab_id when the patch omits participants. */
+export type MapDomainPatchSyncContext = {
+  existingPhotoLabId?: string | null
+  existingHandprintIsDifferentLab?: boolean
+}
+
+/**
+ * When the photo lab also owns high-res, persisted handprint_lab_id must match photo_lab_id.
+ */
+export function resolveSyncedHandprintLabId(params: {
+  handprintIsDifferentLab: boolean
+  photoLabId: string | null | undefined
+  handprintLabParticipantId?: string | null | undefined
+}): string | null {
+  if (!params.handprintIsDifferentLab) {
+    return params.photoLabId ?? null
+  }
+  return params.handprintLabParticipantId ?? params.photoLabId ?? null
+}
+
 export function mapDomainPatchToDbUpdate(
   patch: {
     config?: Partial<CollectionConfig>
@@ -709,7 +729,8 @@ export function mapDomainPatchToDbUpdate(
     stepNotesFinalEdits?: StepNoteEntry[]
     stepNotesPhotographerLastCheck?: StepNoteEntry[]
     stepNotesClientConfirmation?: StepNoteEntry[]
-  }
+  },
+  syncContext?: MapDomainPatchSyncContext
 ): CollectionUpdate {
   const u: CollectionUpdate = {}
   if (patch.status !== undefined) {
@@ -834,6 +855,21 @@ export function mapDomainPatchToDbUpdate(
     // The legacy participant_edit_permissions JSON column (migration 012) is NOT used
     // because migration 012 may not be applied on the remote DB.
   }
+
+  const photoLabIdFromPatch = patch.participants?.find((p) => p.role === "photo_lab")?.entityId
+  const photoLabId =
+    photoLabIdFromPatch ??
+    (u.photo_lab_id as string | null | undefined) ??
+    syncContext?.existingPhotoLabId ??
+    null
+  const handprintIsDifferentLab =
+    patch.config?.handprintIsDifferentLab ??
+    syncContext?.existingHandprintIsDifferentLab ??
+    true
+  if (!handprintIsDifferentLab && photoLabId) {
+    u.handprint_lab_id = photoLabId
+  }
+
   u.updated_at = new Date().toISOString()
   return u
 }
