@@ -18,7 +18,7 @@ interface UserContextValue {
   loading: boolean
   /** Derived: true if user belongs to noba entity */
   isNobaUser: boolean
-  /** Derived: true if user can create collections (organization_id = noba producer org AND is_internal = true) */
+  /** Derived: true if user can create collections (player_id = noba producer player AND is_internal = true) */
   isNobaProducerUser: boolean
   /** Derived: true if user is a self-photographer */
   isSelfPhotographer: boolean
@@ -80,7 +80,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
 
   // Load user and entity data when session changes.
   // When refetching due to "session-changed" (e.g. token refresh on tab return), do not set loading
-  // so that pages depending on userContext.loading (organizations, team) don't re-run and "refresh".
+  // so that pages depending on userContext.loading (players, team) don't re-run and "refresh".
   React.useEffect(() => {
     let cancelled = false
 

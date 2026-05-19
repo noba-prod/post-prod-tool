@@ -72,8 +72,8 @@ interface EntityBasicInformationFormProps {
   existingProfilePictureUrl?: string | null
   /** Enables async duplicate name validation during creation */
   validateNameUniqueness?: boolean
-  /** Optional organization id to exclude when checking duplicates */
-  excludeOrganizationId?: string
+  /** Optional player id to exclude when checking duplicates */
+  excludePlayerId?: string
 }
 
 // ============================================================================
@@ -103,7 +103,7 @@ interface EntityBasicInformationFormProps {
  * ## Layout
  * - Uses Layout with LayoutSection
  * - Blocks separated by Separator
- * - RowVariants for field organization
+ * - RowVariants for field player
  */
 export function EntityBasicInformationForm({
   entityType,
@@ -116,7 +116,7 @@ export function EntityBasicInformationForm({
   disabled = false,
   existingProfilePictureUrl,
   validateNameUniqueness = false,
-  excludeOrganizationId,
+  excludePlayerId,
 }: EntityBasicInformationFormProps) {
   // Form state
   const [formData, setFormData] = React.useState<EntityBasicInformationFormData>({
@@ -186,17 +186,17 @@ export function EntityBasicInformationForm({
       setIsCheckingName(true)
       try {
         const searchParams = new URLSearchParams({ name: trimmedName })
-        if (excludeOrganizationId?.trim()) {
-          searchParams.set("excludeOrganizationId", excludeOrganizationId.trim())
+        if (excludePlayerId?.trim()) {
+          searchParams.set("excludePlayerId", excludePlayerId.trim())
         }
 
-        const response = await fetch(`/api/organizations/check-name?${searchParams.toString()}`, {
+        const response = await fetch(`/api/players/check-name?${searchParams.toString()}`, {
           method: "GET",
           signal: controller.signal,
           cache: "no-store",
         })
         const body = (await response.json().catch(() => ({}))) as { exists?: boolean }
-        if (!response.ok) throw new Error("Failed to validate organization name")
+        if (!response.ok) throw new Error("Failed to validate player name")
 
         if (latestNameRequestRef.current === requestId) {
           setNameExistsError(body.exists ? "A player with this name already exists" : null)
@@ -218,7 +218,7 @@ export function EntityBasicInformationForm({
       controller.abort()
       window.clearTimeout(timeoutId)
     }
-  }, [formData.entityName, validateNameUniqueness, disabled, excludeOrganizationId])
+  }, [formData.entityName, validateNameUniqueness, disabled, excludePlayerId])
 
   // Validation - computed from form data
   const isFormValid = React.useMemo(() => {

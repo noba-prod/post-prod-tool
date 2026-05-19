@@ -88,48 +88,48 @@ export async function GET(
     }
 
     const allUserIds = [...new Set(Object.values(userIdsByRole).flat())]
-    const userOrgIdByUserId = new Map<string, string>()
+    const userPlayerIdByUserId = new Map<string, string>()
     if (allUserIds.length > 0) {
       const { data: profiles } = await admin
         .from("profiles")
-        .select("id, organization_id")
+        .select("id, player_id")
         .in("id", allUserIds)
       for (const profile of profiles ?? []) {
-        const p = profile as { id?: string; organization_id?: string | null }
-        if (p.id && p.organization_id) userOrgIdByUserId.set(p.id, p.organization_id)
+        const p = profile as { id?: string; player_id?: string | null }
+        if (p.id && p.player_id) userPlayerIdByUserId.set(p.id, p.player_id)
       }
     }
 
-    const orgIds = new Set<string>()
-    const roleOrgId: Partial<Record<DbRole, string>> = {}
+    const playerIds = new Set<string>()
+    const rolePlayerId: Partial<Record<DbRole, string>> = {}
 
     for (const role of Object.keys(userIdsByRole) as DbRole[]) {
       const firstUserId = userIdsByRole[role][0]
       if (!firstUserId) continue
-      const orgId = userOrgIdByUserId.get(firstUserId)
-      if (!orgId) continue
-      roleOrgId[role] = orgId
-      orgIds.add(orgId)
+      const playerId = userPlayerIdByUserId.get(firstUserId)
+      if (!playerId) continue
+      rolePlayerId[role] = playerId
+      playerIds.add(playerId)
     }
 
-    const clientOrgId = (collectionRow as { client_id?: string | null }).client_id ?? null
-    if (clientOrgId) orgIds.add(clientOrgId)
+    const clientPlayerId = (collectionRow as { client_id?: string | null }).client_id ?? null
+    if (clientPlayerId) playerIds.add(clientPlayerId)
 
-    const orgNameById = new Map<string, string>()
-    if (orgIds.size > 0) {
-      const { data: organizations } = await admin
-        .from("organizations")
+    const playerNameById = new Map<string, string>()
+    if (playerIds.size > 0) {
+      const { data: players } = await admin
+        .from("players")
         .select("id, name")
-        .in("id", [...orgIds])
-      for (const org of organizations ?? []) {
-        const o = org as { id?: string; name?: string }
-        if (o.id && o.name) orgNameById.set(o.id, o.name)
+        .in("id", [...playerIds])
+      for (const player of players ?? []) {
+        const o = player as { id?: string; name?: string }
+        if (o.id && o.name) playerNameById.set(o.id, o.name)
       }
     }
 
     const handleByRole: Partial<Record<DbRole, string>> = {}
-    if (clientOrgId) {
-      const clientName = orgNameById.get(clientOrgId)
+    if (clientPlayerId) {
+      const clientName = playerNameById.get(clientPlayerId)
       if (clientName) handleByRole.client = toHandle(clientName)
     }
 
@@ -140,11 +140,11 @@ export async function GET(
       "retouch_studio",
       "handprint_lab",
     ] as const)) {
-      const orgId = roleOrgId[role]
-      if (!orgId) continue
-      const orgName = orgNameById.get(orgId)
-      if (!orgName) continue
-      handleByRole[role] = toHandle(orgName)
+      const playerId = rolePlayerId[role]
+      if (!playerId) continue
+      const playerName = playerNameById.get(playerId)
+      if (!playerName) continue
+      handleByRole[role] = toHandle(playerName)
     }
 
     return NextResponse.json({

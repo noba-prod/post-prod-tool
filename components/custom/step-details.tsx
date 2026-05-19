@@ -35,7 +35,7 @@ export interface StepDetailsProps {
   contentGap?: "default" | "compact"
   /** Entity name (notes variant only) — shown as secondary muted text after '·'. */
   authorName?: string
-  /** Entity avatar image URL (notes variant only) — typically organizations.profile_picture_url. */
+  /** Entity avatar image URL (notes variant only) — typically players.profile_picture_url. */
   authorImageUrl?: string
   /** User name who wrote the comment (notes variant only) — shown as the primary bold name. */
   authorUserName?: string

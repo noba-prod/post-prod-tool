@@ -6,7 +6,7 @@ import { mapProfilesToUsers } from "@/lib/utils/supabase-mappers"
 
 async function getSessionProfile(): Promise<{
   session: { user: { id: string } } | null
-  profile: Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
+  profile: Pick<Profile, "id" | "is_internal" | "player_id" | "role"> | null
   error: string | null
 }> {
   const supabase = await createClient()
@@ -18,11 +18,11 @@ async function getSessionProfile(): Promise<{
 
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id,is_internal,organization_id,role")
+    .select("id,is_internal,player_id,role")
     .eq("id", sessionData.session.user.id)
     .maybeSingle()
 
-  const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
+  const profile = profileData as Pick<Profile, "id" | "is_internal" | "player_id" | "role"> | null
 
   return {
     session: sessionData.session,
@@ -32,9 +32,9 @@ async function getSessionProfile(): Promise<{
 }
 
 /**
- * DELETE /api/organizations/[id]/members/[userId]
- * Removes a user from the organization (sets organization_id to null).
- * Requires caller to be admin or editor of the same organization.
+ * DELETE /api/players/[id]/members/[userId]
+ * Removes a user from the player (sets player_id to null).
+ * Requires caller to be admin or editor of the same player.
  */
 export async function DELETE(
   _request: Request,
@@ -46,22 +46,22 @@ export async function DELETE(
     return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
   }
 
-  const organizationId = resolvedParams.id
+  const playerId = resolvedParams.id
   const targetUserId = resolvedParams.userId
 
   const isInternal = Boolean(profile.is_internal)
-  const canEditSameOrg =
-    profile.organization_id === organizationId &&
+  const canEditSamePlayer =
+    profile.player_id === playerId &&
     (profile.role === "admin" || profile.role === "editor")
 
-  if (!isInternal && !canEditSameOrg) {
+  if (!isInternal && !canEditSamePlayer) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  // Prevent removing yourself from the org via this endpoint (optional: could allow "leave org")
+  // Prevent removing yourself from the player via this endpoint (optional: could allow "leave player")
   if (targetUserId === profile.id) {
     return NextResponse.json(
-      { error: "You cannot remove yourself. Use another admin to remove you, or leave the organization from settings." },
+      { error: "You cannot remove yourself. Use another admin to remove you, or leave the player from settings." },
       { status: 400 }
     )
   }
@@ -69,10 +69,10 @@ export async function DELETE(
   const adminClient = createAdminClient()
   const { data: targetProfileData, error: targetError } = await adminClient
     .from("profiles")
-    .select("id,organization_id")
+    .select("id,player_id")
     .eq("id", targetUserId)
     .maybeSingle()
-  const targetProfile = targetProfileData as Pick<Profile, "id" | "organization_id"> | null
+  const targetProfile = targetProfileData as Pick<Profile, "id" | "player_id"> | null
 
   if (targetError) {
     return NextResponse.json({ error: targetError.message }, { status: 500 })
@@ -82,15 +82,15 @@ export async function DELETE(
     return NextResponse.json({ error: "User not found" }, { status: 404 })
   }
 
-  if (targetProfile.organization_id !== organizationId) {
+  if (targetProfile.player_id !== playerId) {
     return NextResponse.json(
-      { error: "User is not a member of this organization" },
+      { error: "User is not a member of this player" },
       { status: 400 }
     )
   }
 
   const { error: updateError } = await (adminClient.from("profiles") as any)
-    .update({ organization_id: null })
+    .update({ player_id: null })
     .eq("id", targetUserId)
 
   if (updateError) {
@@ -103,7 +103,7 @@ export async function DELETE(
   const { data: remainingProfilesData, error: listError } = await adminClient
     .from("profiles")
     .select("*")
-    .eq("organization_id", organizationId)
+    .eq("player_id", playerId)
   const remainingProfiles = remainingProfilesData as Profile[] | null
 
   if (listError) {

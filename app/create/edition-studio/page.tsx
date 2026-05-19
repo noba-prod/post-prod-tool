@@ -106,7 +106,7 @@ export default function EditionStudioCreationPage() {
       <CreationTemplate
         title="Create new Retouch/Post Studio"
         breadcrumbs={[
-          { label: "Players", href: "/organizations" },
+          { label: "Players", href: "/players" },
           { label: "Create new Retouch/Post Studio" },
         ]}
         sidebarItems={[
@@ -129,7 +129,7 @@ export default function EditionStudioCreationPage() {
                 initialData={creation.basicFormData ?? undefined}
                 existingProfilePictureUrl={creation.entity?.profilePictureUrl}
                 validateNameUniqueness={creation.entityId === null}
-                excludeOrganizationId={creation.entityId ?? undefined}
+                excludePlayerId={creation.entityId ?? undefined}
                 onDataChange={creation.handleFormDataChange}
                 onValidationChange={creation.handleValidationChange}
               />

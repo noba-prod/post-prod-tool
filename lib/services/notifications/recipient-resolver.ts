@@ -2,7 +2,7 @@
  * Recipient Resolver
  *
  * Resolves notification recipient types (Producer, Lab, Client, etc.) to actual users
- * based on their collection membership and organization assignments.
+ * based on their collection membership and player assignments.
  *
  * ## Participant mirroring (recipient expansion)
  *
@@ -127,7 +127,7 @@ export async function resolveRecipients(
       case "handprint_lab":
         if (collectionData.handprint_lab_id) {
           memberRoles.push("handprint_lab")
-          // When handprint uses the same organization as photo lab, notifications
+          // When handprint uses the same player as photo lab, notifications
           // must reach photo_lab members too (they are the effective owners in UI).
           if (sameHandprintAndPhotoLab) {
             memberRoles.push("photo_lab")
@@ -233,26 +233,26 @@ export async function getCollectionContext(
     shooting_country: string | null
   }
 
-  const orgIds = [col.client_id, col.photographer_id, col.photo_lab_id, col.retouch_studio_id, col.handprint_lab_id].filter(Boolean) as string[]
-  const orgMap = new Map<string, string>()
-  if (orgIds.length > 0) {
-    const { data: orgs } = await supabase
-      .from("organizations")
+  const playerIds = [col.client_id, col.photographer_id, col.photo_lab_id, col.retouch_studio_id, col.handprint_lab_id].filter(Boolean) as string[]
+  const playerMap = new Map<string, string>()
+  if (playerIds.length > 0) {
+    const { data: players } = await supabase
+      .from("players")
       .select("id, name")
-      .in("id", orgIds)
-    for (const org of (orgs || []) as { id: string; name: string }[]) {
-      orgMap.set(org.id, org.name)
+      .in("id", playerIds)
+    for (const player of (players || []) as { id: string; name: string }[]) {
+      playerMap.set(player.id, player.name)
     }
   }
 
   return {
     name: col.name,
     reference: col.reference,
-    clientName: col.client_id ? (orgMap.get(col.client_id) ?? null) : null,
-    photographerName: col.photographer_id ? (orgMap.get(col.photographer_id) ?? null) : null,
-    photoLabName: col.photo_lab_id ? (orgMap.get(col.photo_lab_id) ?? null) : null,
-    retouchStudioName: col.retouch_studio_id ? (orgMap.get(col.retouch_studio_id) ?? null) : null,
-    handprintLabName: col.handprint_lab_id ? (orgMap.get(col.handprint_lab_id) ?? null) : null,
+    clientName: col.client_id ? (playerMap.get(col.client_id) ?? null) : null,
+    photographerName: col.photographer_id ? (playerMap.get(col.photographer_id) ?? null) : null,
+    photoLabName: col.photo_lab_id ? (playerMap.get(col.photo_lab_id) ?? null) : null,
+    retouchStudioName: col.retouch_studio_id ? (playerMap.get(col.retouch_studio_id) ?? null) : null,
+    handprintLabName: col.handprint_lab_id ? (playerMap.get(col.handprint_lab_id) ?? null) : null,
     shootingStartDate: col.shooting_start_date,
     shootingEndDate: col.shooting_end_date,
     shootingCity: col.shooting_city,

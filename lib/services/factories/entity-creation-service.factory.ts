@@ -5,7 +5,7 @@ let entitiesListServiceInstance: EntitiesListService | null = null
 let entityDetailServiceInstance: EntityDetailService | null = null
 
 /**
- * Factory function that creates an EntitiesListService (uses GET /api/organizations).
+ * Factory function that creates an EntitiesListService (uses GET /api/players).
  */
 export function createEntitiesListService(): EntitiesListService {
   if (!entitiesListServiceInstance) {
@@ -15,7 +15,7 @@ export function createEntitiesListService(): EntitiesListService {
 }
 
 /**
- * Factory function that creates an EntityDetailService (uses GET /api/organizations/[id]).
+ * Factory function that creates an EntityDetailService (uses GET /api/players/[id]).
  */
 export function createEntityDetailService(): EntityDetailService {
   if (!entityDetailServiceInstance) {

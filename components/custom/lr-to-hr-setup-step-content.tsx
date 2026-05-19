@@ -11,7 +11,7 @@ import { SlotPicker } from "./slot-picker"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
-import type { Organization, Profile } from "@/lib/supabase/database.types"
+import type { Player, Profile } from "@/lib/supabase/database.types"
 
 // ============================================================================
 // SUPABASE HELPERS
@@ -26,19 +26,19 @@ function isSupabaseConfigured(): boolean {
   )
 }
 
-async function fetchOrganizationById(id: string): Promise<string | null> {
+async function fetchPlayerById(id: string): Promise<string | null> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .eq("id", id)
     .single()
   if (error) {
-    console.error("[LrToHrSetupStepContent] Failed to fetch organization:", error)
+    console.error("[LrToHrSetupStepContent] Failed to fetch player:", error)
     return null
   }
-  const org = data as Organization | null
+  const org = data as Player | null
   return org?.name ?? null
 }
 
@@ -47,7 +47,7 @@ async function fetchUserById(id: string): Promise<{ firstName: string; lastName:
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
     .from("profiles") as any)
-    .select("id, email, first_name, last_name, organization_id")
+    .select("id, email, first_name, last_name, player_id")
     .eq("id", id)
     .single()
   if (error) {
@@ -60,7 +60,7 @@ async function fetchUserById(id: string): Promise<{ firstName: string; lastName:
     firstName: p.first_name ?? "",
     lastName: p.last_name ?? "",
     email: p.email ?? "",
-    entityId: p.organization_id ?? undefined,
+    entityId: p.player_id ?? undefined,
   }
 }
 
@@ -158,10 +158,10 @@ export function LrToHrSetupStepContent({
       }
 
       if (isSupabaseConfigured()) {
-        const name = await fetchOrganizationById(entityId)
+        const name = await fetchPlayerById(entityId)
         if (!cancelled) setOwnerName(name ?? "—")
       } else {
-        const res = await fetch(`/api/organizations/${entityId}`)
+        const res = await fetch(`/api/players/${entityId}`)
         if (!res.ok) {
           if (!cancelled) setOwnerName("—")
           return

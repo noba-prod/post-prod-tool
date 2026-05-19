@@ -34,7 +34,7 @@ import { ModalWindow } from "../modal-window"
 import { mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
-import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
+import { updatePlayerFromDraft } from "@/app/actions/entity-creation"
 
 // =============================================================================
 // SECTION CONFIGURATION
@@ -274,7 +274,7 @@ export interface ViewTemplateProps {
  */
 export function ViewTemplate({
   breadcrumbs = [
-    { label: "Players", href: "/organizations" },
+    { label: "Players", href: "/players" },
     { label: "View Entity" },
   ],
   sections,
@@ -358,7 +358,7 @@ export function ViewTemplate({
     setIsUpdatingCompany(true)
     try {
       const draft = mapFormToEntityDraft(companyFormData)
-      await updateOrganizationFromDraft(userContext.entity.id, draft)
+      await updatePlayerFromDraft(userContext.entity.id, draft)
 
       // Dispatch session-changed event to refresh UserContext
       if (typeof window !== "undefined") {

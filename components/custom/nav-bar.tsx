@@ -120,7 +120,7 @@ export function NavBar({
     variant === "noba" &&
     role?.toLowerCase() !== "viewer" &&
     (pathname === "/collections" ||
-      pathname === "/organizations" ||
+      pathname === "/players" ||
       pathname === "/team")
   const initials = userName.charAt(0).toUpperCase()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
@@ -149,7 +149,7 @@ export function NavBar({
   const handleTabClick = (tab: string) => {
     const routeMap: Record<string, string> = {
       "Collections": "/collections",
-      "Players": "/organizations",
+      "Players": "/players",
       "Team": "/team",
     }
     const route = routeMap[tab]
@@ -195,7 +195,7 @@ export function NavBar({
               const handleTabClick = () => {
                 const routeMap: Record<string, string> = {
                   "Collections": "/collections",
-                  "Players": "/organizations",
+                  "Players": "/players",
                   "Team": "/team",
                 }
                 const route = routeMap[tab]

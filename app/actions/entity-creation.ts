@@ -1,7 +1,7 @@
 "use server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
-import type { Database, OrganizationType, Profile, Organization } from "@/lib/supabase/database.types"
+import type { Database, PlayerType, Profile, Player } from "@/lib/supabase/database.types"
 import type { CreateEntityDraftPayload, Entity, EntityType, User } from "@/lib/types"
 
 type PhoneInput = {
@@ -9,14 +9,14 @@ type PhoneInput = {
   number?: string
 }
 
-type CreateOrganizationInput = {
+type CreatePlayerInput = {
   draft: CreateEntityDraftPayload
   phone?: PhoneInput
   profilePicture?: File | null
 }
 
 type CreateAdminInput = {
-  organizationId: string
+  playerId: string
   admin: {
     firstName: string
     lastName?: string
@@ -25,7 +25,7 @@ type CreateAdminInput = {
   }
 }
 
-function mapEntityTypeToOrganizationType(type: EntityType): OrganizationType {
+function mapEntityTypeToPlayerType(type: EntityType): PlayerType {
   switch (type) {
     case "client":
       return "client"
@@ -44,7 +44,7 @@ function mapEntityTypeToOrganizationType(type: EntityType): OrganizationType {
   }
 }
 
-function mapOrganizationTypeToEntityType(type: OrganizationType): EntityType {
+function mapPlayerTypeToEntityType(type: PlayerType): EntityType {
   switch (type) {
     case "noba":
       return "noba"
@@ -61,7 +61,7 @@ function mapOrganizationTypeToEntityType(type: OrganizationType): EntityType {
     case "self_photographer":
       return "self-photographer"
     default:
-      throw new Error(`Unsupported organization type: ${type}`)
+      throw new Error(`Unsupported player type: ${type}`)
   }
 }
 
@@ -72,31 +72,31 @@ function combinePhone(prefix?: string | null, phone?: string | null): string | u
   return trimmedPrefix ? `${trimmedPrefix} ${trimmedPhone}`.trim() : trimmedPhone
 }
 
-function mapOrganizationToEntity(org: Organization): Entity {
+function mapPlayerToEntity(player: Player): Entity {
   const hasLocation = Boolean(
-    org.street_address?.trim() ||
-    org.zip_code?.trim() ||
-    org.city?.trim() ||
-    org.country?.trim()
+    player.street_address?.trim() ||
+    player.zip_code?.trim() ||
+    player.city?.trim() ||
+    player.country?.trim()
   )
 
   return {
-    id: org.id,
-    type: mapOrganizationTypeToEntityType(org.type),
-    name: org.name,
-    email: org.email || undefined,
-    phoneNumber: combinePhone(org.prefix, org.phone),
-    profilePictureUrl: org.profile_picture_url || undefined,
-    notes: org.notes || undefined,
+    id: player.id,
+    type: mapPlayerTypeToEntityType(player.type),
+    name: player.name,
+    email: player.email || undefined,
+    phoneNumber: combinePhone(player.prefix, player.phone),
+    profilePictureUrl: player.profile_picture_url || undefined,
+    notes: player.notes || undefined,
     location: hasLocation
       ? {
-          streetAddress: org.street_address || "",
-          zipCode: org.zip_code || "",
-          city: org.city || "",
-          country: org.country || "",
+          streetAddress: player.street_address || "",
+          zipCode: player.zip_code || "",
+          city: player.city || "",
+          country: player.country || "",
         }
       : undefined,
-    updatedAt: org.updated_at ? new Date(org.updated_at) : undefined,
+    updatedAt: player.updated_at ? new Date(player.updated_at) : undefined,
   }
 }
 
@@ -107,7 +107,7 @@ function mapProfileToUser(profile: Profile): User {
     lastName: profile.last_name || undefined,
     email: profile.email,
     phoneNumber: combinePhone(profile.prefix, profile.phone) || "",
-    entityId: profile.organization_id || "",
+    entityId: profile.player_id || "",
     role: profile.role || "admin",
     profilePictureUrl: profile.image || undefined,
     notes: undefined,
@@ -155,13 +155,13 @@ async function uploadProfilePicture(
   return publicUrl
 }
 
-async function uploadOrganizationProfilePicture(
+async function uploadPlayerProfilePicture(
   adminSupabase: ReturnType<typeof createAdminClient>,
-  organizationId: string,
+  playerId: string,
   file: File
 ): Promise<string | null> {
   const extension = file.name.split(".").pop()?.toLowerCase() || "png"
-  const objectPath = `${organizationId}/logo.${extension}`
+  const objectPath = `${playerId}/logo.${extension}`
   const arrayBuffer = await file.arrayBuffer()
 
   const { error: uploadError } = await adminSupabase.storage
@@ -183,22 +183,22 @@ async function uploadOrganizationProfilePicture(
   return data.publicUrl || null
 }
 
-export async function createOrganizationFromDraft({
+export async function createPlayerFromDraft({
   draft,
   phone,
   profilePicture,
-}: CreateOrganizationInput): Promise<{ entityId: string; entity: Entity }> {
+}: CreatePlayerInput): Promise<{ entityId: string; entity: Entity }> {
   const adminSupabase = createAdminClient()
 
-  const organizationType = mapEntityTypeToOrganizationType(draft.type)
+  const playerType = mapEntityTypeToPlayerType(draft.type)
   const trimmedName = draft.name.trim()
 
   if (!trimmedName) {
-    throw new Error("Organization name is required")
+    throw new Error("Player name is required")
   }
 
-  const insertPayload: Database["public"]["Tables"]["organizations"]["Insert"] = {
-    type: organizationType,
+  const insertPayload: Database["public"]["Tables"]["players"]["Insert"] = {
+    type: playerType,
     name: trimmedName,
     email: draft.email?.trim() || null,
     phone: phone?.number?.trim() || null,
@@ -211,64 +211,64 @@ export async function createOrganizationFromDraft({
     country: draft.location?.country?.trim() || null,
   }
 
-  const { data: organization, error } = await adminSupabase
-    .from("organizations")
+  const { data: player, error } = await adminSupabase
+    .from("players")
     .insert(insertPayload as never)
     .select("*")
     .single()
 
-  if (error || !organization) {
+  if (error || !player) {
     if (error?.code === "23505") {
-      throw new Error("An organization with this name already exists")
+      throw new Error("A player with this name already exists")
     }
-    throw new Error(error?.message || "Failed to create organization")
+    throw new Error(error?.message || "Failed to create player")
   }
 
-  const org = organization as Organization
+  const p = player as Player
   if (profilePicture) {
-    const publicUrl = await uploadOrganizationProfilePicture(
+    const publicUrl = await uploadPlayerProfilePicture(
       adminSupabase,
-      org.id,
+      p.id,
       profilePicture
     )
 
       if (publicUrl) {
-        const { data: updatedOrg } = await adminSupabase
-          .from("organizations")
+        const { data: updatedPlayer } = await adminSupabase
+          .from("players")
           .update({ profile_picture_url: publicUrl } as never)
-          .eq("id", org.id)
+          .eq("id", p.id)
         .select("*")
         .single()
 
-      if (updatedOrg) {
-        const updated = updatedOrg as Organization
+      if (updatedPlayer) {
+        const updated = updatedPlayer as Player
         return {
           entityId: updated.id,
-          entity: mapOrganizationToEntity(updated),
+          entity: mapPlayerToEntity(updated),
         }
       }
     }
   }
 
   return {
-    entityId: org.id,
-    entity: mapOrganizationToEntity(org),
+    entityId: p.id,
+    entity: mapPlayerToEntity(p),
   }
 }
 
 /**
- * Updates an existing organization in Supabase from entity draft (basic info).
+ * Updates an existing player in Supabase from entity draft (basic info).
  * Used when the user edits company details and the entity comes from Supabase (not in-memory).
  */
-export async function updateOrganizationFromDraft(
-  organizationId: string,
+export async function updatePlayerFromDraft(
+  playerId: string,
   draft: CreateEntityDraftPayload
 ): Promise<{ entity: Entity }> {
   const adminSupabase = createAdminClient()
 
   const trimmedName = draft.name?.trim()
   if (!trimmedName) {
-    throw new Error("Organization name is required")
+    throw new Error("Player name is required")
   }
 
   const phoneTrimmed = draft.phoneNumber?.trim()
@@ -281,7 +281,7 @@ export async function updateOrganizationFromDraft(
         .trim() || null
     : null
 
-  const updatePayload: Database["public"]["Tables"]["organizations"]["Update"] = {
+  const updatePayload: Database["public"]["Tables"]["players"]["Update"] = {
     name: trimmedName,
     email: draft.email?.trim() || null,
     phone,
@@ -294,22 +294,22 @@ export async function updateOrganizationFromDraft(
     updated_at: new Date().toISOString(),
   }
 
-  const { data: organization, error } = await adminSupabase
-    .from("organizations")
+  const { data: player, error } = await adminSupabase
+    .from("players")
     .update(updatePayload as never)
-    .eq("id", organizationId)
+    .eq("id", playerId)
     .select("*")
     .single()
 
-  if (error || !organization) {
-    throw new Error(error?.message || "Failed to update organization")
+  if (error || !player) {
+    throw new Error(error?.message || "Failed to update player")
   }
 
-  return { entity: mapOrganizationToEntity(organization as Organization) }
+  return { entity: mapPlayerToEntity(player as Player) }
 }
 
-export async function createAdminForOrganization({
-  organizationId,
+export async function createAdminForPlayer({
+  playerId,
   admin,
 }: CreateAdminInput): Promise<{ adminUser: User; teamMembers: User[] }> {
   const adminSupabase = createAdminClient()
@@ -331,7 +331,7 @@ export async function createAdminForOrganization({
 
   const profilePayload: Database["public"]["Tables"]["profiles"]["Insert"] = {
     id: newUser.user.id,
-    organization_id: organizationId,
+    player_id: playerId,
     first_name: admin.firstName.trim(),
     last_name: admin.lastName?.trim() || null,
     email,
@@ -361,7 +361,7 @@ export async function createAdminForOrganization({
 
 /**
  * Input type for creating a self-photographer entity.
- * Combines organization and admin user creation in a single step.
+ * Combines player and admin user creation in a single step.
  */
 type CreateSelfPhotographerInput = {
   firstName: string
@@ -374,13 +374,13 @@ type CreateSelfPhotographerInput = {
 
 /**
  * Creates a self-photographer entity with its admin user in Supabase.
- * 
+ *
  * This is a single-step creation flow where:
  * - Entity type is fixed to "self-photographer"
  * - Admin role is fixed to "admin"
  * - Entity name is derived from firstName + lastName
  * - No location fields are required
- * 
+ *
  * @param input Self-photographer data
  * @returns Created entity, admin user, and team members
  */
@@ -397,7 +397,6 @@ export async function createSelfPhotographerInSupabase({
   adminUser: User
   teamMembers: User[]
 }> {
-  // Validate required fields
   const trimmedFirstName = firstName?.trim()
   const trimmedEmail = email?.trim().toLowerCase()
 
@@ -409,14 +408,13 @@ export async function createSelfPhotographerInSupabase({
     throw new Error("Email is required")
   }
 
-  // Derive entity name from firstName + lastName
   const trimmedLastName = lastName?.trim()
   const entityName = trimmedLastName
     ? `${trimmedFirstName} ${trimmedLastName}`
     : trimmedFirstName
 
-  // Create the organization (entity) - no profile picture here; for photographer we use profiles.image
-  const { entityId, entity } = await createOrganizationFromDraft({
+  // Create the player (entity) - no profile picture here; for photographer we use profiles.image
+  const { entityId, entity } = await createPlayerFromDraft({
     draft: {
       type: "self-photographer",
       name: entityName,
@@ -429,9 +427,8 @@ export async function createSelfPhotographerInSupabase({
     profilePicture: null, // Photographer uses profiles.image, uploaded after admin creation
   })
 
-  // Create the admin user
-  const { adminUser, teamMembers } = await createAdminForOrganization({
-    organizationId: entityId,
+  const { adminUser, teamMembers } = await createAdminForPlayer({
+    playerId: entityId,
     admin: {
       firstName: trimmedFirstName,
       lastName: trimmedLastName,
@@ -446,9 +443,9 @@ export async function createSelfPhotographerInSupabase({
     const adminSupabase = createAdminClient()
     const publicUrl = await uploadProfilePicture(adminSupabase, adminUser.id, profilePicture)
     if (publicUrl) {
-      // Sync organizations.profile_picture_url from profiles.image
+      // Sync players.profile_picture_url from profiles.image
       await adminSupabase
-        .from("organizations")
+        .from("players")
         .update({ profile_picture_url: publicUrl } as never)
         .eq("id", entityId)
       finalEntity = { ...entity, profilePictureUrl: publicUrl }

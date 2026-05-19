@@ -51,12 +51,12 @@ export async function GET(request: Request) {
     }
 
     const admin = createAdminClient()
-    const { data: organizations, error: organizationsError } = await admin
-      .from("organizations")
+    const { data: players, error: playersError } = await admin
+      .from("players")
       .select("id, name")
       .in("id", visibleClientIds)
 
-    if (organizationsError) {
+    if (playersError) {
       return NextResponse.json(
         { error: "Failed to load client names" },
         { status: 500 }
@@ -64,9 +64,9 @@ export async function GET(request: Request) {
     }
 
     const namesById: Record<string, string> = {}
-    for (const org of organizations ?? []) {
-      const id = (org as { id?: string }).id
-      const name = (org as { name?: string }).name
+    for (const player of players ?? []) {
+      const id = (player as { id?: string }).id
+      const name = (player as { name?: string }).name
       if (id && name) namesById[id] = name
     }
 

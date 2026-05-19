@@ -23,10 +23,10 @@ interface NavigationConfig {
  * - Other entities: variant "collaborator", tabs ["Collections", "Team"]
  * 
  * Entity type is determined by Supabase profile service (supabase-profile-service.ts):
- * - is_internal=true AND org.type='noba' → "noba"
- * - is_internal=true (even without org) → "noba"
- * - organization.type='self_photographer' → "self-photographer"
- * - All other organization types → mapped to entity type (collaborator variant)
+ * - is_internal=true AND player.type='noba' → "noba"
+ * - is_internal=true (even without player) → "noba"
+ * - player.type='self_photographer' → "self-photographer"
+ * - All other player types → mapped to entity type (collaborator variant)
  * 
  * @param entityType Entity type (null if not loaded)
  * @returns Navigation configuration

@@ -19,14 +19,14 @@ export async function GET(request: Request) {
         { status: 401 }
       )
     }
-    console.warn("Organizations debug: no session, allowing debug fetch")
+    console.warn("Players debug: no session, allowing debug fetch")
   }
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey || serviceKey === "placeholder-service-key") {
     return NextResponse.json(
       {
-        error: "Missing SUPABASE_SERVICE_ROLE_KEY for organizations fetch",
+        error: "Missing SUPABASE_SERVICE_ROLE_KEY for players fetch",
       },
       { status: 500 }
     )
@@ -37,69 +37,69 @@ export async function GET(request: Request) {
     id: string
     email: string
     is_internal: boolean
-    organization_id: string | null
+    player_id: string | null
     role: string | null
   } | null = null
 
   if (userId) {
     const { data: profileRow, error: profileError } = await supabase
       .from("profiles")
-      .select("id,email,is_internal,organization_id,role")
+      .select("id,email,is_internal,player_id,role")
       .eq("id", userId)
       .maybeSingle()
 
     if (profileError) {
-      console.error("Organizations debug: failed to load profile", profileError)
+      console.error("Players debug: failed to load profile", profileError)
     } else {
       profileData = profileRow
     }
   }
 
   const adminClient = createAdminClient()
-  const [organizationsResult, profilesResult, collectionsResult] = await Promise.all([
-    adminClient.from("organizations").select("id,name,type").order("name", { ascending: true }),
-    adminClient.from("profiles").select("id,organization_id,first_name,last_name,email,role,is_internal"),
+  const [playersResult, profilesResult, collectionsResult] = await Promise.all([
+    adminClient.from("players").select("id,name,type").order("name", { ascending: true }),
+    adminClient.from("profiles").select("id,player_id,first_name,last_name,email,role,is_internal"),
     adminClient.from("collections").select("id,client_id"),
   ])
 
-  if (organizationsResult.error) {
-    console.error("Organizations debug: organizations error", organizationsResult.error)
-    return NextResponse.json({ error: organizationsResult.error.message }, { status: 500 })
+  if (playersResult.error) {
+    console.error("Players debug: players error", playersResult.error)
+    return NextResponse.json({ error: playersResult.error.message }, { status: 500 })
   }
 
   if (profilesResult.error) {
-    console.error("Organizations debug: profiles error", profilesResult.error)
+    console.error("Players debug: profiles error", profilesResult.error)
     return NextResponse.json({ error: profilesResult.error.message }, { status: 500 })
   }
 
   if (collectionsResult.error) {
-    console.error("Organizations debug: collections error", collectionsResult.error)
+    console.error("Players debug: collections error", collectionsResult.error)
     return NextResponse.json({ error: collectionsResult.error.message }, { status: 500 })
   }
 
-  const organizations = organizationsResult.data || []
+  const players = playersResult.data || []
   const profiles = profilesResult.data || []
   const collections = collectionsResult.data || []
 
   if (debugEnabled) {
-    console.info("Organizations debug snapshot", {
+    console.info("Players debug snapshot", {
       userId,
       profile: profileData || null,
-      organizationsCount: organizations.length,
+      playersCount: players.length,
       profilesCount: profiles.length,
       collectionsCount: collections.length,
     })
   }
 
   return NextResponse.json({
-    organizations,
+    players,
     profiles,
     collections,
     debug: debugEnabled
       ? {
           userId,
           profile: profileData || null,
-          organizationsCount: organizations.length,
+          playersCount: players.length,
           profilesCount: profiles.length,
           collectionsCount: collections.length,
         }

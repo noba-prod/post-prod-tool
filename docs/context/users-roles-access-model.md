@@ -21,7 +21,7 @@ All users in the platform belong to:
 2. ENTITY TYPES
 ----------------------------------------------------------------
 
-Entities represent organizations.
+Entities represent players (organizations or individual actors).
 
 Supported entity types:
 - noba* (platform owner / super admin)

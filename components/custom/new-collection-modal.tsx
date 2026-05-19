@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionConfig } from "@/lib/domain/collections"
-import type { Organization, Profile } from "@/lib/supabase/database.types"
+import type { Player, Profile } from "@/lib/supabase/database.types"
 
 // ============================================================================
 // SUPABASE HELPERS
@@ -35,7 +35,7 @@ async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .eq("type", "client")
     .order("name")
@@ -43,16 +43,16 @@ async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[
     console.error("[NewCollectionModal] Failed to fetch clients:", error)
     return []
   }
-  return (data ?? []).map((org: Pick<Organization, "id" | "name">) => ({ id: org.id, name: org.name }))
+  return (data ?? []).map((p: Pick<Player, "id" | "name">) => ({ id: p.id, name: p.name }))
 }
 
-async function fetchUsersFromSupabase(organizationId: string): Promise<{ value: string; label: string }[]> {
+async function fetchUsersFromSupabase(playerId: string): Promise<{ value: string; label: string }[]> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
     .from("profiles") as any)
     .select("id, email, first_name, last_name")
-    .eq("organization_id", organizationId)
+    .eq("player_id", playerId)
     .order("first_name")
   if (error) {
     console.error("[NewCollectionModal] Failed to fetch users:", error)
@@ -221,16 +221,16 @@ export function NewCollectionModal({
           setClientOptions(clients)
           if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
         } else {
-          const res = await fetch("/api/organizations", { cache: "no-store" })
+          const res = await fetch("/api/players", { cache: "no-store" })
           if (cancelled) return
           if (!res.ok) {
             setClientOptions([])
             return
           }
-          const data = await res.json().catch(() => null) as { organizations?: Array<{ id: string; name: string; type: string }> } | null
-          const clients = (data?.organizations ?? [])
-            .filter((org) => org.type === "client")
-            .map((org) => ({ id: org.id, name: org.name }))
+          const data = await res.json().catch(() => null) as { players?: Array<{ id: string; name: string; type: string }> } | null
+          const clients = (data?.players ?? [])
+            .filter((p) => p.type === "client")
+            .map((p) => ({ id: p.id, name: p.name }))
           if (cancelled) return
           setClientOptions(clients)
           if (clients.length && !clientEntityId) setClientEntityId(clients[0].id)
@@ -258,7 +258,7 @@ export function NewCollectionModal({
         if (isSupabaseConfigured()) {
           opts = await fetchUsersFromSupabase(clientEntityId)
         } else {
-          const res = await fetch(`/api/organizations/${clientEntityId}`)
+          const res = await fetch(`/api/players/${clientEntityId}`)
           if (!res.ok) {
             setManagerOptions([])
             return

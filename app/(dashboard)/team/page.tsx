@@ -81,15 +81,15 @@ export default function TeamPage() {
     checkSession()
   }, [router, authAdapter])
 
-  // Load team members when session and organization are ready (no userContext.loading — avoid refetch on tab return)
+  // Load team members when session and player are ready (no userContext.loading — avoid refetch on tab return)
   useEffect(() => {
-    const organizationId = userContext.user?.entityId
-    if (!session || !organizationId) return
+    const playerId = userContext.user?.entityId
+    if (!session || !playerId) return
 
     async function loadTeamMembers() {
       setLoadingTeam(true)
       try {
-        const res = await fetch(`/api/organizations/${organizationId}`)
+        const res = await fetch(`/api/players/${playerId}`)
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
           console.warn("Failed to load team members:", err.error || res.status)
@@ -157,9 +157,9 @@ export default function TeamPage() {
 
   // Handle new member submit
   const handleNewMemberSubmit = useCallback(async (userData: UserFormData) => {
-    const organizationId = userContext.user?.entityId
+    const playerId = userContext.user?.entityId
     const entity = userContext.entity
-    if (!organizationId || !entity) {
+    if (!playerId || !entity) {
       toast.error("Cannot add member", {
         description: "Entity information is not available.",
       })
@@ -171,7 +171,7 @@ export default function TeamPage() {
       // noba* (internal org): create profile in DB first so they appear in the table, then send invitation email
       const isNobaOrg = entity.name?.trim() === "noba*"
       if (isNobaOrg) {
-        const res = await fetch(`/api/organizations/${organizationId}/members`, {
+        const res = await fetch(`/api/players/${playerId}/members`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -188,7 +188,7 @@ export default function TeamPage() {
           throw new Error(data.error ?? "Failed to add team member")
         }
         const inviteResult = await createTeamMemberInvitation(
-          organizationId,
+          playerId,
           userData.email.trim(),
           userData.role as "admin" | "editor" | "viewer"
         )
@@ -227,8 +227,8 @@ export default function TeamPage() {
         return
       }
 
-      // Supabase: other orgs – create member via API (profiles table, same organization_id)
-      const res = await fetch(`/api/organizations/${organizationId}/members`, {
+      // Supabase: other players – create member via API (profiles table, same player_id)
+      const res = await fetch(`/api/players/${playerId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -280,11 +280,11 @@ export default function TeamPage() {
     }
   }, [userContext.user?.entityId, userContext.entity])
 
-  // Handle delete (remove member from organization). No in-function confirm; use delete confirm dialog when invoked from modal.
+  // Handle delete (remove member from player). No in-function confirm; use delete confirm dialog when invoked from modal.
   const handleDelete = useCallback(async (id: string) => {
-    const organizationId = userContext.user?.entityId
-    if (!organizationId) {
-      toast.error("Cannot remove member", { description: "Organization not available." })
+    const playerId = userContext.user?.entityId
+    if (!playerId) {
+      toast.error("Cannot remove member", { description: "Player not available." })
       return
     }
 
@@ -292,7 +292,7 @@ export default function TeamPage() {
     const name = member?.name || "this member"
 
     try {
-      const res = await fetch(`/api/organizations/${organizationId}/members/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/players/${playerId}/members/${id}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data.error ?? "Failed to remove member")
@@ -434,7 +434,7 @@ export default function TeamPage() {
           })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.error ?? "Failed to update user")
-        const listRes = await fetch(`/api/organizations/${userContext.user.entityId}`)
+        const listRes = await fetch(`/api/players/${userContext.user.entityId}`)
         if (listRes.ok) {
           const listData = await listRes.json()
           const users = listData.teamMembers ?? []

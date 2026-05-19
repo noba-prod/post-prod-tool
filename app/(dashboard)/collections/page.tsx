@@ -21,7 +21,7 @@ import {
   VIEW_STEP_IDS,
 } from "@/lib/domain/collections"
 import type { Collection } from "@/lib/domain/collections"
-import type { Organization } from "@/lib/supabase/database.types"
+import type { Player } from "@/lib/supabase/database.types"
 
 // ============================================================================
 // SUPABASE HELPERS
@@ -54,7 +54,7 @@ async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .eq("type", "client")
     .order("name")
@@ -62,14 +62,14 @@ async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[
     console.error("[CollectionsPage] Failed to fetch clients:", error)
     return []
   }
-  return (data ?? []).map((org: Pick<Organization, "id" | "name">) => ({ id: org.id, name: org.name }))
+  return (data ?? []).map((player: Pick<Player, "id" | "name">) => ({ id: player.id, name: player.name }))
 }
 
 async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: string }[]> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .in("type", ["photography_agency", "self_photographer"])
     .order("name")
@@ -77,7 +77,7 @@ async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: str
     console.error("[CollectionsPage] Failed to fetch photographers:", error)
     return []
   }
-  return (data ?? []).map((org: Pick<Organization, "id" | "name">) => ({ id: org.id, name: org.name }))
+  return (data ?? []).map((player: Pick<Player, "id" | "name">) => ({ id: player.id, name: player.name }))
 }
 
 async function fetchProfileNamesByUserIds(ids: string[]): Promise<Record<string, string>> {

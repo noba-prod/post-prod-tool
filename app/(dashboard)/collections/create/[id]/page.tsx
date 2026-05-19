@@ -43,7 +43,7 @@ import type {
   StructuralReconciliationResult,
 } from "@/lib/domain/collections"
 import { createClient } from "@/lib/supabase/client"
-import type { Organization } from "@/lib/supabase/database.types"
+import type { Player } from "@/lib/supabase/database.types"
 import { useUserContext } from "@/lib/contexts/user-context"
 
 // ============================================================================
@@ -59,38 +59,38 @@ function isSupabaseConfigured(): boolean {
   )
 }
 
-async function fetchOrganizationById(id: string): Promise<{ name: string } | null> {
+async function fetchPlayerById(id: string): Promise<{ name: string } | null> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .eq("id", id)
     .single()
   if (error) {
-    console.error("[CollectionCreatePage] Failed to fetch organization:", error)
+    console.error("[CollectionCreatePage] Failed to fetch player:", error)
     return null
   }
-  const org = data as Organization | null
-  return org ? { name: org.name } : null
+  const player = data as Player | null
+  return player ? { name: player.name } : null
 }
 
-async function fetchOrganizationsByIds(ids: string[]): Promise<Record<string, string>> {
+async function fetchPlayersByIds(ids: string[]): Promise<Record<string, string>> {
   if (ids.length === 0) return {}
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .in("id", ids)
   if (error) {
-    console.error("[CollectionCreatePage] Failed to fetch organizations:", error)
+    console.error("[CollectionCreatePage] Failed to fetch players:", error)
     return {}
   }
-  const orgs = (data ?? []) as Pick<Organization, "id" | "name">[]
+  const players = (data ?? []) as Pick<Player, "id" | "name">[]
   const map: Record<string, string> = {}
-  for (const org of orgs) {
-    map[org.id] = org.name
+  for (const player of players) {
+    map[player.id] = player.name
   }
   return map
 }
@@ -748,7 +748,7 @@ export default function CollectionCreatePage({
       const clientEntityId = draft.config.clientEntityId
       let clientName = "Client"
       if (clientEntityId) {
-        const orgRes = await fetch(`/api/organizations/${clientEntityId}`)
+        const orgRes = await fetch(`/api/players/${clientEntityId}`)
         if (orgRes.ok) {
           const orgData = await orgRes.json().catch(() => null) as { entity?: { name?: string } } | null
           if (orgData?.entity?.name) clientName = orgData.entity.name

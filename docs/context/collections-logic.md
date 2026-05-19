@@ -175,7 +175,7 @@ Canceled collections stay in the database for audit.
 
 - **Invited non-NOBA participants** (client, labs, photographer, agency, retouch studio — anyone who is a collection
   member but not NOBA internal): they **remain able to see** the collection on `/collections` with lifecycle status
-  **Canceled** (same card/badge behaviour as NOBA). Entity-facing lists (`GET /api/organizations/[id]`) include
+  **Canceled** (same card/badge behaviour as NOBA). Entity-facing lists (`GET /api/players/[id]`) include
   canceled collections for external org viewers too. **Draft** collections remain hidden from externals only (unchanged).
 - **`/collections/[id]`**: opens the Collection View Template (`collection-template.tsx`) in **read-only canceled**
   mode (Canceled badge, steps non-interactive). Informational layout matches what producers see for context;

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { mapOrganizationToEntity, mapProfilesToUsers } from "@/lib/utils/supabase-mappers"
+import { mapPlayerToEntity, mapProfilesToUsers } from "@/lib/utils/supabase-mappers"
 import { parsePhoneNumber } from "@/lib/utils/form-mappers"
-import type { Profile, Organization } from "@/lib/supabase/database.types"
+import type { Profile, Player } from "@/lib/supabase/database.types"
 
 type EntityUpdatePayload = {
   name?: string
@@ -40,11 +40,11 @@ async function getSessionProfile() {
 
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id,is_internal,organization_id,role")
+    .select("id,is_internal,player_id,role")
     .eq("id", sessionData.session.user.id)
     .maybeSingle()
 
-  const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
+  const profile = profileData as Pick<Profile, "id" | "is_internal" | "player_id" | "role"> | null
   return {
     session: sessionData.session,
     profile,
@@ -68,42 +68,42 @@ export async function GET(
     console.warn("Entities detail: no session, allowing dev/debug read")
   }
 
-  const organizationId = resolvedParams.id
+  const playerId = resolvedParams.id
   if (profile) {
     const isInternal = Boolean(profile.is_internal)
-    if (!isInternal && profile.organization_id !== organizationId) {
+    if (!isInternal && profile.player_id !== playerId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
   }
 
   const adminClient = createAdminClient()
-  const { data: organization, error: organizationError } = await adminClient
-    .from("organizations")
+  const { data: player, error: playerError } = await adminClient
+    .from("players")
     .select("*")
-    .eq("id", organizationId)
+    .eq("id", playerId)
     .maybeSingle()
 
-  if (organizationError) {
-    return NextResponse.json({ error: organizationError.message }, { status: 500 })
+  if (playerError) {
+    return NextResponse.json({ error: playerError.message }, { status: 500 })
   }
 
-  if (!organization) {
+  if (!player) {
     return NextResponse.json({ error: "Entity not found" }, { status: 404 })
   }
 
-  const org = organization as Organization
+  const org = player as Player
   const { data: profiles, error: profilesError } = await adminClient
     .from("profiles")
     .select("*")
-    .eq("organization_id", organizationId)
+    .eq("player_id", playerId)
 
   if (profilesError) {
     return NextResponse.json({ error: profilesError.message }, { status: 500 })
   }
 
-  const entity = mapOrganizationToEntity(org)
+  const entity = mapPlayerToEntity(org)
   const teamMembersBase = mapProfilesToUsers((profiles || []) as Profile[])
-  // For self-photographer: entity profile picture comes from admin user's profiles.image, not organizations
+  // For self-photographer: entity profile picture comes from admin user's profiles.image, not players
   const adminUsersForPic = teamMembersBase.filter((u) => u.role === "admin")
   const adminUserForPic = adminUsersForPic.length > 0 ? adminUsersForPic[0] : null
   if (org.type === "self_photographer" && adminUserForPic?.profilePictureUrl) {
@@ -113,7 +113,7 @@ export async function GET(
   const { data: pendingInvites } = await adminClient
     .from("invitations")
     .select("email")
-    .eq("organization_id", organizationId)
+    .eq("player_id", playerId)
     .eq("status", "pending")
   const pendingInviteEmails = new Set(
     (pendingInvites ?? []).map((r: { email: string }) => r.email.toLowerCase())
@@ -133,7 +133,7 @@ export async function GET(
     .from("collections")
     .select("id, name, status, client_id, reference, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
     .or(
-      `client_id.eq.${organizationId},photographer_id.eq.${organizationId},photo_lab_id.eq.${organizationId},retouch_studio_id.eq.${organizationId},handprint_lab_id.eq.${organizationId}`
+      `client_id.eq.${playerId},photographer_id.eq.${playerId},photo_lab_id.eq.${playerId},retouch_studio_id.eq.${playerId},handprint_lab_id.eq.${playerId}`
     )
     .order("updated_at", { ascending: false })
 
@@ -151,13 +151,13 @@ export async function GET(
 
   if (collectionsRows && collectionsRows.length > 0) {
     const clientIds = [...new Set((collectionsRows as { client_id: string }[]).map((c) => c.client_id))]
-    const { data: clientOrgs } = await adminClient
-      .from("organizations")
+    const { data: clientPlayers } = await adminClient
+      .from("players")
       .select("id, name")
       .in("id", clientIds)
     const clientNameById = new Map<string, string>()
-    for (const org of clientOrgs || []) {
-      clientNameById.set((org as { id: string; name: string }).id, (org as { id: string; name: string }).name)
+    for (const p of clientPlayers || []) {
+      clientNameById.set((p as { id: string; name: string }).id, (p as { id: string; name: string }).name)
     }
 
     const collectionIds = (collectionsRows as { id: string }[]).map((c) => c.id)
@@ -233,13 +233,13 @@ export async function PATCH(
     return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
   }
 
-  const organizationId = resolvedParams.id
+  const playerId = resolvedParams.id
   const isInternal = Boolean(profile.is_internal)
-  const canEditSameOrg =
-    profile.organization_id === organizationId &&
+  const canEditSamePlayer =
+    profile.player_id === playerId &&
     (profile.role === "admin" || profile.role === "editor")
 
-  if (!isInternal && !canEditSameOrg) {
+  if (!isInternal && !canEditSamePlayer) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -291,10 +291,10 @@ export async function PATCH(
   }
 
   const adminClient = createAdminClient()
-  const { data: organizationData, error: updateError } = await adminClient
-    .from("organizations")
+  const { data: playerData, error: updateError } = await adminClient
+    .from("players")
     .update(update as never)
-    .eq("id", organizationId)
+    .eq("id", playerId)
     .select("*")
     .maybeSingle()
 
@@ -302,16 +302,16 @@ export async function PATCH(
     return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
-  if (!organizationData) {
+  if (!playerData) {
     return NextResponse.json({ error: "Entity not found" }, { status: 404 })
   }
 
-  const updatedOrg = organizationData as Organization
-  if (updatedOrg.type === "self_photographer") {
+  const updatedPlayer = playerData as Player
+  if (updatedPlayer.type === "self_photographer") {
     const { data: adminProfileRow, error: adminProfileError } = await adminClient
       .from("profiles")
       .select("id,email")
-      .eq("organization_id", organizationId)
+      .eq("player_id", playerId)
       .eq("role", "admin")
       .maybeSingle()
 
@@ -387,7 +387,7 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json({ entity: mapOrganizationToEntity(updatedOrg) })
+  return NextResponse.json({ entity: mapPlayerToEntity(updatedPlayer) })
 }
 
 export async function DELETE(
@@ -400,21 +400,21 @@ export async function DELETE(
     return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
   }
 
-  const organizationId = resolvedParams.id
+  const playerId = resolvedParams.id
   const isInternal = Boolean(profile.is_internal)
-  const canEditSameOrg =
-    profile.organization_id === organizationId &&
+  const canEditSamePlayer =
+    profile.player_id === playerId &&
     (profile.role === "admin" || profile.role === "editor")
 
-  if (!isInternal && !canEditSameOrg) {
+  if (!isInternal && !canEditSamePlayer) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const adminClient = createAdminClient()
   const { error: deleteError } = await adminClient
-    .from("organizations")
+    .from("players")
     .delete()
-    .eq("id", organizationId)
+    .eq("id", playerId)
 
   if (deleteError) {
     if (deleteError.code === "23503") {

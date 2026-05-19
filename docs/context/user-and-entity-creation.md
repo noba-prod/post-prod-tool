@@ -40,7 +40,7 @@ A **User** represents an individual person interacting with the system.
 
 ## 2. Entity Types
 
-Entities represent organizations or individual actors in the ecosystem.
+Entities represent players (organizations or individual actors) in the ecosystem.
 
 ### Supported Entity Types
 
@@ -55,7 +55,7 @@ Entities represent organizations or individual actors in the ecosystem.
 
 ## 3. Self-Photographer
 
-A **Self-Photographer** represents a single individual who does not belong to a team or organization.
+A **Self-Photographer** represents a single individual who does not belong to a team or player.
 
 ### Creation Flow
 

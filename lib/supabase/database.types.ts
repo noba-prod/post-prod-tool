@@ -7,7 +7,7 @@
 // Enums
 // ============================================================================
 
-export type OrganizationType =
+export type PlayerType =
   | 'noba'
   | 'client'
   | 'photography_agency'
@@ -25,9 +25,9 @@ export type CollectionMemberRole =
   | 'noba'             // Noba* internal users who own or collaborate on the collection
   | 'photographer'     // Users from photography_agency or self_photographer
   | 'agency'           // Users from photography_agency
-  | 'photo_lab'        // Users from photo_lab org
-  | 'retouch_studio'   // Users from retouch_studio org
-  | 'handprint_lab'    // Users from handprint_lab org
+  | 'photo_lab'        // Users from photo_lab player
+  | 'retouch_studio'   // Users from retouch_studio player
+  | 'handprint_lab'    // Users from handprint_lab player
 
 // Notifications (migration 016)
 export type NotificationTriggerType = 'before' | 'after' | 'on' | 'if' | 'first_time'
@@ -84,9 +84,9 @@ export type CollectionEventType =
 // Table Types
 // ============================================================================
 
-export interface Organization {
+export interface Player {
   id: string
-  type: OrganizationType
+  type: PlayerType
   name: string
   email: string | null
   phone: string | null
@@ -101,9 +101,9 @@ export interface Organization {
   updated_at: string
 }
 
-export interface OrganizationInsert {
+export interface PlayerInsert {
   id?: string
-  type: OrganizationType
+  type: PlayerType
   name: string
   email?: string | null
   phone?: string | null
@@ -118,9 +118,9 @@ export interface OrganizationInsert {
   updated_at?: string
 }
 
-export interface OrganizationUpdate {
+export interface PlayerUpdate {
   id?: string
-  type?: OrganizationType
+  type?: PlayerType
   name?: string
   email?: string | null
   phone?: string | null
@@ -136,7 +136,7 @@ export interface OrganizationUpdate {
 
 export interface Profile {
   id: string
-  organization_id: string | null
+  player_id: string | null
   first_name: string | null
   last_name: string | null
   email: string
@@ -151,7 +151,7 @@ export interface Profile {
 
 export interface ProfileInsert {
   id: string
-  organization_id?: string | null
+  player_id?: string | null
   first_name?: string | null
   last_name?: string | null
   email: string
@@ -165,7 +165,7 @@ export interface ProfileInsert {
 }
 
 export interface ProfileUpdate {
-  organization_id?: string | null
+  player_id?: string | null
   first_name?: string | null
   last_name?: string | null
   email?: string
@@ -521,7 +521,7 @@ export interface CollectionMemberUpdate {
 
 export interface Invitation {
   id: string
-  organization_id: string
+  player_id: string
   email: string
   token: string
   role: UserRole
@@ -537,7 +537,7 @@ export interface Invitation {
 
 export interface InvitationInsert {
   id?: string
-  organization_id: string
+  player_id: string
   email: string
   token: string
   role?: UserRole
@@ -552,7 +552,7 @@ export interface InvitationInsert {
 }
 
 export interface InvitationUpdate {
-  organization_id?: string
+  player_id?: string
   email?: string
   token?: string
   role?: UserRole
@@ -775,10 +775,10 @@ export interface ScheduledNotificationTrackingUpdate {
 export interface Database {
   public: {
     Tables: {
-      organizations: {
-        Row: Organization
-        Insert: OrganizationInsert
-        Update: OrganizationUpdate
+      players: {
+        Row: Player
+        Insert: PlayerInsert
+        Update: PlayerUpdate
       }
       profiles: {
         Row: Profile
@@ -822,7 +822,7 @@ export interface Database {
       }
     }
     Enums: {
-      organization_type: OrganizationType
+      player_type: PlayerType
       user_role: UserRole
       collection_member_role: CollectionMemberRole
       notification_trigger_type: NotificationTriggerType
@@ -836,7 +836,7 @@ export interface Database {
         Args: Record<string, never>
         Returns: boolean
       }
-      get_user_organization_id: {
+      get_user_player_id: {
         Args: Record<string, never>
         Returns: string | null
       }
@@ -844,8 +844,8 @@ export interface Database {
         Args: Record<string, never>
         Returns: boolean
       }
-      user_belongs_to_org: {
-        Args: { org_id: string }
+      user_belongs_to_player: {
+        Args: { p_player_id: string }
         Returns: boolean
       }
       check_email_precheck: {
@@ -860,16 +860,16 @@ export interface Database {
 // Helper Types for Relationships
 // ============================================================================
 
-export interface OrganizationWithProfiles extends Organization {
+export interface PlayerWithProfiles extends Player {
   profiles: Profile[]
 }
 
 export interface CollectionWithRelations extends Collection {
-  client: Organization
-  photographer: Organization | null
-  photo_lab: Organization | null
-  retouch_studio: Organization | null
-  handprint_lab: Organization | null
+  client: Player
+  photographer: Player | null
+  photo_lab: Player | null
+  retouch_studio: Player | null
+  handprint_lab: Player | null
   members: (CollectionMember & { profile: Profile })[]
 }
 
@@ -878,8 +878,8 @@ export interface CollectionMemberWithProfile extends CollectionMember {
   profile: Profile
 }
 
-export interface ProfileWithOrganization extends Profile {
-  organization: Organization | null
+export interface ProfileWithPlayer extends Profile {
+  player: Player | null
 }
 
 // ============================================================================

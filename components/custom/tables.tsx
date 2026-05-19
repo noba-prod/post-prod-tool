@@ -318,7 +318,7 @@ function EntitiesTable({
             >
               <TableCell className="font-medium">
                 <Link
-                  href={`/organizations/${entity.id}`}
+                  href={`/players/${entity.id}`}
                   onClick={(e) => e.stopPropagation()}
                   className="hover:underline focus:outline-none focus:underline"
                 >

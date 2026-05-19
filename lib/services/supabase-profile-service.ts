@@ -1,42 +1,42 @@
 /**
  * Supabase Profile Service
- * 
- * Fetches user profile and organization data from Supabase
+ *
+ * Fetches user profile and player data from Supabase
  * to determine navigation variant and access permissions.
  */
 
 import { createClient } from "@/lib/supabase/client"
 import type { EntityType, User, Entity, Role } from "@/lib/types"
-import type { OrganizationType, Profile, Organization } from "@/lib/supabase/database.types"
+import type { PlayerType, Profile, Player } from "@/lib/supabase/database.types"
 
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
 /**
- * Legacy noba* organization ID fallback.
- * Kept for defensive defaults when a profile has no organization.
+ * Legacy noba* player ID fallback.
+ * Kept for defensive defaults when a profile has no player.
  */
-export const NOBA_ORGANIZATION_ID = "7abddcb4-52d3-4f96-b399-ff094c01ec53"
+export const NOBA_PLAYER_ID = "7abddcb4-52d3-4f96-b399-ff094c01ec53"
 
 // =============================================================================
 // TYPE MAPPING
 // =============================================================================
 
 /**
- * Maps database OrganizationType to frontend EntityType.
- * 
+ * Maps database PlayerType to frontend EntityType.
+ *
  * Database types → Frontend types:
  * - noba → noba
  * - client → client
  * - photography_agency → agency
  * - self_photographer → self-photographer
  * - photo_lab → photo-lab
- * - edition_studio → edition-studio
+ * - retouch_studio → edition-studio
  * - handprint_lab → hand-print-lab
  */
-export function mapOrganizationTypeToEntityType(orgType: OrganizationType): EntityType {
-  const mapping: Record<OrganizationType, EntityType> = {
+export function mapPlayerTypeToEntityType(playerType: PlayerType): EntityType {
+  const mapping: Record<PlayerType, EntityType> = {
     "noba": "noba",
     "client": "client",
     "photography_agency": "agency",
@@ -45,48 +45,48 @@ export function mapOrganizationTypeToEntityType(orgType: OrganizationType): Enti
     "retouch_studio": "edition-studio",
     "handprint_lab": "hand-print-lab",
   }
-  return mapping[orgType]
+  return mapping[playerType]
 }
 
 /**
- * Determines the entity type for a user based on their profile and organization.
- * 
+ * Determines the entity type for a user based on their profile and player.
+ *
  * Rules (as specified):
- * 1. If is_internal=true AND organization.type='noba' → "noba"
- * 2. If is_internal=true (backup rule for internal staff without specific org) → "noba"
- * 3. If organization.type = 'self_photographer' → "self-photographer"
- * 4. Otherwise → map organization type to entity type (collaborator variant)
+ * 1. If is_internal=true AND player.type='noba' → "noba"
+ * 2. If is_internal=true (backup rule for internal staff without specific player) → "noba"
+ * 3. If player.type = 'self_photographer' → "self-photographer"
+ * 4. Otherwise → map player type to entity type (collaborator variant)
  */
 export function determineEntityType(
   profile: Profile,
-  organization: Organization | null
+  player: Player | null
 ): EntityType {
-  // Rule 1: Full noba check (is_internal + noba org type)
+  // Rule 1: Full noba check (is_internal + noba player type)
   if (
-    profile.is_internal && 
-    organization?.type === "noba"
+    profile.is_internal &&
+    player?.type === "noba"
   ) {
     return "noba"
   }
 
-  // Rule 2: Internal users without specific org are still noba variant
-  // This handles cases where internal staff might not have an org assigned
+  // Rule 2: Internal users without specific player are still noba variant
+  // This handles cases where internal staff might not have a player assigned
   if (profile.is_internal) {
     console.log(`[SupabaseProfileService] User ${profile.id} is internal, treating as noba`)
     return "noba"
   }
 
-  // Rule 3 & 4: Check organization type
-  if (organization) {
+  // Rule 3 & 4: Check player type
+  if (player) {
     // self_photographer → photographer variant
-    // noba org type (but not is_internal) → still noba (edge case)
+    // noba player type (but not is_internal) → still noba (edge case)
     // all others → collaborator variant
-    return mapOrganizationTypeToEntityType(organization.type)
+    return mapPlayerTypeToEntityType(player.type)
   }
 
-  // Fallback: if no organization and not internal, default to client
+  // Fallback: if no player and not internal, default to client
   // This shouldn't happen in normal usage
-  console.warn(`[SupabaseProfileService] User ${profile.id} has no organization and is not internal`)
+  console.warn(`[SupabaseProfileService] User ${profile.id} has no player and is not internal`)
   return "client"
 }
 
@@ -97,13 +97,13 @@ export function determineEntityType(
 export interface SupabaseUserData {
   user: User
   entity: Entity
-  /** True when profile.is_internal === true and organization.type === "noba" (can create collections). */
+  /** True when profile.is_internal === true and player.type === "noba" (can create collections). */
   isNobaProducerUser: boolean
 }
 
 /**
- * Fetches user profile with organization data from Supabase.
- * 
+ * Fetches user profile with player data from Supabase.
+ *
  * @param userId - The Supabase auth user ID
  * @returns User and Entity data, or null if not found
  */
@@ -111,12 +111,12 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
   const supabase = createClient()
 
   try {
-    // Fetch profile with organization in a single query
+    // Fetch profile with player in a single query
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(`
         id,
-        organization_id,
+        player_id,
         first_name,
         last_name,
         email,
@@ -139,25 +139,25 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
     // Type assertion: Supabase .single() return type can be inferred as never when using select()
     const p = profile as Profile
 
-    // Fetch organization if user has one
-    let organization: Organization | null = null
-    if (p.organization_id) {
-      const { data: orgData, error: orgError } = await supabase
-        .from("organizations")
+    // Fetch player if user has one
+    let player: Player | null = null
+    if (p.player_id) {
+      const { data: playerData, error: playerError } = await supabase
+        .from("players")
         .select("*")
-        .eq("id", p.organization_id)
+        .eq("id", p.player_id)
         .single()
 
-      if (orgError) {
-        console.error("[SupabaseProfileService] Failed to fetch organization:", orgError)
-        // Continue without organization data
-      } else if (orgData) {
-        organization = orgData as Organization
+      if (playerError) {
+        console.error("[SupabaseProfileService] Failed to fetch player:", playerError)
+        // Continue without player data
+      } else if (playerData) {
+        player = playerData as Player
       }
     }
 
-    // Determine entity type based on profile and organization
-    const entityType = determineEntityType(p, organization)
+    // Determine entity type based on profile and player
+    const entityType = determineEntityType(p, player)
 
     // Build User object
     const user: User = {
@@ -166,43 +166,43 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
       lastName: p.last_name || undefined,
       email: p.email,
       phoneNumber: p.phone || "",
-      entityId: p.organization_id || NOBA_ORGANIZATION_ID, // Use noba org for internal users
+      entityId: p.player_id || NOBA_PLAYER_ID, // Use noba player for internal users
       role: (p.role as Role) || "viewer",
       profilePictureUrl: p.image || undefined,
       notes: undefined,
     }
 
     // Build Entity object
-    // For self-photographer: use profile.image (profiles) as source of truth, not organization.profile_picture_url
+    // For self-photographer: use profile.image (profiles) as source of truth, not player.profile_picture_url
     const entityProfilePictureUrl =
       entityType === "self-photographer"
         ? (p.image || undefined)
-        : (organization?.profile_picture_url || undefined)
+        : (player?.profile_picture_url || undefined)
     const entity: Entity = {
-      id: organization?.id || NOBA_ORGANIZATION_ID,
+      id: player?.id || NOBA_PLAYER_ID,
       type: entityType,
-      name: organization?.name || "noba*",
-      email: organization?.email || undefined,
-      phoneNumber: organization?.phone || undefined,
+      name: player?.name || "noba*",
+      email: player?.email || undefined,
+      phoneNumber: player?.phone || undefined,
       profilePictureUrl: entityProfilePictureUrl,
-      notes: organization?.notes || undefined,
-      location: organization?.street_address ? {
-        streetAddress: organization.street_address,
-        zipCode: organization.zip_code || "",
-        city: organization.city || "",
-        country: organization.country || "",
+      notes: player?.notes || undefined,
+      location: player?.street_address ? {
+        streetAddress: player.street_address,
+        zipCode: player.zip_code || "",
+        city: player.city || "",
+        country: player.country || "",
       } : undefined,
-      updatedAt: organization?.updated_at ? new Date(organization.updated_at) : undefined,
+      updatedAt: player?.updated_at ? new Date(player.updated_at) : undefined,
     }
 
     const isNobaProducerUser =
-      p.is_internal === true && organization?.type === "noba"
+      p.is_internal === true && player?.type === "noba"
 
     console.log(`[SupabaseProfileService] Loaded user data:`, {
       userId: user.id,
       email: user.email,
       isInternal: p.is_internal,
-      organizationId: p.organization_id,
+      playerId: p.player_id,
       isNobaProducerUser,
       entityType,
       entityName: entity.name,
@@ -217,7 +217,7 @@ export async function fetchSupabaseUserData(userId: string): Promise<SupabaseUse
 
 /**
  * Determines the navigation variant based on entity type.
- * 
+ *
  * Rules:
  * - "noba" entity type → "noba" variant
  * - "self-photographer" entity type → "photographer" variant

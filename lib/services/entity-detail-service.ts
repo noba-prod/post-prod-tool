@@ -73,7 +73,7 @@ export class EntityDetailService {
    * ```
    */
   async getEntityWithTeamMembers(entityId: string): Promise<EntityDetailResult> {
-    const response = await fetch(`/api/organizations/${entityId}`, {
+    const response = await fetch(`/api/players/${entityId}`, {
       method: "GET",
       cache: "no-store",
     })

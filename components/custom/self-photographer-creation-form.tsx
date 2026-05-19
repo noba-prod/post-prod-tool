@@ -125,7 +125,7 @@ export function SelfPhotographerCreationForm({
       setIsCheckingName(true)
       try {
         const searchParams = new URLSearchParams({ name: fullName })
-        const response = await fetch(`/api/organizations/check-name?${searchParams.toString()}`, {
+        const response = await fetch(`/api/players/check-name?${searchParams.toString()}`, {
           method: "GET",
           signal: controller.signal,
           cache: "no-store",

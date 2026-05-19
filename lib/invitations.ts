@@ -74,12 +74,12 @@ async function buildInvitationContext(
 
   let clientName: string | undefined
   if (collection.client_id) {
-    const { data: org } = await supabase
-      .from("organizations")
+    const { data: player } = await supabase
+      .from("players")
       .select("name")
       .eq("id", collection.client_id)
       .maybeSingle()
-    clientName = (org as { name?: string | null } | null)?.name?.trim()
+    clientName = (player as { name?: string | null } | null)?.name?.trim()
   }
 
   let creatorName: string | undefined
@@ -118,25 +118,25 @@ async function buildInvitationContext(
 }
 
 export interface CreateInvitationParams {
-  /** Organization id (e.g. collection's client_id) for RLS and context */
-  organizationId: string
+  /** Player id (e.g. collection's client_id) for RLS and context */
+  playerId: string
   email: string
   /** When set, invitation is for this collection; on accept user is added to collection_members */
   collectionId?: string
   /** Role to assign in collection_members when invitation is accepted (required when collectionId is set) */
   invitedCollectionRole?: CollectionMemberRole
-  /** Role to assign in profiles when invitation is org-only (platform/team invite). Default viewer. */
+  /** Role to assign in profiles when invitation is player-only (platform/team invite). Default viewer. */
   role?: UserRole
   expiresInDays?: number
 }
 
 /**
  * Create a single invitation and store it in Supabase invitations table.
- * Use organizationId for org/RLS context; use collectionId + invitedCollectionRole for collection-scoped invites.
+ * Use playerId for player/RLS context; use collectionId + invitedCollectionRole for collection-scoped invites.
  */
 export async function createInvitation(params: CreateInvitationParams) {
   const {
-    organizationId,
+    playerId,
     email,
     collectionId,
     invitedCollectionRole,
@@ -153,7 +153,7 @@ export async function createInvitation(params: CreateInvitationParams) {
 
   try {
     const row: Record<string, unknown> = {
-      organization_id: organizationId,
+      player_id: playerId,
       email: email.toLowerCase().trim(),
       token,
       status: "pending",
@@ -242,7 +242,7 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
       }
     }
 
-    const organizationId = collection.client_id
+    const playerId = collection.client_id
     const invitationContext = await buildInvitationContext(supabase, collection)
     // Republish after a structural workflow change → reword the email instead
     // of pitching it as a brand-new invitation. The activation token plumbing
@@ -297,7 +297,7 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
       if (existing.data) continue
 
       const result = await createInvitation({
-        organizationId,
+        playerId,
         email,
         collectionId,
         invitedCollectionRole: member.role,
@@ -359,7 +359,7 @@ export async function createInvitationsForNewMembers(
       }
     }
 
-    const organizationId = collection.client_id
+    const playerId = collection.client_id
     if (members.length === 0) {
       return { success: true, created: 0, sent: 0 }
     }
@@ -400,7 +400,7 @@ export async function createInvitationsForNewMembers(
       if (existing.data) continue
 
       const result = await createInvitation({
-        organizationId,
+        playerId,
         email,
         collectionId,
         invitedCollectionRole: member.role,

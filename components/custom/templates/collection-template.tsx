@@ -175,7 +175,7 @@ import { Label } from "@/components/ui/label"
 import { mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType } from "@/lib/types"
-import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
+import { updatePlayerFromDraft } from "@/app/actions/entity-creation"
 import { InformativeToast } from "@/components/custom/informative-toast"
 import { ValidateLinksDialog, type ValidateLinksDialogItem } from "@/components/custom/validate-links-dialog"
 import type { DropoffAdditionalShipment } from "@/lib/domain/collections"
@@ -985,7 +985,7 @@ export function CollectionTemplate({
     setIsUpdatingCompany(true)
     try {
       const draft = mapFormToEntityDraft(companyFormData)
-      await updateOrganizationFromDraft(userContext.entity.id, draft)
+      await updatePlayerFromDraft(userContext.entity.id, draft)
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("session-changed"))
       }
