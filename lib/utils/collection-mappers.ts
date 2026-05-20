@@ -340,6 +340,10 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       })
     }
   }
+  const hasHandprint = !!row.low_res_to_high_res_hand_print
+  const hasEditionStudio = !!row.photographer_request_edition
+  const handprintIsDifferentLab = row.handprint_different_from_original_lab !== false
+
   if (hasAgency) {
     const agencyUserIdsArr = agencyMembers.map((m) => m.user_id)
     if (row.photographer_id || agencyMembers.length > 0) {
@@ -351,7 +355,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       })
     }
   }
-  if (row.photo_lab_id) {
+  if (hasHandprint && row.photo_lab_id) {
     const labMembers = byRole.get("photo_lab") ?? []
     const userIds = labMembers.map((m) => m.user_id)
     participants.push({
@@ -361,7 +365,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       editPermissionByUserId: editPermissionFromMembers(labMembers, "photo_lab", storedLegacy),
     })
   }
-  if (row.retouch_studio_id) {
+  if (hasEditionStudio && row.retouch_studio_id) {
     const editorMembers = byRole.get("retouch_studio") ?? []
     const userIds = editorMembers.map((m) => m.user_id)
     participants.push({
@@ -371,7 +375,7 @@ function buildParticipants(row: DbCollection, members: CollectionMember[]): Coll
       editPermissionByUserId: editPermissionFromMembers(editorMembers, "retouch_studio", storedLegacy),
     })
   }
-  if (row.handprint_lab_id) {
+  if (hasHandprint && handprintIsDifferentLab && row.handprint_lab_id) {
     const printMembers = byRole.get("handprint_lab") ?? []
     const userIds = printMembers.map((m) => m.user_id)
     participants.push({

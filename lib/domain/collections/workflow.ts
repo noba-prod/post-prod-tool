@@ -7,8 +7,9 @@
 import type { Role } from "@/lib/types"
 import type {
   CollectionConfig,
-  CreationBlockId,
   CollectionDraft,
+  CollectionParticipant,
+  CreationBlockId,
   CreationTemplateStep,
   ParticipantRole,
   StepId,
@@ -359,6 +360,26 @@ export function getRequiredParticipantRoles(config: CollectionConfig): Participa
   if (config.hasHandprint && config.handprintIsDifferentLab) roles.push("handprint_lab")
   if (config.hasEditionStudio) roles.push("retouch_studio")
   return roles
+}
+
+/** True when `role` is allowed for the collection's current structural config. */
+export function isParticipantRoleRequired(
+  role: ParticipantRole,
+  config: CollectionConfig
+): boolean {
+  return getRequiredParticipantRoles(config).includes(role)
+}
+
+/**
+ * Drop participant rows for roles that are no longer required (e.g. retouch_studio
+ * after edition is disabled). Used when config changes so DB FKs and members stay in sync.
+ */
+export function stripOrphanedParticipants(
+  participants: CollectionParticipant[],
+  config: CollectionConfig
+): CollectionParticipant[] {
+  const requiredRoles = new Set(getRequiredParticipantRoles(config))
+  return participants.filter((p) => requiredRoles.has(p.role))
 }
 
 // =============================================================================

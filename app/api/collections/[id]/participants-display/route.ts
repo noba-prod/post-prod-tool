@@ -9,6 +9,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { SupabaseCollectionsRepository } from "@/lib/infra/collections/supabase-collections.repository"
+import { getRequiredParticipantRoles } from "@/lib/domain/collections/workflow"
 import type { Profile, Player } from "@/lib/supabase/database.types"
 
 type ParticipantsModalIndividual = {
@@ -93,6 +94,7 @@ export async function GET(
     }
 
     const config = collection.config
+    const requiredRoles = new Set(getRequiredParticipantRoles(config))
     const participants = collection.participants
     const producer = participants.find((p) => p.role === "producer")
     const nobaUserIds = config.nobaUserIds ?? producer?.userIds ?? []
@@ -127,7 +129,7 @@ export async function GET(
         memberRoles: ["agency"],
       })
     }
-    if (labParticipant?.entityId) {
+    if (requiredRoles.has("photo_lab") && labParticipant?.entityId) {
       entityDisplayTargets.push({
         entityId: labParticipant.entityId,
         entityTypeLabel: isSharedPhotoAndHandprintLab
@@ -138,14 +140,18 @@ export async function GET(
           : ["photo_lab"],
       })
     }
-    if (!isSharedPhotoAndHandprintLab && handprintLabParticipant?.entityId) {
+    if (
+      requiredRoles.has("handprint_lab") &&
+      !isSharedPhotoAndHandprintLab &&
+      handprintLabParticipant?.entityId
+    ) {
       entityDisplayTargets.push({
         entityId: handprintLabParticipant.entityId,
         entityTypeLabel: "Hand Print Lab",
         memberRoles: ["handprint_lab"],
       })
     }
-    if (retouchStudioParticipant?.entityId) {
+    if (requiredRoles.has("retouch_studio") && retouchStudioParticipant?.entityId) {
       entityDisplayTargets.push({
         entityId: retouchStudioParticipant.entityId,
         entityTypeLabel: "Retouch studio",

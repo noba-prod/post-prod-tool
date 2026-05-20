@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { SupabaseCollectionsRepository } from "@/lib/infra/collections/supabase-collections.repository"
+import { getRequiredParticipantRoles } from "@/lib/domain/collections/workflow"
+import type { ParticipantRole } from "@/lib/domain/collections"
 
 type DbRole =
   | "client"
@@ -10,6 +12,15 @@ type DbRole =
   | "photo_lab"
   | "retouch_studio"
   | "handprint_lab"
+
+const DOMAIN_ROLE_TO_PUBLISH_DB: Partial<Record<ParticipantRole, DbRole>> = {
+  client: "client",
+  photographer: "photographer",
+  agency: "agency",
+  photo_lab: "photo_lab",
+  retouch_studio: "retouch_studio",
+  handprint_lab: "handprint_lab",
+}
 
 function toHandle(name: string): string {
   return `@${name.trim().toLowerCase().replace(/\s+/g, "")}`
@@ -39,15 +50,17 @@ export async function GET(
     }
 
     const admin = createAdminClient()
-    const { data: collectionRow, error: collectionError } = await admin
-      .from("collections")
-      .select("id, client_id")
-      .eq("id", id)
-      .maybeSingle()
-
-    if (collectionError || !collectionRow) {
+    const adminRepo = new SupabaseCollectionsRepository(admin)
+    const collection = await adminRepo.getById(id)
+    if (!collection) {
       return NextResponse.json({ error: "Collection not found" }, { status: 404 })
     }
+
+    const requiredDbRoles = new Set(
+      getRequiredParticipantRoles(collection.config)
+        .map((role) => DOMAIN_ROLE_TO_PUBLISH_DB[role])
+        .filter((role): role is DbRole => Boolean(role))
+    )
 
     const { data: members, error: membersError } = await admin
       .from("collection_members")
@@ -83,6 +96,7 @@ export async function GET(
       const role = (row as { role?: string }).role as DbRole | undefined
       const userId = (row as { user_id?: string }).user_id
       if (!role || !(role in memberCountByRole)) continue
+      if (!requiredDbRoles.has(role)) continue
       memberCountByRole[role] += 1
       if (userId) userIdsByRole[role].push(userId)
     }
@@ -112,7 +126,7 @@ export async function GET(
       playerIds.add(playerId)
     }
 
-    const clientPlayerId = (collectionRow as { client_id?: string | null }).client_id ?? null
+    const clientPlayerId = collection.config.clientEntityId?.trim() || null
     if (clientPlayerId) playerIds.add(clientPlayerId)
 
     const playerNameById = new Map<string, string>()

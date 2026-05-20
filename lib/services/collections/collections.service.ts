@@ -21,6 +21,7 @@ import {
   isValidSubstatusTransition,
   getInitialSubstatus,
   getStepOwner,
+  stripOrphanedParticipants,
 } from "@/lib/domain/collections/workflow"
 import {
   isStructuralChangeBlockedByStatus,
@@ -245,11 +246,26 @@ export class CollectionsService {
     id: string,
     patch: import("@/lib/domain/collections").CollectionUpdatePatch
   ): Promise<Collection | null> {
+    let effectivePatch = patch
+    if (patch.config) {
+      const current = await this.repository.getById(id)
+      if (current) {
+        const mergedConfig = { ...current.config, ...patch.config }
+        const baseParticipants = patch.participants ?? current.participants
+        const cleanedParticipants = stripOrphanedParticipants(
+          baseParticipants,
+          mergedConfig
+        )
+        if (cleanedParticipants.length !== baseParticipants.length) {
+          effectivePatch = { ...patch, participants: cleanedParticipants }
+        }
+      }
+    }
     const wasAlreadyInProgress =
-      patch.status === "in_progress"
+      effectivePatch.status === "in_progress"
         ? (await this.repository.getById(id))?.status === "in_progress"
         : false
-    const updated = await this.repository.update(id, patch)
+    const updated = await this.repository.update(id, effectivePatch)
     if (
       updated &&
       patch.status === "in_progress" &&
@@ -685,6 +701,13 @@ export class CollectionsService {
       patch.substatus = null
       // Owner badge resets — the new draft has no active step.
       patch.currentOwners = []
+    }
+
+    if (reconciliation.participants.orphanedRoles.length > 0) {
+      patch.participants = stripOrphanedParticipants(
+        current.participants ?? [],
+        newConfig
+      )
     }
 
     const updated = await this.repository.update(collectionId, patch)

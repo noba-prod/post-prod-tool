@@ -33,6 +33,7 @@ import {
   getChronologyConstraints,
   derivePublishedStatus,
   canUseNobaSensitiveCollectionSidebarActions,
+  getRequiredParticipantRoles,
 } from "@/lib/domain/collections/workflow"
 import { diffStructuralConfigs } from "@/lib/domain/collections/structural-workflow-change"
 import type {
@@ -330,7 +331,10 @@ export default function CollectionCreatePage({
       setParticipantSummaries([])
       return
     }
-    const relevant = draft.participants.filter((p) => p.role !== "producer")
+    const requiredRoles = new Set(getRequiredParticipantRoles(draft.config))
+    const relevant = draft.participants.filter(
+      (p) => p.role !== "producer" && requiredRoles.has(p.role)
+    )
     // When Handprint lab = Photo lab (handprintIsDifferentLab false), don't show Hand Print Lab
     // as a separate row — Photo Lab already covers both.
     const filtered =
@@ -386,7 +390,15 @@ export default function CollectionCreatePage({
     return () => {
       cancelled = true
     }
-  }, [draft?.id, draft?.participants, draft?.config?.clientEntityId, draft?.config?.handprintIsDifferentLab])
+  }, [
+    draft?.id,
+    draft?.participants,
+    draft?.config?.clientEntityId,
+    draft?.config?.handprintIsDifferentLab,
+    draft?.config?.hasEditionStudio,
+    draft?.config?.hasHandprint,
+    draft?.config?.hasAgency,
+  ])
 
   const steps = React.useMemo(() => {
     if (!draft?.config) return []

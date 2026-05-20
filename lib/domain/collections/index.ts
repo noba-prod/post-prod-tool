@@ -40,6 +40,8 @@ export {
   getInitialSubstatus,
   getNextSubstatus,
   getRequiredParticipantRoles,
+  isParticipantRoleRequired,
+  stripOrphanedParticipants,
   getStepOwner,
   isCreationStepComplete,
   isCreationStepContentComplete,
