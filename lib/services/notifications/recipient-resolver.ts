@@ -2,7 +2,7 @@
  * Recipient Resolver
  *
  * Resolves notification recipient types (Producer, Lab, Client, etc.) to actual users
- * based on their collection membership and organization assignments.
+ * based on their collection membership and player assignments.
  *
  * ## Participant mirroring (recipient expansion)
  *
@@ -12,7 +12,8 @@
  * duplicating every template row — that expansion happens **here**, not in triggers.
  *
  * Existing pattern: `handprint_lab` recipients also include `photo_lab` members when
- * both org IDs match (shared lab).
+ * the photo lab owns high-res (`handprint_different_from_original_lab = false`) or
+ * when both org IDs match (shared lab).
  *
  * **Photographer → Agency:** When `collections.photographer_collaborates_with_agency`
  * is true and the template targets `photographer`, members with role `agency` are
@@ -28,6 +29,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/database.types"
 import type { RecipientType } from "./notification-templates"
+import { memberRolesForHandprintLabBucket } from "./handprint-lab-member-roles"
 
 /** Subset of `collections` row used here; explicit Pick avoids Supabase `.select()` inferring `never`. */
 type CollectionAssignmentFields = Pick<
@@ -38,6 +40,7 @@ type CollectionAssignmentFields = Pick<
   | "photo_lab_id"
   | "retouch_studio_id"
   | "handprint_lab_id"
+  | "handprint_different_from_original_lab"
   | "photographer_collaborates_with_agency"
 >
 
@@ -73,7 +76,7 @@ export async function resolveRecipients(
   const { data: rawCollection, error: collectionError } = await supabase
     .from("collections")
     .select(
-      "id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id, photographer_collaborates_with_agency"
+      "id, client_id, photographer_id, photo_lab_id, retouch_studio_id, handprint_lab_id, handprint_different_from_original_lab, photographer_collaborates_with_agency"
     )
     .eq("id", collectionId)
     .single()
@@ -89,10 +92,6 @@ export async function resolveRecipients(
 
   // Collect member roles and org IDs to query
   const memberRoles: string[] = []
-  const sameHandprintAndPhotoLab =
-    Boolean(collectionData.handprint_lab_id) &&
-    Boolean(collectionData.photo_lab_id) &&
-    collectionData.handprint_lab_id === collectionData.photo_lab_id
 
   for (const type of recipientTypes) {
     switch (type) {
@@ -124,18 +123,16 @@ export async function resolveRecipients(
         memberRoles.push("client")
         break
       
-      case "handprint_lab":
-        if (collectionData.handprint_lab_id) {
-          memberRoles.push("handprint_lab")
-          // When handprint uses the same organization as photo lab, notifications
-          // must reach photo_lab members too (they are the effective owners in UI).
-          if (sameHandprintAndPhotoLab) {
-            memberRoles.push("photo_lab")
-          }
-        } else if (collectionData.photo_lab_id) {
-          memberRoles.push("photo_lab")
-        }
+      case "handprint_lab": {
+        const roles = memberRolesForHandprintLabBucket({
+          photo_lab_id: collectionData.photo_lab_id,
+          handprint_lab_id: collectionData.handprint_lab_id,
+          handprint_different_from_original_lab:
+            collectionData.handprint_different_from_original_lab,
+        })
+        memberRoles.push(...roles)
         break
+      }
       
       case "retouch_studio":
         memberRoles.push("retouch_studio")
@@ -233,26 +230,26 @@ export async function getCollectionContext(
     shooting_country: string | null
   }
 
-  const orgIds = [col.client_id, col.photographer_id, col.photo_lab_id, col.retouch_studio_id, col.handprint_lab_id].filter(Boolean) as string[]
-  const orgMap = new Map<string, string>()
-  if (orgIds.length > 0) {
-    const { data: orgs } = await supabase
-      .from("organizations")
+  const playerIds = [col.client_id, col.photographer_id, col.photo_lab_id, col.retouch_studio_id, col.handprint_lab_id].filter(Boolean) as string[]
+  const playerMap = new Map<string, string>()
+  if (playerIds.length > 0) {
+    const { data: players } = await supabase
+      .from("players")
       .select("id, name")
-      .in("id", orgIds)
-    for (const org of (orgs || []) as { id: string; name: string }[]) {
-      orgMap.set(org.id, org.name)
+      .in("id", playerIds)
+    for (const player of (players || []) as { id: string; name: string }[]) {
+      playerMap.set(player.id, player.name)
     }
   }
 
   return {
     name: col.name,
     reference: col.reference,
-    clientName: col.client_id ? (orgMap.get(col.client_id) ?? null) : null,
-    photographerName: col.photographer_id ? (orgMap.get(col.photographer_id) ?? null) : null,
-    photoLabName: col.photo_lab_id ? (orgMap.get(col.photo_lab_id) ?? null) : null,
-    retouchStudioName: col.retouch_studio_id ? (orgMap.get(col.retouch_studio_id) ?? null) : null,
-    handprintLabName: col.handprint_lab_id ? (orgMap.get(col.handprint_lab_id) ?? null) : null,
+    clientName: col.client_id ? (playerMap.get(col.client_id) ?? null) : null,
+    photographerName: col.photographer_id ? (playerMap.get(col.photographer_id) ?? null) : null,
+    photoLabName: col.photo_lab_id ? (playerMap.get(col.photo_lab_id) ?? null) : null,
+    retouchStudioName: col.retouch_studio_id ? (playerMap.get(col.retouch_studio_id) ?? null) : null,
+    handprintLabName: col.handprint_lab_id ? (playerMap.get(col.handprint_lab_id) ?? null) : null,
     shootingStartDate: col.shooting_start_date,
     shootingEndDate: col.shooting_end_date,
     shootingCity: col.shooting_city,

@@ -459,7 +459,7 @@ export function UserCreationForm({
               <Field>
                 <FieldContent>
                   <OptionPicker
-                    label={formData.entity ? entityTypeToLabel(formData.entity.type) : "Organization"}
+                    label={formData.entity ? entityTypeToLabel(formData.entity.type) : "Player"}
                     value={formData.entity?.name ?? ""}
                     onValueChange={() => {}}
                     placeholder="Entity will be selected from context"

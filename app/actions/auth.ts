@@ -219,28 +219,28 @@ export async function activateInvitation(token: string) {
       console.error("Update invitation error:", updateError)
     }
 
-    // Org-only (platform/team) invite: resolve organization type for is_internal
+    // Player-only (platform/team) invite: resolve player type for is_internal
     const collectionId = invitation.collection_id
     let isInternal = false
-    const orgId = invitation.organization_id
+    const playerId = invitation.player_id
     const invitationRole = invitation.role ?? "viewer"
-    if (!collectionId && orgId) {
-      const { data: org } = await adminSupabase
-        .from("organizations")
+    if (!collectionId && playerId) {
+      const { data: player } = await adminSupabase
+        .from("players")
         .select("type")
-        .eq("id", orgId)
+        .eq("id", playerId)
         .maybeSingle()
-      isInternal = (org as { type?: string } | null)?.type === "noba"
+      isInternal = (player as { type?: string } | null)?.type === "noba"
     }
 
-    // Ensure profile exists; for org-only invite set organization_id/role.
+    // Ensure profile exists; for player-only invite set player_id/role.
     // Never write is_internal=false here: internal users must keep that flag forever.
     const profilePayload: Record<string, unknown> = {
       id: userId,
       email: invitation.email,
     }
-    if (!collectionId && orgId) {
-      profilePayload.organization_id = orgId
+    if (!collectionId && playerId) {
+      profilePayload.player_id = playerId
       profilePayload.role = invitationRole
       if (isInternal) {
         profilePayload.is_internal = true

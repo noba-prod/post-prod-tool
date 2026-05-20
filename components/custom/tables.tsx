@@ -41,9 +41,13 @@ interface Entity {
   id: string
   name: string
   type: EntityType
+  /** Domain entity type (e.g. self-photographer, client) for row behavior */
+  rawType?: string
   admin: string
   /** Admin user ID (first admin if multiple, null if none) */
   adminUserId?: string | null
+  /** Admin user email */
+  adminEmail?: string
   teamMembers: number
   collections: number
 }
@@ -83,6 +87,8 @@ interface TablesProps {
   onDelete?: (id: string) => void
   /** Callback al ver detalles de un elemento */
   onViewDetails?: (id: string) => void
+  /** Entities table: row click with full row (e.g. self-photographer → edit user modal) */
+  onEntityRowClick?: (entity: Entity) => void
   /** Callback al hacer click en fila de colección (id, status). Draft → setup, published → view */
   onCollectionRowClick?: (id: string, status: CollectionStatus) => void
   /** Callback al abrir configuración */
@@ -111,11 +117,11 @@ const sampleTeamMembers: TeamMember[] = [
 ]
 
 const sampleEntities: Entity[] = [
-  { id: "1", name: "Zara", type: "Client", admin: "Erika Goldner (+2)", teamMembers: 8, collections: 4 },
-  { id: "2", name: "Kodak Scanner", type: "Photo Lab", admin: "Sophia Johnson", teamMembers: 3, collections: 2 },
-  { id: "3", name: "Tom Haser", type: "Photographer", admin: "Kevin Brown", teamMembers: 1, collections: 1 },
-  { id: "4", name: "Photo LUX", type: "Photo Agency", admin: "Sarah Davis (+1)", teamMembers: 2, collections: 2 },
-  { id: "5", name: "Reveal Coruña", type: "Printer Lab", admin: "James Wilson", teamMembers: 3, collections: 6 },
+  { id: "1", name: "Zara", type: "Client", admin: "Erika Goldner (+2)", adminEmail: "erika@example.com", teamMembers: 8, collections: 4 },
+  { id: "2", name: "Kodak Scanner", type: "Photo Lab", admin: "Sophia Johnson", adminEmail: "sophia@example.com", teamMembers: 3, collections: 2 },
+  { id: "3", name: "Tom Haser", type: "Photographer", admin: "Kevin Brown", adminEmail: "kevin@example.com", teamMembers: 1, collections: 1 },
+  { id: "4", name: "Photo LUX", type: "Photo Agency", admin: "Sarah Davis (+1)", adminEmail: "sarah@example.com", teamMembers: 2, collections: 2 },
+  { id: "5", name: "Reveal Coruña", type: "Printer Lab", admin: "James Wilson", adminEmail: "james@example.com", teamMembers: 3, collections: 6 },
 ]
 
 const sampleCollections: Collection[] = [
@@ -219,17 +225,29 @@ function TeamMembersTable({
 // ENTITIES TABLE
 // ============================================================================
 
-type EntitySortColumn = "name" | "type" | "admin" | "teamMembers" | "collections"
+type EntitySortColumn = "name" | "type" | "admin" | "adminEmail" | "teamMembers" | "collections"
 
 function EntitiesTable({
   data = sampleEntities,
   onViewDetails,
+  onEntityRowClick,
   onEditAdminUser,
 }: {
   data?: Entity[]
   onViewDetails?: (id: string) => void
+  onEntityRowClick?: (entity: Entity) => void
   onEditAdminUser?: (userId: string, entityId: string) => void
 }) {
+  const handleEntityRowActivate = React.useCallback(
+    (entity: Entity) => {
+      if (onEntityRowClick) {
+        onEntityRowClick(entity)
+        return
+      }
+      onViewDetails?.(entity.id)
+    },
+    [onEntityRowClick, onViewDetails]
+  )
   const [sortColumn, setSortColumn] = React.useState<EntitySortColumn | null>(null)
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc")
 
@@ -256,6 +274,11 @@ function EntitiesTable({
           break
         case "admin":
           cmp = a.admin.localeCompare(b.admin, undefined, { sensitivity: "base" })
+          break
+        case "adminEmail":
+          cmp = (a.adminEmail ?? "").localeCompare(b.adminEmail ?? "", undefined, {
+            sensitivity: "base",
+          })
           break
         case "teamMembers":
           cmp = a.teamMembers - b.teamMembers
@@ -297,33 +320,40 @@ function EntitiesTable({
             <SortableHead column="name" label="Name" />
             <SortableHead column="type" label="Type" />
             <SortableHead column="admin" label="Admin" />
+            <SortableHead column="adminEmail" label="Admin email" />
             <SortableHead column="teamMembers" label="Team members" />
             <SortableHead column="collections" label="Collections" />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedData.map((entity) => (
+          {sortedData.map((entity) => {
+            const isSelfPhotographer = entity.rawType === "self-photographer"
+            return (
             <TableRow
               key={entity.id}
               className="h-[52px] cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => onViewDetails?.(entity.id)}
+              onClick={() => handleEntityRowActivate(entity)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault()
-                  onViewDetails?.(entity.id)
+                  handleEntityRowActivate(entity)
                 }
               }}
             >
               <TableCell className="font-medium">
-                <Link
-                  href={`/organizations/${entity.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="hover:underline focus:outline-none focus:underline"
-                >
-                  {entity.name}
-                </Link>
+                {isSelfPhotographer ? (
+                  <span className="hover:underline">{entity.name}</span>
+                ) : (
+                  <Link
+                    href={`/players/${entity.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="hover:underline focus:outline-none focus:underline"
+                  >
+                    {entity.name}
+                  </Link>
+                )}
               </TableCell>
               <TableCell>{entity.type}</TableCell>
               <TableCell>
@@ -341,10 +371,14 @@ function EntitiesTable({
                   <span>{entity.admin}</span>
                 )}
               </TableCell>
+              <TableCell className="text-muted-foreground truncate max-w-[220px]">
+                {entity.adminEmail ?? "—"}
+              </TableCell>
               <TableCell>{entity.teamMembers}</TableCell>
               <TableCell>{entity.collections}</TableCell>
             </TableRow>
-          ))}
+            )
+          })}
         </TableBody>
       </Table>
     </TableWrapper>
@@ -583,6 +617,7 @@ export function Tables({
   participantsData,
   onDelete,
   onViewDetails,
+  onEntityRowClick,
   onCollectionRowClick,
   onSettings,
   onEditPermissionChange,
@@ -609,6 +644,7 @@ export function Tables({
           <EntitiesTable
             data={entitiesData}
             onViewDetails={onViewDetails}
+            onEntityRowClick={onEntityRowClick}
             onEditAdminUser={onEditAdminUser}
           />
         </div>

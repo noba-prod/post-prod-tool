@@ -24,7 +24,7 @@ import { createClient } from "@/lib/supabase/client"
 import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
-import type { Organization } from "@/lib/supabase/database.types"
+import type { Player } from "@/lib/supabase/database.types"
 import { mergeShippingProviderOptions } from "@/lib/utils/shipping-provider-picker"
 
 // ============================================================================
@@ -40,24 +40,24 @@ function isSupabaseConfigured(): boolean {
   )
 }
 
-function formatOrgAddress(org: Pick<Organization, "street_address" | "zip_code" | "city" | "country">): string {
+function formatOrgAddress(org: Pick<Player, "street_address" | "zip_code" | "city" | "country">): string {
   const parts = [org.street_address, org.zip_code, org.city, org.country].filter(Boolean)
   return parts.length ? parts.join(" ") : "—"
 }
 
-async function fetchOrganizationAddress(id: string): Promise<string> {
+async function fetchPlayerAddress(id: string): Promise<string> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, street_address, zip_code, city, country")
     .eq("id", id)
     .single()
   if (error) {
-    console.error("[DropoffPlanStepContent] Failed to fetch organization:", error)
+    console.error("[DropoffPlanStepContent] Failed to fetch player:", error)
     return "—"
   }
-  const org = data as Organization | null
+  const org = data as Player | null
   if (!org) return "—"
   return formatOrgAddress(org)
 }
@@ -268,11 +268,11 @@ export function DropoffPlanStepContent({
     const load = async () => {
       let address = "—"
       if (isSupabaseConfigured()) {
-        address = await fetchOrganizationAddress(eid)
+        address = await fetchPlayerAddress(eid)
         if (cancelled) return
         setLabAddress(address)
       } else {
-        const res = await fetch(`/api/organizations/${eid}`)
+        const res = await fetch(`/api/players/${eid}`)
         if (!res.ok) {
           setLabAddress("—")
           return

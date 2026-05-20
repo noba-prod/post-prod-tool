@@ -42,7 +42,7 @@ export interface Location {
 }
 
 /**
- * Represents an organization or individual actor in the ecosystem.
+ * Represents a player (organization or individual actor) in the ecosystem.
  */
 export interface Entity {
   id: string

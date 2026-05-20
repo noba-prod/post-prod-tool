@@ -106,7 +106,7 @@ export default function ClientCreationPage() {
       <CreationTemplate
         title="Create new client"
         breadcrumbs={[
-          { label: "Players", href: "/organizations" },
+          { label: "Players", href: "/players" },
           { label: "Create new client" },
         ]}
         sidebarItems={[
@@ -129,7 +129,7 @@ export default function ClientCreationPage() {
                 initialData={creation.basicFormData ?? undefined}
                 existingProfilePictureUrl={creation.entity?.profilePictureUrl}
                 validateNameUniqueness={creation.entityId === null}
-                excludeOrganizationId={creation.entityId ?? undefined}
+                excludePlayerId={creation.entityId ?? undefined}
                 onDataChange={creation.handleFormDataChange}
                 onValidationChange={creation.handleValidationChange}
               />

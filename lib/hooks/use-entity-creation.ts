@@ -12,8 +12,8 @@ import {
 } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import {
-  createAdminForOrganization,
-  createOrganizationFromDraft,
+  createAdminForPlayer,
+  createPlayerFromDraft,
 } from "@/app/actions/entity-creation"
 
 // Type imports
@@ -339,7 +339,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
 
   /**
    * Handle saving basic info in edit mode.
-   * Updates the existing entity via API (entity lives in Supabase after createOrganizationFromDraft).
+   * Updates the existing entity via API (entity lives in Supabase after createPlayerFromDraft).
    */
   const handleSaveBasicInfo = React.useCallback(async () => {
     if (!basicDraft || !entityId) return
@@ -370,7 +370,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
         }
       }
 
-      const response = await fetch(`/api/organizations/${entityId}`, {
+      const response = await fetch(`/api/players/${entityId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -399,16 +399,16 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
   }, [basicDraft, basicFormData, entityId])
 
   /**
-   * Handle creating a new organization (Step 1 -> Next).
-   * Persists the organization in Supabase before opening the admin modal.
+   * Handle creating a new player (Step 1 -> Next).
+   * Persists the player in Supabase before opening the admin modal.
    */
-  const handleCreateOrganization = React.useCallback(async () => {
+  const handleCreatePlayer = React.useCallback(async () => {
     if (!basicDraft || !basicFormData) return
 
     setIsCreating(true)
 
     try {
-      const result = await createOrganizationFromDraft({
+      const result = await createPlayerFromDraft({
         draft: basicDraft,
         phone: {
           prefix: basicFormData.countryCode,
@@ -422,8 +422,8 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
       setTeamMembers([])
       setIsAdminModalOpen(true)
     } catch (error) {
-      console.error("Failed to create organization:", error)
-      toast.error("Failed to create organization", {
+      console.error("Failed to create player:", error)
+      toast.error("Failed to create player", {
         description: error instanceof Error ? error.message : "An unexpected error occurred",
       })
     } finally {
@@ -443,10 +443,10 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
       // Edit mode: save changes
       handleSaveBasicInfo()
     } else {
-      // Create mode: create organization then open admin modal
-      handleCreateOrganization()
+      // Create mode: create player then open admin modal
+      handleCreatePlayer()
     }
-  }, [basicDraft, entityId, handleSaveBasicInfo, handleCreateOrganization])
+  }, [basicDraft, entityId, handleSaveBasicInfo, handleCreatePlayer])
 
   /**
    * Handle admin user modal submit.
@@ -465,8 +465,8 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
     setIsCreating(true)
 
     try {
-      const result = await createAdminForOrganization({
-        organizationId: entityId,
+      const result = await createAdminForPlayer({
+        playerId: entityId,
         admin: {
           firstName: userData.firstName,
           lastName: userData.lastName,
@@ -605,7 +605,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
 
   /**
    * Handle new team member submit.
-   * Creates the member in Supabase via POST /api/organizations/[id]/members and refreshes the full team list so the admin is never overwritten.
+   * Creates the member in Supabase via POST /api/players/[id]/members and refreshes the full team list so the admin is never overwritten.
    */
   const handleNewMemberSubmit = React.useCallback(async (userData: {
     firstName: string
@@ -634,7 +634,7 @@ export function useEntityCreation(entityType: StandardEntityType): UseEntityCrea
         role: userData.role,
       }
 
-      const response = await fetch(`/api/organizations/${entityId}/members`, {
+      const response = await fetch(`/api/players/${entityId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

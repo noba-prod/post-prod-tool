@@ -39,6 +39,10 @@ import {
   isUserInStructuralReconfigCohort,
   logStructuralReconfigEvent,
 } from "@/lib/services/collections/structural-reconfig-feature"
+import {
+  EXTERNAL_MEMBER_SNAPSHOT_METADATA_KEY,
+  fetchExternalMemberUserIds,
+} from "@/lib/invitations/notify-removed-collection-members"
 
 interface ApplyWorkflowChangeBody {
   config?: CollectionConfig
@@ -130,6 +134,25 @@ export async function POST(
       )
     }
 
+    const admin = createAdminClient()
+
+    // Snapshot external members while the collection is still published, so we can
+    // email removed participants on republish (they lose list visibility in draft).
+    let externalMemberUserIdsBeforeReconfig: string[] | undefined
+    {
+      const { data: rowBefore } = await admin
+        .from("collections")
+        .select("published_at")
+        .eq("id", collectionId)
+        .maybeSingle()
+      if ((rowBefore as { published_at?: string | null } | null)?.published_at?.trim()) {
+        externalMemberUserIdsBeforeReconfig = await fetchExternalMemberUserIds(
+          collectionId,
+          admin
+        )
+      }
+    }
+
     const service = createCollectionsServiceForServer()
     let result: Awaited<ReturnType<typeof service.applyStructuralWorkflowChange>>
     try {
@@ -162,7 +185,6 @@ export async function POST(
 
     const { reconciliation, wasPublished } = result
     const removedSteps = reconciliation.purge.removedViewStepIds
-    const admin = createAdminClient()
 
     // ---- 1. Raw column purge for inactive-step deadline fields. The repository
     //         mapper interprets `undefined` as "skip"; admin client NULL writes
@@ -282,6 +304,12 @@ export async function POST(
           removedViewStepIds: removedSteps,
           addedViewStepIds: reconciliation.viewStepDiff.added,
           wasPublished,
+          ...(externalMemberUserIdsBeforeReconfig?.length
+            ? {
+                [EXTERNAL_MEMBER_SNAPSHOT_METADATA_KEY]:
+                  externalMemberUserIdsBeforeReconfig,
+              }
+            : {}),
         },
         { idempotencyKey }
       )

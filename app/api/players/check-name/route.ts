@@ -3,8 +3,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 /**
- * GET /api/organizations/check-name?name=...&excludeOrganizationId=...
- * Returns { exists: boolean } when an organization with that normalized name exists.
+ * GET /api/players/check-name?name=...&excludePlayerId=...
+ * Returns { exists: boolean } when a player with that normalized name exists.
  */
 export async function GET(request: Request) {
   const supabase = await createClient()
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url)
   const rawName = url.searchParams.get("name") ?? ""
-  const excludeOrganizationId = url.searchParams.get("excludeOrganizationId")?.trim()
+  const excludePlayerId = url.searchParams.get("excludePlayerId")?.trim()
   const normalizedName = rawName.trim().toLowerCase()
 
   if (!normalizedName) {
@@ -25,18 +25,18 @@ export async function GET(request: Request) {
 
   const adminClient = createAdminClient()
   let query = adminClient
-    .from("organizations")
+    .from("players")
     .select("id,name")
     .ilike("name", rawName.trim())
 
-  if (excludeOrganizationId) {
-    query = query.neq("id", excludeOrganizationId)
+  if (excludePlayerId) {
+    query = query.neq("id", excludePlayerId)
   }
 
   const { data: rows, error } = await query.limit(5)
 
   if (error) {
-    console.error("[check-organization-name] error:", error)
+    console.error("[check-player-name] error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

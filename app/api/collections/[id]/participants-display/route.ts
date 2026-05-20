@@ -9,7 +9,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { SupabaseCollectionsRepository } from "@/lib/infra/collections/supabase-collections.repository"
-import type { Profile, Organization } from "@/lib/supabase/database.types"
+import type { Profile, Player } from "@/lib/supabase/database.types"
 
 type ParticipantsModalIndividual = {
   name: string
@@ -176,7 +176,7 @@ export async function GET(
       const { data: agencyProfiles } = await admin
         .from("profiles")
         .select("id")
-        .eq("organization_id", agencyId)
+        .eq("player_id", agencyId)
       agencyTeamMemberIds = new Set(
         (agencyProfiles ?? []).map((r: { id: string }) => r.id)
       )
@@ -234,13 +234,13 @@ export async function GET(
     const entities: ParticipantsModalEntity[] = []
     for (const target of entityDisplayTargets) {
       const eid = target.entityId
-      const { data: org, error: orgErr } = await admin
-        .from("organizations")
+      const { data: playerData, error: playerErr } = await admin
+        .from("players")
         .select("*")
         .eq("id", eid)
         .maybeSingle()
-      if (orgErr || !org) continue
-      const organization = org as Organization
+      if (playerErr || !playerData) continue
+      const player = playerData as Player
 
       // Responsible + total members use invited collection members from display role(s).
       // In shared Photo/Handprint flows we prioritize handprint_lab ownership (step 7),
@@ -270,11 +270,11 @@ export async function GET(
       }
 
       const imageUrl =
-        organization.profile_picture_url && organization.profile_picture_url.trim() !== ""
-          ? organization.profile_picture_url
+        player.profile_picture_url && player.profile_picture_url.trim() !== ""
+          ? player.profile_picture_url
           : undefined
       entities.push({
-        entityName: organization.name,
+        entityName: player.name,
         managerName: managerName ?? undefined,
         teamMembersCount: teamCount,
         imageUrl,
@@ -303,32 +303,32 @@ export async function GET(
     if (allIds.length > 0) {
       const { data: allProfiles } = await admin
         .from("profiles")
-        .select("id, first_name, last_name, organization_id, image")
+        .select("id, first_name, last_name, player_id, image")
         .in("id", allIds)
-      const orgIds = new Set<string>()
-      for (const p of (allProfiles ?? []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; organization_id?: string | null }>) {
-        if (p.organization_id) orgIds.add(p.organization_id)
+      const playerIds = new Set<string>()
+      for (const p of (allProfiles ?? []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; player_id?: string | null }>) {
+        if (p.player_id) playerIds.add(p.player_id)
       }
-      const orgMap: Record<string, { name: string; imageUrl?: string }> = {}
-      const orgIdArr = Array.from(orgIds).filter(Boolean)
-      if (orgIdArr.length > 0) {
-        const { data: orgs } = await admin
-          .from("organizations")
+      const playerMap: Record<string, { name: string; imageUrl?: string }> = {}
+      const playerIdArr = Array.from(playerIds).filter(Boolean)
+      if (playerIdArr.length > 0) {
+        const { data: players } = await admin
+          .from("players")
           .select("id, name, profile_picture_url")
-          .in("id", orgIdArr)
-        for (const o of (orgs ?? []) as Array<{ id: string; name: string; profile_picture_url?: string | null }>) {
-          orgMap[o.id] = { name: o.name, imageUrl: o.profile_picture_url?.trim() || undefined }
+          .in("id", playerIdArr)
+        for (const o of (players ?? []) as Array<{ id: string; name: string; profile_picture_url?: string | null }>) {
+          playerMap[o.id] = { name: o.name, imageUrl: o.profile_picture_url?.trim() || undefined }
         }
       }
-      for (const p of (allProfiles ?? []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; organization_id?: string | null; image?: string | null }>) {
+      for (const p of (allProfiles ?? []) as Array<{ id: string; first_name?: string | null; last_name?: string | null; player_id?: string | null; image?: string | null }>) {
         const name = [p.first_name, p.last_name].filter(Boolean).join(" ").trim()
         if (!name) continue
-        const org = p.organization_id ? orgMap[p.organization_id] : undefined
+        const player = p.player_id ? playerMap[p.player_id] : undefined
         noteAuthorsByUserId[p.id] = {
           name,
           userImageUrl: p.image?.trim() || undefined,
-          entityName: org?.name,
-          entityImageUrl: org?.imageUrl,
+          entityName: player?.name,
+          entityImageUrl: player?.imageUrl,
         }
       }
     }

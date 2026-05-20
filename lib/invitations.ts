@@ -2,10 +2,11 @@
 
 import type { CollectionMember, CollectionMemberRole, Profile, UserRole } from "@/lib/supabase/database.types"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { sendInvitationEmail } from "@/lib/email/send-invitation"
 import {
-  sendInvitationEmail,
-  type CollectionInvitationContext,
-} from "@/lib/email/send-invitation"
+  buildInvitationContext,
+  type CollectionRowForContext,
+} from "@/lib/invitations/invitation-context"
 
 /** Delay in ms to stay under Resend rate limit (2 requests per second). */
 const RESEND_RATE_LIMIT_DELAY_MS = 550
@@ -14,129 +15,26 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/** Format ISO date for email display (e.g. "15 Jan 2025"). */
-function formatDateForEmail(isoDate: string | null | undefined): string | undefined {
-  if (!isoDate?.trim()) return undefined
-  try {
-    const d = new Date(isoDate)
-    if (Number.isNaN(d.getTime())) return undefined
-    return d.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    })
-  } catch {
-    return undefined
-  }
-}
-
-type CollectionRowForContext = {
-  id: string
-  client_id: string
-  name?: string | null
-  status?: string
-  shooting_start_date?: string | null
-  shooting_end_date?: string | null
-  publishing_date?: string | null
-  shooting_city?: string | null
-  shooting_country?: string | null
-  /**
-   * Incremented by `/api/collections/[id]/apply-workflow-change` every time
-   * a structural workflow reconfiguration is applied. When `> 0` the next
-   * publish event is a republish-after-reconfiguration and the invitation
-   * email must be reworded.
-   */
-  workflow_revision?: number | null
-}
-
-/** Build invitation email context from collection data. */
-async function buildInvitationContext(
-  supabase: ReturnType<typeof createAdminClient>,
-  collection: CollectionRowForContext
-): Promise<CollectionInvitationContext> {
-  const collectionName = collection.name?.trim() ?? "a collection"
-  const status = collection.status
-  const statusDisplay =
-    status === "upcoming"
-      ? "Upcoming"
-      : status === "in_progress"
-        ? "In progress"
-        : undefined
-
-  const shootingStartDate = formatDateForEmail(collection.shooting_start_date)
-  const shootingEndDate = formatDateForEmail(collection.shooting_end_date)
-  const publishingDate = formatDateForEmail(collection.publishing_date)
-
-  const city = collection.shooting_city?.trim()
-  const country = collection.shooting_country?.trim()
-  const location =
-    city || country ? [city, country].filter(Boolean).join(", ") : undefined
-
-  let clientName: string | undefined
-  if (collection.client_id) {
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("name")
-      .eq("id", collection.client_id)
-      .maybeSingle()
-    clientName = (org as { name?: string | null } | null)?.name?.trim()
-  }
-
-  let creatorName: string | undefined
-  const { data: ownerMember } = await supabase
-    .from("collection_members")
-    .select("user_id")
-    .eq("collection_id", collection.id)
-    .eq("role", "noba")
-    .eq("is_owner", true)
-    .maybeSingle()
-
-  if (ownerMember) {
-    const ownerUserId = (ownerMember as { user_id?: string }).user_id
-    if (ownerUserId) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("first_name, last_name")
-        .eq("id", ownerUserId)
-        .maybeSingle()
-      const fn = (profile as { first_name?: string | null } | null)?.first_name?.trim()
-      const ln = (profile as { last_name?: string | null } | null)?.last_name?.trim()
-      creatorName = [fn, ln].filter(Boolean).join(" ") || undefined
-    }
-  }
-
-  return {
-    collectionName,
-    creatorName,
-    clientName,
-    statusDisplay,
-    shootingStartDate,
-    shootingEndDate,
-    publishingDate,
-    location,
-  }
-}
-
 export interface CreateInvitationParams {
-  /** Organization id (e.g. collection's client_id) for RLS and context */
-  organizationId: string
+  /** Player id (e.g. collection's client_id) for RLS and context */
+  playerId: string
   email: string
   /** When set, invitation is for this collection; on accept user is added to collection_members */
   collectionId?: string
   /** Role to assign in collection_members when invitation is accepted (required when collectionId is set) */
   invitedCollectionRole?: CollectionMemberRole
-  /** Role to assign in profiles when invitation is org-only (platform/team invite). Default viewer. */
+  /** Role to assign in profiles when invitation is player-only (platform/team invite). Default viewer. */
   role?: UserRole
   expiresInDays?: number
 }
 
 /**
  * Create a single invitation and store it in Supabase invitations table.
- * Use organizationId for org/RLS context; use collectionId + invitedCollectionRole for collection-scoped invites.
+ * Use playerId for player/RLS context; use collectionId + invitedCollectionRole for collection-scoped invites.
  */
 export async function createInvitation(params: CreateInvitationParams) {
   const {
-    organizationId,
+    playerId,
     email,
     collectionId,
     invitedCollectionRole,
@@ -153,7 +51,7 @@ export async function createInvitation(params: CreateInvitationParams) {
 
   try {
     const row: Record<string, unknown> = {
-      organization_id: organizationId,
+      player_id: playerId,
       email: email.toLowerCase().trim(),
       token,
       status: "pending",
@@ -242,7 +140,7 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
       }
     }
 
-    const organizationId = collection.client_id
+    const playerId = collection.client_id
     const invitationContext = await buildInvitationContext(supabase, collection)
     // Republish after a structural workflow change → reword the email instead
     // of pitching it as a brand-new invitation. The activation token plumbing
@@ -297,7 +195,7 @@ export async function createInvitationsForPublishedCollection(collectionId: stri
       if (existing.data) continue
 
       const result = await createInvitation({
-        organizationId,
+        playerId,
         email,
         collectionId,
         invitedCollectionRole: member.role,
@@ -359,7 +257,7 @@ export async function createInvitationsForNewMembers(
       }
     }
 
-    const organizationId = collection.client_id
+    const playerId = collection.client_id
     if (members.length === 0) {
       return { success: true, created: 0, sent: 0 }
     }
@@ -400,7 +298,7 @@ export async function createInvitationsForNewMembers(
       if (existing.data) continue
 
       const result = await createInvitation({
-        organizationId,
+        playerId,
         email,
         collectionId,
         invitedCollectionRole: member.role,

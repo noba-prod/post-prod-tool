@@ -36,7 +36,7 @@ import type { EntityType } from "@/lib/types"
 import type { User } from "@/lib/types"
 import type { Entity } from "@/lib/types"
 import { UserCreationForm, type UserFormData } from "./user-creation-form"
-import type { Organization, OrganizationType, Profile } from "@/lib/supabase/database.types"
+import type { Player, PlayerType, Profile } from "@/lib/supabase/database.types"
 
 // ============================================================================
 // SUPABASE HELPERS
@@ -51,9 +51,9 @@ function isSupabaseConfigured(): boolean {
   )
 }
 
-/** Map domain entity type to Supabase organization type(s) */
-function entityTypeToOrgTypes(entityType: EntityType): OrganizationType[] {
-  const mapping: Record<EntityType, OrganizationType[]> = {
+/** Map domain entity type to Supabase player type(s) */
+function entityTypeToOrgTypes(entityType: EntityType): PlayerType[] {
+  const mapping: Record<EntityType, PlayerType[]> = {
     noba: ["noba"],
     client: ["client"],
     "self-photographer": ["self_photographer"],
@@ -65,9 +65,9 @@ function entityTypeToOrgTypes(entityType: EntityType): OrganizationType[] {
   return mapping[entityType] ?? []
 }
 
-/** Map Supabase organization type to domain entity type */
-function orgTypeToEntityType(orgType: OrganizationType): EntityType {
-  const mapping: Partial<Record<OrganizationType, EntityType>> = {
+/** Map Supabase player type to domain entity type */
+function orgTypeToEntityType(orgType: PlayerType): EntityType {
+  const mapping: Partial<Record<PlayerType, EntityType>> = {
     noba: "noba",
     client: "client",
     self_photographer: "self-photographer",
@@ -79,7 +79,7 @@ function orgTypeToEntityType(orgType: OrganizationType): EntityType {
   return mapping[orgType] ?? "client"
 }
 
-async function fetchOrganizationsByType(orgTypes: OrganizationType[]): Promise<Entity[]> {
+async function fetchPlayersByType(orgTypes: PlayerType[]): Promise<Entity[]> {
   // Handle empty array - return empty result
   if (!orgTypes.length) {
     return []
@@ -89,21 +89,21 @@ async function fetchOrganizationsByType(orgTypes: OrganizationType[]): Promise<E
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase
-      .from("organizations") as any)
+      .from("players") as any)
       .select("id, name, type")
       .in("type", orgTypes)
       .order("name")
     if (error) {
-      console.error("[ParticipantsStepContent] Failed to fetch organizations:", error?.message ?? error)
+      console.error("[ParticipantsStepContent] Failed to fetch players:", error?.message ?? error)
       return []
     }
-    return (data ?? []).map((org: Organization) => ({
+    return (data ?? []).map((org: Player) => ({
       id: org.id,
       name: org.name,
       type: orgTypeToEntityType(org.type),
     } as Entity))
   } catch (err) {
-    console.error("[ParticipantsStepContent] Exception fetching organizations:", err)
+    console.error("[ParticipantsStepContent] Exception fetching players:", err)
     return []
   }
 }
@@ -115,13 +115,13 @@ function formatPhoneFromProfile(p: { phone?: string | null; prefix?: string | nu
   return prefix ? `${prefix} ${phone}` : phone
 }
 
-async function fetchUsersByOrganization(organizationId: string): Promise<User[]> {
+async function fetchUsersByPlayer(playerId: string): Promise<User[]> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
     .from("profiles") as any)
-    .select("id, email, first_name, last_name, organization_id, phone, prefix")
-    .eq("organization_id", organizationId)
+    .select("id, email, first_name, last_name, player_id, phone, prefix")
+    .eq("player_id", playerId)
     .order("first_name")
   if (error) {
     console.error("[ParticipantsStepContent] Failed to fetch users:", error)
@@ -133,7 +133,7 @@ async function fetchUsersByOrganization(organizationId: string): Promise<User[]>
     firstName: p.first_name ?? "",
     lastName: p.last_name ?? "",
     phoneNumber: formatPhoneFromProfile(p),
-    entityId: p.organization_id ?? undefined,
+    entityId: p.player_id ?? undefined,
     role: (p as { role?: string }).role ?? "viewer",
   } as User))
 }
@@ -143,7 +143,7 @@ async function fetchUserById(userId: string): Promise<User | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
     .from("profiles") as any)
-    .select("id, email, first_name, last_name, organization_id, phone, prefix")
+    .select("id, email, first_name, last_name, player_id, phone, prefix")
     .eq("id", userId)
     .single()
   if (error) {
@@ -158,7 +158,7 @@ async function fetchUserById(userId: string): Promise<User | null> {
     firstName: p.first_name ?? "",
     lastName: p.last_name ?? "",
     phoneNumber: formatPhoneFromProfile(p),
-    entityId: p.organization_id ?? undefined,
+    entityId: p.player_id ?? undefined,
     role: (p as { role?: string }).role ?? "viewer",
   } as User
 }
@@ -268,13 +268,18 @@ export function ParticipantsStepContent({
     (role: Exclude<ParticipantRole, "producer">, entityId: string) => {
       const current = participantsRef.current
       const p = getParticipantByRole(current, role)
+      const previousEntityId = effectiveEntityId(p, role, config)
+      const nextEntityId = entityId.trim() || undefined
+      const entityChanged = previousEntityId !== (nextEntityId ?? "")
+
       setParticipant(role, {
-        entityId: entityId || undefined,
-        userIds: entityId ? (p?.userIds ?? []) : [],
-        editPermissionByUserId: entityId ? (p?.editPermissionByUserId ?? {}) : undefined,
+        entityId: nextEntityId,
+        userIds: entityChanged || !nextEntityId ? [] : (p?.userIds ?? []),
+        editPermissionByUserId:
+          entityChanged || !nextEntityId ? {} : (p?.editPermissionByUserId ?? {}),
       })
     },
-    [setParticipant]
+    [setParticipant, config]
   )
 
   const addMember = React.useCallback(
@@ -356,36 +361,36 @@ export function ParticipantsStepContent({
 // NOBA* SECTION — Owner (current user) + noba members with Edit permission
 // =============================================================================
 
-/** Fetches noba producer team members (is_internal = true and organization.type = "noba") for the New member overlay. */
+/** Fetches noba producer team members (is_internal = true and player.type = "noba") for the New member overlay. */
 function useInternalUsers(): User[] {
   const [users, setUsers] = React.useState<User[]>([])
   React.useEffect(() => {
     let cancelled = false
-    fetch("/api/organizations", { method: "GET", cache: "no-store" })
+    fetch("/api/players", { method: "GET", cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then(
         (data: {
-          organizations?: Array<{ id: string; name: string; type: string }>
+          players?: Array<{ id: string; name: string; type: string }>
           profiles?: Array<{
             id: string
             first_name: string | null
             last_name: string | null
             email?: string | null
-            organization_id: string | null
+            player_id: string | null
             is_internal?: boolean
           }>
         } | null) => {
           if (cancelled || !data?.profiles) return
-          const nobaOrganizationIds = new Set(
-            (data.organizations ?? [])
-              .filter((org) => org.type === "noba")
-              .map((org) => org.id)
+          const nobaPlayerIds = new Set(
+            (data.players ?? [])
+              .filter((p) => p.type === "noba")
+              .map((p) => p.id)
           )
           const nobaTeam = data.profiles.filter(
             (p) =>
               p.is_internal === true &&
-              !!p.organization_id &&
-              nobaOrganizationIds.has(p.organization_id)
+              !!p.player_id &&
+              nobaPlayerIds.has(p.player_id)
           )
           setUsers(
             nobaTeam.map((p) => ({
@@ -394,7 +399,7 @@ function useInternalUsers(): User[] {
               lastName: p.last_name ?? undefined,
               email: p.email ?? "",
               phoneNumber: "",
-              entityId: p.organization_id ?? "",
+              entityId: p.player_id ?? "",
               role: "viewer" as const,
             }))
           )
@@ -719,6 +724,12 @@ function ParticipantSection({
     [entities]
   )
 
+  // Changing entity clears members in draft state; close local overlays tied to the previous entity.
+  React.useEffect(() => {
+    setEditingUserId(null)
+    setAddMemberOpen(false)
+  }, [entityId])
+
   const showEntityPicker = isAgencySection || role !== "photographer"
   const addButtonLabel = role === "photographer" ? "Add photographer" : "Add user"
   const isPhotographerSection = role === "photographer"
@@ -951,20 +962,20 @@ function useParticipantData(entityId: string, entityType: EntityType | EntityTyp
     const load = async () => {
       if (isSupabaseConfigured()) {
         const orgTypes = types.flatMap((t) => entityTypeToOrgTypes(t))
-        const fetched = await fetchOrganizationsByType(orgTypes)
+        const fetched = await fetchPlayersByType(orgTypes)
         if (cancelled) return
         setEntities(fetched)
       } else {
-        const res = await fetch("/api/organizations", { cache: "no-store" })
+        const res = await fetch("/api/players", { cache: "no-store" })
         if (!res.ok) {
           setEntities([])
           return
         }
-        const data = await res.json().catch(() => null) as { organizations?: Array<{ id: string; name: string; type: string }> } | null
+        const data = await res.json().catch(() => null) as { players?: Array<{ id: string; name: string; type: string }> } | null
         const orgTypes = types.flatMap((t) => entityTypeToOrgTypes(t))
-        const filtered = (data?.organizations ?? []).filter((org) => orgTypes.includes(org.type as OrganizationType))
+        const filtered = (data?.players ?? []).filter((p) => orgTypes.includes(p.type as PlayerType))
         if (cancelled) return
-        setEntities(filtered.map((org) => ({ id: org.id, name: org.name, type: orgTypeToEntityType(org.type as OrganizationType) } as Entity)))
+        setEntities(filtered.map((p) => ({ id: p.id, name: p.name, type: orgTypeToEntityType(p.type as PlayerType) } as Entity)))
       }
     }
     load()
@@ -982,11 +993,11 @@ function useParticipantData(entityId: string, entityType: EntityType | EntityTyp
 
     const load = async () => {
       if (isSupabaseConfigured()) {
-        const fetched = await fetchUsersByOrganization(entityId)
+        const fetched = await fetchUsersByPlayer(entityId)
         if (cancelled) return
         setUsers(fetched)
       } else {
-        const res = await fetch(`/api/organizations/${entityId}`)
+        const res = await fetch(`/api/players/${entityId}`)
         if (!res.ok) {
           setUsers([])
           return
@@ -1027,10 +1038,10 @@ function useUsersFromAllEntitiesOfType(entityType: EntityType | null): User[] {
     const load = async () => {
       if (isSupabaseConfigured()) {
         const orgTypes = entityTypeToOrgTypes(entityType)
-        const entities = await fetchOrganizationsByType(orgTypes)
+        const entities = await fetchPlayersByType(orgTypes)
         if (cancelled) return
         const lists = await Promise.all(
-          entities.map((e) => fetchUsersByOrganization(e.id))
+          entities.map((e) => fetchUsersByPlayer(e.id))
         )
         if (cancelled) return
         const byId = new Map<string, User>()
@@ -1039,16 +1050,16 @@ function useUsersFromAllEntitiesOfType(entityType: EntityType | null): User[] {
         }
         setUsers(Array.from(byId.values()))
       } else {
-        const res = await fetch("/api/organizations", { cache: "no-store" })
+        const res = await fetch("/api/players", { cache: "no-store" })
         if (!res.ok) {
           setUsers([])
           return
         }
-        const data = await res.json().catch(() => null) as { organizations?: Array<{ id: string; type: string }> } | null
+        const data = await res.json().catch(() => null) as { players?: Array<{ id: string; type: string }> } | null
         const orgTypes = entityTypeToOrgTypes(entityType)
-        const entities = (data?.organizations ?? []).filter((org) => orgTypes.includes(org.type as OrganizationType))
+        const entities = (data?.players ?? []).filter((p) => orgTypes.includes(p.type as PlayerType))
         if (cancelled) return
-        const memberResList = await Promise.all(entities.map((e) => fetch(`/api/organizations/${e.id}`).then((r) => (r.ok ? r.json() : null))))
+        const memberResList = await Promise.all(entities.map((e) => fetch(`/api/players/${e.id}`).then((r) => (r.ok ? r.json() : null))))
         if (cancelled) return
         const byId = new Map<string, User>()
         for (const memberData of memberResList) {

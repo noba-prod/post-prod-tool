@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import type { Profile, Organization } from "@/lib/supabase/database.types"
-import { mapOrganizationToEntity } from "@/lib/utils/supabase-mappers"
+import type { Profile, Player } from "@/lib/supabase/database.types"
+import { mapPlayerToEntity } from "@/lib/utils/supabase-mappers"
 
 async function getSessionProfile() {
   const supabase = await createClient()
@@ -14,11 +14,11 @@ async function getSessionProfile() {
 
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id,is_internal,organization_id,role")
+    .select("id,is_internal,player_id,role")
     .eq("id", sessionData.session.user.id)
     .maybeSingle()
 
-  const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
+  const profile = profileData as Pick<Profile, "id" | "is_internal" | "player_id" | "role"> | null
   return {
     session: sessionData.session,
     profile,
@@ -27,10 +27,10 @@ async function getSessionProfile() {
 }
 
 /**
- * POST /api/organizations/[id]/profile-picture
- * Uploads a profile picture for the organization and updates organizations.profile_picture_url.
+ * POST /api/players/[id]/profile-picture
+ * Uploads a profile picture for the player and updates players.profile_picture_url.
  * Accepts FormData with "file" key.
- * Internal users (is_internal=true) can edit any organization. Org admins/editors can edit their own.
+ * Internal users (is_internal=true) can edit any player. Org admins/editors can edit their own.
  */
 export async function POST(
   request: Request,
@@ -42,27 +42,27 @@ export async function POST(
     return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
   }
 
-  const organizationId = resolvedParams.id
+  const playerId = resolvedParams.id
   const isInternal = Boolean(profile.is_internal)
-  const canEditSameOrg =
-    profile.organization_id === organizationId &&
+  const canEditSamePlayer =
+    profile.player_id === playerId &&
     (profile.role === "admin" || profile.role === "editor")
 
-  if (!isInternal && !canEditSameOrg) {
+  if (!isInternal && !canEditSamePlayer) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const adminClient = createAdminClient()
-  const { data: organization, error: orgError } = await adminClient
-    .from("organizations")
+  const { data: player, error: playerError } = await adminClient
+    .from("players")
     .select("*")
-    .eq("id", organizationId)
+    .eq("id", playerId)
     .maybeSingle()
 
-  if (orgError || !organization) {
+  if (playerError || !player) {
     return NextResponse.json(
-      { error: orgError?.message || "Organization not found" },
-      { status: orgError ? 500 : 404 }
+      { error: playerError?.message || "Player not found" },
+      { status: playerError ? 500 : 404 }
     )
   }
 
@@ -76,7 +76,7 @@ export async function POST(
   }
 
   const extension = file.name.split(".").pop()?.toLowerCase() || "png"
-  const objectPath = `${organizationId}/logo.${extension}`
+  const objectPath = `${playerId}/logo.${extension}`
   const arrayBuffer = await file.arrayBuffer()
 
   const { error: uploadError } = await adminClient.storage
@@ -87,7 +87,7 @@ export async function POST(
     })
 
   if (uploadError) {
-    console.error("Organization profile picture upload failed:", uploadError)
+    console.error("Player profile picture upload failed:", uploadError)
     return NextResponse.json(
       { error: uploadError.message || "Failed to upload profile picture" },
       { status: 500 }
@@ -106,23 +106,23 @@ export async function POST(
     )
   }
 
-  const { data: updatedOrg, error: updateError } = await adminClient
-    .from("organizations")
+  const { data: updatedPlayer, error: updateError } = await adminClient
+    .from("players")
     .update({ profile_picture_url: profilePictureUrl } as never)
-    .eq("id", organizationId)
+    .eq("id", playerId)
     .select("*")
     .maybeSingle()
 
-  if (updateError || !updatedOrg) {
+  if (updateError || !updatedPlayer) {
     return NextResponse.json(
-      { error: updateError?.message || "Failed to update organization" },
+      { error: updateError?.message || "Failed to update player" },
       { status: 500 }
     )
   }
 
-  const org = updatedOrg as Organization
+  const p = updatedPlayer as Player
   return NextResponse.json({
     profilePictureUrl,
-    entity: mapOrganizationToEntity(org),
+    entity: mapPlayerToEntity(p),
   })
 }

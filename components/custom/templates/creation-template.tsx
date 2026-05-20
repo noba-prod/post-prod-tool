@@ -27,15 +27,15 @@ import { ModalWindow } from "../modal-window"
 import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
-import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
+import { updatePlayerFromDraft } from "@/app/actions/entity-creation"
 
 const CREATE_FLOW_ORIGIN_KEY = "create-flow-origin"
 
 /** Map "from" pathname to breadcrumb section (label + href). Used so the first crumb is where the user came from. */
 function getBreadcrumbFromSection(fromPath: string): { label: string; href: string } | null {
   const path = fromPath.startsWith("/") ? fromPath : `/${fromPath}`
-  if (path === "/organizations" || path.startsWith("/organizations/")) {
-    return { label: "Players", href: "/organizations" }
+  if (path === "/players" || path.startsWith("/players/")) {
+    return { label: "Players", href: "/players" }
   }
   // /collections/create/[id] is handled via sessionStorage (collection name as label, back to that collection)
   if (path.startsWith("/collections/create/")) {
@@ -160,7 +160,7 @@ function CreationTemplateFallback({ className }: { className?: string }) {
 function CreationTemplateContent({
   title = "Create new entity",
   breadcrumbs = [
-    { label: "Players", href: "/organizations" },
+    { label: "Players", href: "/players" },
     { label: "Create Entity" },
   ],
   sidebarVariant = "create-entity",
@@ -275,7 +275,7 @@ function CreationTemplateContent({
     setIsUpdatingCompany(true)
     try {
       const draft = mapFormToEntityDraft(companyFormData)
-      await updateOrganizationFromDraft(userContext.entity.id, draft)
+      await updatePlayerFromDraft(userContext.entity.id, draft)
 
       // Dispatch session-changed event to refresh UserContext
       if (typeof window !== "undefined") {

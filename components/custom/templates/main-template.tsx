@@ -17,7 +17,7 @@ import { toast } from "sonner"
 import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft, mapFormToUpdateUserPayload } from "@/lib/utils/form-mappers"
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
-import { updateOrganizationFromDraft } from "@/app/actions/entity-creation"
+import { updatePlayerFromDraft } from "@/app/actions/entity-creation"
 
 interface MainTemplateProps {
   /** Page title */
@@ -120,7 +120,7 @@ export function MainTemplate({
     setIsUpdatingCompany(true)
     try {
       const draft = mapFormToEntityDraft(companyFormData)
-      await updateOrganizationFromDraft(userContext.entity.id, draft)
+      await updatePlayerFromDraft(userContext.entity.id, draft)
 
       // Dispatch session-changed event to refresh UserContext
       if (typeof window !== "undefined") {

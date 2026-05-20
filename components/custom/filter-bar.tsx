@@ -800,7 +800,7 @@ export function FilterBar({
               {photographerOptions.map((photographer) => (
                 <CommandItem
                   key={photographer.id}
-                  value={photographer.name}
+                  value={`${photographer.id} ${photographer.name}`}
                   onSelect={() => handlePhotographerSelect(photographer.id)}
                   data-checked={selectedPhotographer === photographer.id}
                 >
@@ -952,7 +952,7 @@ export function FilterBar({
                 {photographerOptions.map((photographer) => (
                   <CommandItem
                     key={photographer.id}
-                    value={photographer.name}
+                    value={`${photographer.id} ${photographer.name}`}
                     onSelect={() => handlePhotographerSelect(photographer.id)}
                     data-checked={selectedPhotographer === photographer.id}
                   >

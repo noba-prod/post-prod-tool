@@ -41,7 +41,7 @@ export interface IUserRepository {
   updateUser(id: string, data: Partial<Omit<User, "id" | "entityId">>): Promise<User | null>
 
   /**
-   * Deletes a user (removes from store / removes from organization).
+   * Deletes a user (removes from store / removes from player).
    * @param id User identifier
    * @returns true if the user was found and deleted, false otherwise
    */

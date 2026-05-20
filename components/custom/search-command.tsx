@@ -22,7 +22,7 @@ import {
 import { cn } from "@/lib/utils"
 import { createCollectionsService } from "@/lib/services"
 import type { EntityListItem, EntitiesApiResponse } from "@/lib/services/entities-list-service"
-import { mapOrganizationsApiToEntities } from "@/lib/services/entities-list-service"
+import { mapPlayersApiToEntities } from "@/lib/services/entities-list-service"
 import type { User } from "@/lib/types"
 import { roleToLabel } from "@/lib/types"
 import type { Collection } from "@/lib/domain/collections"
@@ -74,7 +74,7 @@ export function SearchCommand({
   /** User ids with is_internal=true (noba*); show "noba* · UserRole" instead of "entityName · entityType" */
   const [internalUserIds, setInternalUserIds] = React.useState<Set<string>>(new Set())
 
-  // Load data only from database (GET /api/organizations). No in-memory or localStorage fallback.
+  // Load data only from database (GET /api/players). No in-memory or localStorage fallback.
   React.useEffect(() => {
     const loadData = async () => {
       if (!open) return
@@ -83,7 +83,7 @@ export function SearchCommand({
       try {
         // Single fetch with cache-bust so we always get fresh DB data; no stale/deleted items.
         const res = await fetch(
-          `/api/organizations?_=${Date.now()}`,
+          `/api/players?_=${Date.now()}`,
           { method: "GET", cache: "no-store" }
         )
 
@@ -97,7 +97,7 @@ export function SearchCommand({
         const data = (await res.json()) as EntitiesApiResponse
 
         // Entities and users only from this API response (database).
-        setEntities(mapOrganizationsApiToEntities(data))
+        setEntities(mapPlayersApiToEntities(data))
 
         const profiles = data.profiles ?? []
         const internalIds = new Set<string>()
@@ -119,7 +119,7 @@ export function SearchCommand({
           lastName: p.last_name ?? undefined,
           email: p.email ?? "",
           phoneNumber: "",
-          entityId: p.organization_id ?? "",
+          entityId: p.player_id ?? "",
           role: normalizedRole(p.role),
         }))
         setUsers(usersData)
@@ -295,7 +295,7 @@ export function SearchCommand({
   const handleSelect = React.useCallback(
     (result: SearchResult) => {
       if (result.type === "entity" && result.entityId) {
-        router.push(`/organizations/${result.entityId}`)
+        router.push(`/players/${result.entityId}`)
         onOpenChange?.(false)
       } else if (result.type === "user" && result.userId) {
         router.push(`/team/${result.userId}`)
@@ -331,11 +331,11 @@ export function SearchCommand({
         >
           <DialogHeader className="sr-only">
             <DialogTitle>Search</DialogTitle>
-            <DialogDescription>Search organizations, users, and collections</DialogDescription>
+            <DialogDescription>Search players, users, and collections</DialogDescription>
           </DialogHeader>
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="Search organizations, users, collections..."
+              placeholder="Search players, users, collections..."
               value={search}
               onValueChange={setSearch}
             />

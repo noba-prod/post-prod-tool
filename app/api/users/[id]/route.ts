@@ -25,11 +25,11 @@ async function getSessionProfile() {
 
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id,is_internal,organization_id,role")
+    .select("id,is_internal,player_id,role")
     .eq("id", sessionData.session.user.id)
     .maybeSingle()
 
-  const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
+  const profile = profileData as Pick<Profile, "id" | "is_internal" | "player_id" | "role"> | null
   return {
     session: sessionData.session,
     profile,
@@ -65,12 +65,12 @@ export async function GET(
 
   const target = targetProfile as Profile
   const isInternal = Boolean(profile.is_internal)
-  const canViewSameOrg =
-    profile.organization_id &&
-    target.organization_id &&
-    profile.organization_id === target.organization_id
+  const canViewSamePlayer =
+    profile.player_id &&
+    target.player_id &&
+    profile.player_id === target.player_id
 
-  if (!isInternal && !canViewSameOrg) {
+  if (!isInternal && !canViewSamePlayer) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -106,14 +106,14 @@ export async function PATCH(
   const targetForEdit = targetProfile as Profile
   const isInternal = Boolean(profile.is_internal)
   const canEditSelf = profile.id === targetUserId
-  const canEditSameOrg =
+  const canEditSamePlayer =
     !canEditSelf &&
-    profile.organization_id &&
-    targetForEdit.organization_id &&
-    profile.organization_id === targetForEdit.organization_id &&
+    profile.player_id &&
+    targetForEdit.player_id &&
+    profile.player_id === targetForEdit.player_id &&
     (profile.role === "admin" || profile.role === "editor")
 
-  if (!isInternal && !canEditSelf && !canEditSameOrg) {
+  if (!isInternal && !canEditSelf && !canEditSamePlayer) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -193,19 +193,19 @@ export async function PATCH(
     )
   }
 
-  // For self-photographer: sync organizations.profile_picture_url when profile image changes
-  if (payload.profilePictureUrl !== undefined && targetForEdit.organization_id) {
-    const { data: orgRow } = await adminClient
-      .from("organizations")
+  // For self-photographer: sync players.profile_picture_url when profile image changes
+  if (payload.profilePictureUrl !== undefined && targetForEdit.player_id) {
+    const { data: playerRow } = await adminClient
+      .from("players")
       .select("type")
-      .eq("id", targetForEdit.organization_id)
+      .eq("id", targetForEdit.player_id)
       .maybeSingle()
-    const orgType = (orgRow as { type?: string } | null)?.type
-    if (orgType === "self_photographer") {
+    const playerType = (playerRow as { type?: string } | null)?.type
+    if (playerType === "self_photographer") {
       await adminClient
-        .from("organizations")
+        .from("players")
         .update({ profile_picture_url: payload.profilePictureUrl } as never)
-        .eq("id", targetForEdit.organization_id)
+        .eq("id", targetForEdit.player_id)
     }
   }
 

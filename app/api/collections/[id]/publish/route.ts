@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
 import { createInvitationsForPublishedCollection } from "@/lib/invitations"
+import { notifyRemovedMembersAfterStructuralRepublish } from "@/lib/invitations/notify-removed-collection-members"
 import { CollectionsServiceError } from "@/lib/services/collections"
 import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 
@@ -60,10 +61,23 @@ export async function POST(
     // Create invitations and send emails (server-side so RESEND_API_KEY is available)
     const inviteResult = await createInvitationsForPublishedCollection(id)
 
+    // After structural reconfig + republish: notify external users removed from participants
+    let accessRevokedEmailsSent = 0
+    try {
+      const revokedResult = await notifyRemovedMembersAfterStructuralRepublish(id)
+      accessRevokedEmailsSent = revokedResult.sent
+    } catch (revokedErr) {
+      console.warn(
+        "[POST /api/collections/[id]/publish] Access-revoked emails failed (non-fatal):",
+        revokedErr
+      )
+    }
+
     return NextResponse.json({
       success: true,
       invitationsCreated: inviteResult.created ?? 0,
       invitationsSent: inviteResult.sent ?? 0,
+      accessRevokedEmailsSent,
       message: inviteResult.message,
       error: inviteResult.success ? undefined : inviteResult.error,
     })

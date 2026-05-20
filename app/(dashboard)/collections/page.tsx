@@ -21,7 +21,7 @@ import {
   VIEW_STEP_IDS,
 } from "@/lib/domain/collections"
 import type { Collection } from "@/lib/domain/collections"
-import type { Organization } from "@/lib/supabase/database.types"
+import type { Player } from "@/lib/supabase/database.types"
 
 // ============================================================================
 // SUPABASE HELPERS
@@ -54,7 +54,7 @@ async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .eq("type", "client")
     .order("name")
@@ -62,14 +62,14 @@ async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[
     console.error("[CollectionsPage] Failed to fetch clients:", error)
     return []
   }
-  return (data ?? []).map((org: Pick<Organization, "id" | "name">) => ({ id: org.id, name: org.name }))
+  return (data ?? []).map((player: Pick<Player, "id" | "name">) => ({ id: player.id, name: player.name }))
 }
 
 async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: string }[]> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .in("type", ["photography_agency", "self_photographer"])
     .order("name")
@@ -77,7 +77,7 @@ async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: str
     console.error("[CollectionsPage] Failed to fetch photographers:", error)
     return []
   }
-  return (data ?? []).map((org: Pick<Organization, "id" | "name">) => ({ id: org.id, name: org.name }))
+  return (data ?? []).map((player: Pick<Player, "id" | "name">) => ({ id: player.id, name: player.name }))
 }
 
 async function fetchProfileNamesByUserIds(ids: string[]): Promise<Record<string, string>> {
@@ -119,9 +119,41 @@ interface Filters {
 type PhotographerFilterSelection =
   | { kind: "entity"; id: string }
   | { kind: "user"; id: string }
+  | { kind: "name"; nameKey: string }
+
+function normalizePhotographerNameKey(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+function resolvePhotographerParticipantName(
+  participant: Collection["participants"][number],
+  entityNamesById: Map<string, string>,
+  photographerNamesByUserId: Record<string, string>
+): string | null {
+  const entityId = participant.entityId?.trim()
+  if (entityId) {
+    const entityName =
+      entityNamesById.get(entityId) ??
+      (participant.userIds ?? [])
+        .map((userId) => photographerNamesByUserId[userId]?.trim())
+        .find((name): name is string => Boolean(name))
+    if (entityName) return entityName
+  }
+
+  for (const userId of participant.userIds ?? []) {
+    const userName = photographerNamesByUserId[userId]?.trim()
+    if (userName) return userName
+  }
+
+  return null
+}
 
 function parsePhotographerFilter(value: string | null): PhotographerFilterSelection | null {
   if (!value) return null
+  if (value.startsWith("name:")) {
+    const nameKey = value.slice("name:".length).trim()
+    return nameKey ? { kind: "name", nameKey } : null
+  }
   if (value.startsWith("entity:")) {
     const id = value.slice("entity:".length).trim()
     return id ? { kind: "entity", id } : null
@@ -132,6 +164,35 @@ function parsePhotographerFilter(value: string | null): PhotographerFilterSelect
   }
   // Backward compatibility with legacy values saved as plain entity id.
   return { kind: "entity", id: value }
+}
+
+function collectionMatchesPhotographerFilter(
+  collection: Collection,
+  filter: PhotographerFilterSelection,
+  entityNamesById: Map<string, string>,
+  photographerNamesByUserId: Record<string, string>
+): boolean {
+  const photographerParticipant = collection.participants.find((p) => p.role === "photographer")
+  if (!photographerParticipant) return false
+
+  if (filter.kind === "name") {
+    const displayName = resolvePhotographerParticipantName(
+      photographerParticipant,
+      entityNamesById,
+      photographerNamesByUserId
+    )
+    return displayName
+      ? normalizePhotographerNameKey(displayName) === filter.nameKey
+      : false
+  }
+
+  return collection.participants.some(
+    (p) =>
+      p.role === "photographer" &&
+      (filter.kind === "entity"
+        ? p.entityId === filter.id
+        : (p.userIds ?? []).includes(filter.id))
+  )
 }
 
 // ============================================================================
@@ -405,42 +466,27 @@ export default function CollectionsPage() {
 
   const photographerOptionsForBar = React.useMemo(() => {
     const entityNamesById = new Map(photographerOptions.map((p) => [p.id, p.name]))
-    const optionsById = new Map<string, string>()
-
-    const addOption = (id: string, name: string | undefined) => {
-      const trimmedName = name?.trim()
-      if (!trimmedName) return
-      if (!optionsById.has(id)) optionsById.set(id, trimmedName)
-    }
+    const optionsByNameKey = new Map<string, string>()
 
     for (const c of scopeAfterJobRef) {
       const photographerParticipant = c.participants.find((p) => p.role === "photographer")
       if (!photographerParticipant) continue
 
-      const localEntityLabels = new Set<string>()
-      const entityId = photographerParticipant.entityId?.trim()
-      if (entityId) {
-        const entityName =
-          entityNamesById.get(entityId) ??
-          (photographerParticipant.userIds ?? [])
-            .map((userId) => photographerNamesByUserId[userId]?.trim())
-            .find((name): name is string => Boolean(name))
-        if (entityName) {
-          addOption(`entity:${entityId}`, entityName)
-          localEntityLabels.add(entityName.toLowerCase())
-        }
-      }
+      const displayName = resolvePhotographerParticipantName(
+        photographerParticipant,
+        entityNamesById,
+        photographerNamesByUserId
+      )
+      if (!displayName) continue
 
-      for (const userId of photographerParticipant.userIds ?? []) {
-        const userName = photographerNamesByUserId[userId]?.trim()
-        if (!userName) continue
-        if (localEntityLabels.has(userName.toLowerCase())) continue
-        addOption(`user:${userId}`, userName)
+      const nameKey = normalizePhotographerNameKey(displayName)
+      if (!optionsByNameKey.has(nameKey)) {
+        optionsByNameKey.set(nameKey, displayName.trim())
       }
     }
 
-    return Array.from(optionsById.entries())
-      .map(([id, name]) => ({ id, name }))
+    return Array.from(optionsByNameKey.entries())
+      .map(([nameKey, name]) => ({ id: `name:${nameKey}`, name }))
       .sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
       )
@@ -512,13 +558,13 @@ export default function CollectionsPage() {
     }
     const photographerFilter = parsePhotographerFilter(filters.photographer)
     if (photographerFilter) {
+      const entityNamesById = new Map(photographerOptions.map((p) => [p.id, p.name]))
       result = result.filter((c) =>
-        c.participants.some(
-          (p) =>
-            p.role === "photographer" &&
-            (photographerFilter.kind === "entity"
-              ? p.entityId === photographerFilter.id
-              : (p.userIds ?? []).includes(photographerFilter.id))
+        collectionMatchesPhotographerFilter(
+          c,
+          photographerFilter,
+          entityNamesById,
+          photographerNamesByUserId
         )
       )
     }
@@ -533,7 +579,17 @@ export default function CollectionsPage() {
       return filters.sortOrder === "desc" ? tB - tA : tA - tB
     })
     return result
-  }, [collections, isNobaUser, filters.client, filters.status, filters.photographer, filters.jobReference, filters.sortOrder])
+  }, [
+    collections,
+    isNobaUser,
+    filters.client,
+    filters.status,
+    filters.photographer,
+    filters.jobReference,
+    filters.sortOrder,
+    photographerOptions,
+    photographerNamesByUserId,
+  ])
 
   /** Navigate to collection: draft → setup flow, published → view flow */
   const handleCollectionClick = React.useCallback(

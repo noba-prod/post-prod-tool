@@ -33,7 +33,7 @@ import { formatDistanceToNow } from "date-fns"
 // PAGE COMPONENT
 // =============================================================================
 
-export default function OrganizationDetailPage() {
+export default function PlayerDetailPage() {
   const params = useParams()
   const router = useRouter()
   const userContext = useUserContext()
@@ -61,7 +61,9 @@ export default function OrganizationDetailPage() {
 
   // Delete entity confirmation dialog
   const [isDeleteEntityDialogOpen, setIsDeleteEntityDialogOpen] = React.useState(false)
+  const [isDeleteAdminOnlyDialogOpen, setIsDeleteAdminOnlyDialogOpen] = React.useState(false)
   const [isDeletingEntity, setIsDeletingEntity] = React.useState(false)
+  const { isNobaInternalAdmin } = userContext
 
   // Fetch entity data
   const fetchEntityData = React.useCallback(async () => {
@@ -134,11 +136,11 @@ export default function OrganizationDetailPage() {
       if (profilePictureFile) {
         const formData = new FormData()
         formData.append("file", profilePictureFile)
-        // For self-photographer: upload to profiles.image (users API), which syncs to organizations
+        // For self-photographer: upload to profiles.image (users API), which syncs to players
         const uploadUrl =
           entity.entity.type === "self-photographer" && entity.adminUser
             ? `/api/users/${entity.adminUser.id}/profile-picture`
-            : `/api/organizations/${entityId}/profile-picture`
+            : `/api/players/${entityId}/profile-picture`
         const uploadRes = await fetch(uploadUrl, {
           method: "POST",
           body: formData,
@@ -199,7 +201,7 @@ export default function OrganizationDetailPage() {
         }
       }
 
-      const response = await fetch(`/api/organizations/${entityId}`, {
+      const response = await fetch(`/api/players/${entityId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -207,7 +209,7 @@ export default function OrganizationDetailPage() {
 
       if (!response.ok) {
         const errorBody = (await response.json()) as { error?: string }
-        throw new Error(errorBody.error || "Failed to update organization")
+        throw new Error(errorBody.error || "Failed to update player")
       }
 
       const result = (await response.json()) as { entity: import("@/lib/types").Entity }
@@ -216,13 +218,13 @@ export default function OrganizationDetailPage() {
       const updatedData = await fetchEntityData()
       setEntity(updatedData)
       
-      toast.success("Organization information updated", {
+      toast.success("Player information updated", {
         description: `${result.entity.name} has been updated successfully.`,
       })
     } catch (error) {
-      console.error("Failed to update organization:", error)
-      toast.error("Failed to update organization", {
-        description: error instanceof Error ? error.message : "An error occurred while updating the organization.",
+      console.error("Failed to update player:", error)
+      toast.error("Failed to update player", {
+        description: error instanceof Error ? error.message : "An error occurred while updating the player.",
       })
     } finally {
       setIsSavingBasicInfo(false)
@@ -238,7 +240,7 @@ export default function OrganizationDetailPage() {
     console.log("handleOpenNewMemberModal called, entityId:", entityId)
     if (!entityId) {
       toast.error("Cannot add member", {
-        description: "Organization must be loaded before adding team members.",
+        description: "Player must be loaded before adding team members.",
       })
       return
     }
@@ -274,7 +276,7 @@ export default function OrganizationDetailPage() {
           : null,
       }
       const payload = mapFormToUserPayload(userFormData)
-      const response = await fetch(`/api/organizations/${entityId}/members`, {
+      const response = await fetch(`/api/players/${entityId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -439,7 +441,7 @@ export default function OrganizationDetailPage() {
     if (!entity?.entity) {
       return (
         <div className="w-full py-12 text-center text-muted-foreground">
-          No organization data available
+          No player data available
         </div>
       )
     }
@@ -550,24 +552,39 @@ export default function OrganizationDetailPage() {
     }
   )
 
+  const isClientEntity = entity?.entity?.type === "client"
+
+  const handleDeleteEntityClick = React.useCallback(() => {
+    if (isClientEntity && !isNobaInternalAdmin) {
+      setIsDeleteAdminOnlyDialogOpen(true)
+      return
+    }
+    setIsDeleteEntityDialogOpen(true)
+  }, [isClientEntity, isNobaInternalAdmin])
+
   // Delete entity: confirm then call API and redirect
   const handleConfirmDeleteEntity = React.useCallback(async () => {
     if (!entityId || !entity?.entity) return
     setIsDeletingEntity(true)
     try {
-      const res = await fetch(`/api/organizations/${entityId}`, { method: "DELETE" })
+      const res = await fetch(`/api/players/${entityId}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        throw new Error(data.error ?? "Failed to delete organization")
+        if (data.code === "CLIENT_DELETE_REQUIRES_ADMIN") {
+          setIsDeleteEntityDialogOpen(false)
+          setIsDeleteAdminOnlyDialogOpen(true)
+          return
+        }
+        throw new Error(data.error ?? "Failed to delete player")
       }
       setIsDeleteEntityDialogOpen(false)
-      toast.success("Organization deleted", {
+      toast.success("Player deleted", {
         description: `${entity.entity.name} has been deleted.`,
       })
-      router.push("/organizations")
+      router.push("/players")
     } catch (error) {
       console.error("Delete entity error:", error)
-      toast.error("Failed to delete organization", {
+      toast.error("Failed to delete player", {
         description: error instanceof Error ? error.message : "An unexpected error occurred.",
       })
     } finally {
@@ -612,12 +629,12 @@ export default function OrganizationDetailPage() {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
-          <h1 className="text-2xl font-semibold">Invalid organization ID</h1>
+          <h1 className="text-2xl font-semibold">Invalid player ID</h1>
           <p className="text-sm text-muted-foreground">
-            The organization ID is missing from the URL.
+            The player ID is missing from the URL.
           </p>
           <button
-            onClick={() => router.push("/organizations")}
+            onClick={() => router.push("/players")}
             className="mt-4 px-4 py-2 text-sm font-medium text-primary hover:underline"
           >
             Back to Players
@@ -631,7 +648,7 @@ export default function OrganizationDetailPage() {
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">Loading organization...</p>
+        <p className="text-sm text-muted-foreground">Loading player...</p>
       </div>
     )
   }
@@ -641,12 +658,12 @@ export default function OrganizationDetailPage() {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
-          <h1 className="text-2xl font-semibold">Organization not found</h1>
+          <h1 className="text-2xl font-semibold">Player not found</h1>
           <p className="text-sm text-muted-foreground">
-            The organization you're looking for doesn't exist or has been removed.
+            The player you're looking for doesn't exist or has been removed.
           </p>
           <button
-            onClick={() => router.push("/organizations")}
+            onClick={() => router.push("/players")}
             className="mt-4 px-4 py-2 text-sm font-medium text-primary hover:underline"
           >
             Back to Players
@@ -661,7 +678,7 @@ export default function OrganizationDetailPage() {
     <>
       <ViewTemplate
         breadcrumbs={[
-          { label: "Players", href: "/organizations" },
+          { label: "Players", href: "/players" },
           { label: entity.entity.name },
         ]}
         sections={sections}
@@ -672,7 +689,7 @@ export default function OrganizationDetailPage() {
           // Optional: handle section changes
           console.log("Section changed:", sectionId)
         }}
-        onDelete={() => setIsDeleteEntityDialogOpen(true)}
+        onDelete={handleDeleteEntityClick}
         navBarProps={{
           variant: "noba",
           userName: "Martin Becerra",
@@ -715,6 +732,29 @@ export default function OrganizationDetailPage() {
         />
       )}
 
+      {/* Delete client: admin-only informational dialog */}
+      <Dialog open={isDeleteAdminOnlyDialogOpen} onOpenChange={setIsDeleteAdminOnlyDialogOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold leading-none">
+              Acción restringida
+            </DialogTitle>
+            <DialogDescription>
+              Eliminar un cliente solo puede hacerlo un usuario administrador de noba*. Si
+              necesitas eliminar este cliente, contacta con un administrador.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-start gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setIsDeleteAdminOnlyDialogOpen(false)}
+            >
+              Entendido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Entity confirmation dialog */}
       <Dialog open={isDeleteEntityDialogOpen} onOpenChange={setIsDeleteEntityDialogOpen}>
         <DialogContent showCloseButton={false}>
@@ -722,12 +762,12 @@ export default function OrganizationDetailPage() {
             <DialogTitle className="text-lg font-semibold leading-none">
               <span className="text-primary">Delete </span>
               <span className="text-lime-500">
-                @{(entity?.entity?.name ?? "organization").toLowerCase().replace(/\s+/g, "")}
+                @{(entity?.entity?.name ?? "player").toLowerCase().replace(/\s+/g, "")}
               </span>
             </DialogTitle>
             <DialogDescription>
               This action can&apos;t be undone. If you delete this{" "}
-              {entity?.entity?.type ? entityTypeToLabel(entity.entity.type) : "organization"}
+              {entity?.entity?.type ? entityTypeToLabel(entity.entity.type) : "player"}
               , it might affect other collections in progress.
             </DialogDescription>
           </DialogHeader>

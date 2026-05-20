@@ -47,10 +47,10 @@ function consumePendingToast(): PendingToast | null {
 }
 
 // ============================================================================
-// ORGANIZATION OPTIONS (excludes Collection for organizations page)
+// PLAYER OPTIONS (excludes Collection for players page)
 // ============================================================================
 
-const ORGANIZATIONS_PAGE_OPTIONS: Array<"client" | "self-photographer" | "agency" | "photo-lab" | "edition-studio" | "hand-print-lab"> = [
+const PLAYERS_PAGE_OPTIONS: Array<"client" | "self-photographer" | "agency" | "photo-lab" | "edition-studio" | "hand-print-lab"> = [
   "client",
   "self-photographer",
   "agency",
@@ -72,7 +72,7 @@ interface Filters {
 // PAGE COMPONENT
 // ============================================================================
 
-export default function OrganizationsPage() {
+export default function PlayersPage() {
   const router = useRouter()
   const authAdapter = useAuthAdapter()
   const userContext = useUserContext()
@@ -103,7 +103,7 @@ export default function OrganizationsPage() {
   const canEdit = userRole === "admin" || userRole === "editor"
   const canCreate = userRole === "admin" || userRole === "editor"
 
-  // Load organizations from repository (exclude noba* — product owners)
+  // Load players from repository (exclude noba* — product owners)
   const loadEntities = useCallback(async () => {
     setLoadingEntities(true)
     try {
@@ -116,15 +116,17 @@ export default function OrganizationsPage() {
           id: item.id,
           name: item.name,
           type: item.type as Entity["type"],
+          rawType: item.rawType,
           admin: item.admin,
           adminUserId: item.adminUserId,
+          adminEmail: item.adminEmail,
           teamMembers: item.teamMembers,
           collections: item.collections,
         }))
       
       setEntities(mappedEntities)
     } catch (error) {
-      console.error("Failed to load organizations:", error)
+      console.error("Failed to load players:", error)
     } finally {
       setLoadingEntities(false)
     }
@@ -180,7 +182,7 @@ export default function OrganizationsPage() {
   }
 
   const handleViewDetails = (id: string) => {
-    router.push(`/organizations/${id}`)
+    router.push(`/players/${id}`)
   }
 
   const handleEditAdminUser = useCallback(async (userId: string, entityId: string) => {
@@ -192,12 +194,12 @@ export default function OrganizationsPage() {
     try {
       const [userRes, entityRes] = await Promise.all([
         fetch(`/api/users/${userId}`),
-        fetch(`/api/organizations/${entityId}`),
+        fetch(`/api/players/${entityId}`),
       ])
 
       if (!userRes.ok || !entityRes.ok) {
         if (userRes.status === 404 || entityRes.status === 404) {
-          toast.error("Failed to load user data", { description: "The user or organization could not be found." })
+          toast.error("Failed to load user data", { description: "The user or player could not be found." })
         } else {
           const err = await userRes.json().catch(() => ({}))
           toast.error("Failed to load data", { description: (err as { error?: string }).error ?? "An error occurred." })
@@ -214,7 +216,7 @@ export default function OrganizationsPage() {
       const entity = (entityJson as { entity: import("@/lib/types").Entity }).entity
 
       if (!user || !entity) {
-        toast.error("Failed to load user data", { description: "The user or organization could not be found." })
+        toast.error("Failed to load user data", { description: "The user or player could not be found." })
         setIsEditAdminModalOpen(false)
         setEditingAdminUserId(null)
         setEditingEntityId(null)
@@ -224,7 +226,7 @@ export default function OrganizationsPage() {
       setEditingUserData(user)
       setEditingEntityData(entity)
     } catch (error) {
-      console.error("Failed to fetch user/organization data:", error)
+      console.error("Failed to fetch user/player data:", error)
       toast.error("Failed to load data", {
         description: error instanceof Error ? error.message : "An error occurred while loading user data.",
       })
@@ -235,6 +237,24 @@ export default function OrganizationsPage() {
       setLoadingEditData(false)
     }
   }, [])
+
+  const handleEntityRowClick = useCallback(
+    (row: Entity) => {
+      if (row.rawType === "self-photographer") {
+        const userId = row.adminUserId
+        if (!userId) {
+          toast.error("No se pudo abrir el fotógrafo", {
+            description: "No hay un usuario asociado a este fotógrafo.",
+          })
+          return
+        }
+        void handleEditAdminUser(userId, row.id)
+        return
+      }
+      router.push(`/players/${row.id}`)
+    },
+    [router, handleEditAdminUser]
+  )
 
   const handleCloseEditAdminModal = useCallback(() => {
     setIsEditAdminModalOpen(false)
@@ -354,12 +374,12 @@ export default function OrganizationsPage() {
                 variant="entities"
                 onSearchChange={handleSearchChange}
                 onFilterChange={handleFilterChange}
-                searchPlaceholder="Search organizations..."
+                searchPlaceholder="Search players..."
                 showAction={false}
               />
             </div>
             <CreateEntityCommand
-              allowedOptions={ORGANIZATIONS_PAGE_OPTIONS}
+              allowedOptions={PLAYERS_PAGE_OPTIONS}
               buttonLabel="New player"
               buttonClassName={cn(
                 "rounded-xl gap-2 px-4",
@@ -375,22 +395,22 @@ export default function OrganizationsPage() {
         <LayoutSection>
           {loadingEntities ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-sm text-muted-foreground">Loading organizations...</p>
+              <p className="text-sm text-muted-foreground">Loading players...</p>
             </div>
           ) : (
             <>
               <Tables
                 variant="entities"
                 entitiesData={filteredEntities}
-                onViewDetails={handleViewDetails}
+                onEntityRowClick={handleEntityRowClick}
                 onEditAdminUser={handleEditAdminUser}
               />
               {filteredEntities.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <p className="text-lg font-medium text-muted-foreground">No organizations found</p>
+                  <p className="text-lg font-medium text-muted-foreground">No players found</p>
                   <p className="text-sm text-muted-foreground mt-1">
                     {entities.length === 0
-                      ? "Create your first organization to get started"
+                      ? "Create your first player to get started"
                       : "Try adjusting your filters"}
                   </p>
                 </div>

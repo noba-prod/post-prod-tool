@@ -24,11 +24,11 @@ async function getSessionProfile() {
 
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id,is_internal,organization_id,role")
+    .select("id,is_internal,player_id,role")
     .eq("id", userData.user.id)
     .maybeSingle()
 
-  const profile = profileData as Pick<Profile, "id" | "is_internal" | "organization_id" | "role"> | null
+  const profile = profileData as Pick<Profile, "id" | "is_internal" | "player_id" | "role"> | null
   return {
     profile,
     error: profileError?.message || null,
@@ -45,13 +45,13 @@ export async function POST(
     return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
   }
 
-  const organizationId = resolvedParams.id
+  const playerId = resolvedParams.id
   const isInternal = Boolean(profile.is_internal)
-  const canEditSameOrg =
-    profile.organization_id === organizationId &&
+  const canEditSamePlayer =
+    profile.player_id === playerId &&
     (profile.role === "admin" || profile.role === "editor")
 
-  if (!isInternal && !canEditSameOrg) {
+  if (!isInternal && !canEditSamePlayer) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -59,13 +59,13 @@ export async function POST(
   const email = payload.email.toLowerCase().trim()
   const adminClient = createAdminClient()
 
-  const { data: orgRow } = await adminClient
-    .from("organizations")
+  const { data: playerRow } = await adminClient
+    .from("players")
     .select("type")
-    .eq("id", organizationId)
+    .eq("id", playerId)
     .maybeSingle()
-  const orgType = (orgRow as { type?: string } | null)?.type
-  const isNobaOrg = orgType === "noba"
+  const playerType = (playerRow as { type?: string } | null)?.type
+  const isNobaPlayer = playerType === "noba"
 
   let userId: string | null = null
   const { data: createdUser, error: createUserError } =
@@ -118,7 +118,7 @@ export async function POST(
 
   const { data: existingProfileRow, error: existingProfileError } = await adminClient
     .from("profiles")
-    .select("id,organization_id,is_internal")
+    .select("id,player_id,is_internal")
     .eq("id", userId)
     .maybeSingle()
   if (existingProfileError) {
@@ -126,26 +126,26 @@ export async function POST(
   }
 
   const existingProfile = existingProfileRow as
-    | Pick<Profile, "id" | "organization_id" | "is_internal">
+    | Pick<Profile, "id" | "player_id" | "is_internal">
     | null
   if (existingProfile) {
-    if (existingProfile.organization_id === organizationId) {
+    if (existingProfile.player_id === playerId) {
       return NextResponse.json(
-        { error: "User already belongs to this organization" },
+        { error: "User already belongs to this player" },
         { status: 409 }
       )
     }
 
-    if (existingProfile.organization_id && existingProfile.organization_id !== organizationId) {
+    if (existingProfile.player_id && existingProfile.player_id !== playerId) {
       return NextResponse.json(
-        { error: "User already belongs to another organization" },
+        { error: "User already belongs to another player" },
         { status: 409 }
       )
     }
 
-    if (existingProfile.is_internal && !isNobaOrg) {
+    if (existingProfile.is_internal && !isNobaPlayer) {
       return NextResponse.json(
-        { error: "Internal users can only be managed from the noba organization" },
+        { error: "Internal users can only be managed from the noba player" },
         { status: 409 }
       )
     }
@@ -153,7 +153,7 @@ export async function POST(
 
   const profilePayload: Record<string, unknown> = {
     id: userId,
-    organization_id: organizationId,
+    player_id: playerId,
     first_name: payload.firstName.trim(),
     last_name: payload.lastName?.trim() || null,
     email,
@@ -162,7 +162,7 @@ export async function POST(
     role: payload.role,
   }
   // Preserve existing internal users: only ever promote to true, never demote to false.
-  if (isNobaOrg) {
+  if (isNobaPlayer) {
     profilePayload.is_internal = true
   }
 
@@ -182,7 +182,7 @@ export async function POST(
   const { data: teamMembers, error: teamMembersError } = await adminClient
     .from("profiles")
     .select("*")
-    .eq("organization_id", organizationId)
+    .eq("player_id", playerId)
 
   if (teamMembersError) {
     return NextResponse.json({ error: teamMembersError.message }, { status: 500 })
@@ -191,7 +191,7 @@ export async function POST(
   const { data: pendingInvites } = await adminClient
     .from("invitations")
     .select("email")
-    .eq("organization_id", organizationId)
+    .eq("player_id", playerId)
     .eq("status", "pending")
   const pendingInviteEmails = new Set(
     (pendingInvites ?? []).map((r: { email: string }) => r.email.toLowerCase())

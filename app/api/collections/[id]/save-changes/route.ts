@@ -9,6 +9,12 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
 import { createInvitationsForNewMembers } from "@/lib/invitations"
+import {
+  computeRemovedExternalMemberUserIds,
+  fetchExternalMemberUserIds,
+  isExternalCollectionMemberRole,
+  sendAccessRevokedEmailsForRemovedMembers,
+} from "@/lib/invitations/notify-removed-collection-members"
 import { CollectionsServiceError } from "@/lib/services/collections"
 import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 import type { CollectionConfig, CollectionParticipant } from "@/lib/domain/collections"
@@ -127,16 +133,46 @@ export async function POST(
       invitationsSent = inviteResult.sent ?? 0
     }
 
-    const message =
-      membersToInvite.length > 0 && invitationsCreated > 0
-        ? `Changes saved. ${invitationsCreated} invitation(s) sent to new participants.`
-        : "Changes saved."
+    const oldExternalUserIds = oldMembers
+      .filter((m) => isExternalCollectionMemberRole(m.role))
+      .map((m) => m.user_id)
+    const newExternalUserIds = await fetchExternalMemberUserIds(id, admin)
+    const removedExternalUserIds = computeRemovedExternalMemberUserIds(
+      oldExternalUserIds,
+      newExternalUserIds
+    )
+    let accessRevokedEmailsSent = 0
+    if (removedExternalUserIds.length > 0) {
+      try {
+        const revokedResult = await sendAccessRevokedEmailsForRemovedMembers(
+          id,
+          removedExternalUserIds
+        )
+        accessRevokedEmailsSent = revokedResult.sent
+      } catch (revokedErr) {
+        console.warn(
+          "[POST /api/collections/[id]/save-changes] Access-revoked emails failed (non-fatal):",
+          revokedErr
+        )
+      }
+    }
+
+    const messageParts: string[] = ["Changes saved."]
+    if (invitationsCreated > 0) {
+      messageParts.push(`${invitationsCreated} invitation(s) sent to new participants.`)
+    }
+    if (accessRevokedEmailsSent > 0) {
+      messageParts.push(
+        `${accessRevokedEmailsSent} participant(s) notified they no longer have access.`
+      )
+    }
 
     return NextResponse.json({
       success: true,
       invitationsCreated,
       invitationsSent,
-      message,
+      accessRevokedEmailsSent,
+      message: messageParts.join(" "),
     })
   } catch (error) {
     console.error("[POST /api/collections/[id]/save-changes] Error:", error)

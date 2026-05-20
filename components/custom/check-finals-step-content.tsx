@@ -10,7 +10,7 @@ import { SlotPicker } from "./slot-picker"
 import { createClient } from "@/lib/supabase/client"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
-import type { Organization } from "@/lib/supabase/database.types"
+import type { Player } from "@/lib/supabase/database.types"
 import { cn } from "@/lib/utils"
 
 // ============================================================================
@@ -26,19 +26,19 @@ function isSupabaseConfigured(): boolean {
   )
 }
 
-async function fetchOrganizationById(id: string): Promise<string | null> {
+async function fetchPlayerById(id: string): Promise<string | null> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name")
     .eq("id", id)
     .single()
   if (error) {
-    console.error("[CheckFinalsStepContent] Failed to fetch organization:", error)
+    console.error("[CheckFinalsStepContent] Failed to fetch player:", error)
     return null
   }
-  const org = data as Organization | null
+  const org = data as Player | null
   return org?.name ?? null
 }
 
@@ -93,11 +93,11 @@ export function CheckFinalsStepContent({
     let cancelled = false
     const load = async () => {
       if (isSupabaseConfigured()) {
-        const name = await fetchOrganizationById(eid)
+        const name = await fetchPlayerById(eid)
         if (cancelled) return
         setPhotographerName(name ?? "—")
       } else {
-        const res = await fetch(`/api/organizations/${eid}`)
+        const res = await fetch(`/api/players/${eid}`)
         if (!res.ok) {
           setPhotographerName("—")
           return
@@ -123,11 +123,11 @@ export function CheckFinalsStepContent({
     let cancelled = false
     const load = async () => {
       if (isSupabaseConfigured()) {
-        const name = await fetchOrganizationById(eid)
+        const name = await fetchPlayerById(eid)
         if (cancelled) return
         setClientName(name ?? "—")
       } else {
-        const res = await fetch(`/api/organizations/${eid}`)
+        const res = await fetch(`/api/players/${eid}`)
         if (!res.ok) {
           setClientName("—")
           return

@@ -40,7 +40,13 @@ class SupabaseAuthAdapter implements AuthAdapter {
       })
 
       if (error) {
-        console.error("Precheck error:", error)
+        const errDetail =
+          error instanceof Error
+            ? error.message
+            : typeof error === "object" && error !== null
+              ? JSON.stringify(error)
+              : String(error)
+        console.error("Precheck error:", errDetail, error)
         return { allowed: false, reason: "error" }
       }
 

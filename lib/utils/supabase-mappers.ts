@@ -1,7 +1,7 @@
-import type { Organization, OrganizationType, Profile } from "@/lib/supabase/database.types"
+import type { Player, PlayerType, Profile } from "@/lib/supabase/database.types"
 import type { Entity, EntityType, Role, User } from "@/lib/types"
 
-const organizationTypeToEntityType: Record<OrganizationType, EntityType> = {
+const playerTypeToEntityType: Record<PlayerType, EntityType> = {
   noba: "noba",
   client: "client",
   photography_agency: "agency",
@@ -28,31 +28,31 @@ function resolveRole(role: Profile["role"]): Role {
   return role || "viewer"
 }
 
-export function mapOrganizationTypeToEntityType(type: OrganizationType): EntityType {
-  return organizationTypeToEntityType[type]
+export function mapPlayerTypeToEntityType(type: PlayerType): EntityType {
+  return playerTypeToEntityType[type]
 }
 
-export function mapOrganizationToEntity(org: Organization): Entity {
+export function mapPlayerToEntity(player: Player): Entity {
   const hasLocation =
-    org.street_address || org.zip_code || org.city || org.country
+    player.street_address || player.zip_code || player.city || player.country
 
   return {
-    id: org.id,
-    type: mapOrganizationTypeToEntityType(org.type),
-    name: org.name,
-    email: org.email || undefined,
-    phoneNumber: combinePhone(org.prefix, org.phone),
-    profilePictureUrl: org.profile_picture_url || undefined,
-    notes: org.notes || undefined,
+    id: player.id,
+    type: mapPlayerTypeToEntityType(player.type),
+    name: player.name,
+    email: player.email || undefined,
+    phoneNumber: combinePhone(player.prefix, player.phone),
+    profilePictureUrl: player.profile_picture_url || undefined,
+    notes: player.notes || undefined,
     location: hasLocation
       ? {
-          streetAddress: org.street_address || "",
-          zipCode: org.zip_code || "",
-          city: org.city || "",
-          country: org.country || "",
+          streetAddress: player.street_address || "",
+          zipCode: player.zip_code || "",
+          city: player.city || "",
+          country: player.country || "",
         }
       : undefined,
-    updatedAt: org.updated_at ? new Date(org.updated_at) : undefined,
+    updatedAt: player.updated_at ? new Date(player.updated_at) : undefined,
   }
 }
 
@@ -63,7 +63,7 @@ export function mapProfileToUser(profile: Profile): User {
     lastName: profile.last_name || undefined,
     email: profile.email,
     phoneNumber: combinePhone(profile.prefix, profile.phone) || "",
-    entityId: profile.organization_id || "",
+    entityId: profile.player_id || "",
     role: resolveRole(profile.role),
     profilePictureUrl: profile.image || undefined,
     notes: undefined,

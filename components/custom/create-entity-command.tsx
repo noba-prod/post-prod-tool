@@ -57,11 +57,11 @@ interface UseCreateEntityOptions {
   allowedOptions?: CreateEntityOption[]
   /** Callback after successful entity creation */
   onCreated?: () => void
-  /** Whether to redirect to /organizations after creation (default: true) */
+  /** Whether to redirect to /players after creation (default: true) */
   redirectAfterCreate?: boolean
   /** Current user id for New Collection modal (manager / producer) */
   managerUserId?: string
-  /** If true, user can create collections (noba producer: organization_id = noba org AND is_internal = true) */
+  /** If true, user can create collections (noba producer: player_id = noba player AND is_internal = true) */
   isNobaProducerUser?: boolean
 }
 
@@ -134,7 +134,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
         setNewCollectionModalOpen(true)
       } else {
         toast.error("Only noba producer users can create collections", {
-          description: "You must belong to the producer organization and have internal access.",
+          description: "You must belong to the producer player and have internal access.",
         })
       }
     }
@@ -154,7 +154,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
         setNewCollectionModalOpen(true)
       } else {
         toast.error("Only noba producer users can create collections", {
-          description: "You must belong to the producer organization and have internal access.",
+          description: "You must belong to the producer player and have internal access.",
         })
       }
       return
@@ -206,7 +206,7 @@ export function useCreateEntity(config: UseCreateEntityOptions = {}): UseCreateE
 
       // Redirect to entities page if configured
       if (redirectAfterCreate) {
-        router.push("/organizations")
+        router.push("/players")
       }
     } catch (error) {
       console.error("Failed to create photographer:", error)
@@ -283,7 +283,7 @@ interface CreateEntityCommandProps {
   allowedOptions?: CreateEntityOption[]
   /** Callback after successful entity creation */
   onCreated?: () => void
-  /** Whether to redirect to /organizations after creation (default: true) */
+  /** Whether to redirect to /players after creation (default: true) */
   redirectAfterCreate?: boolean
   /** Custom trigger button (optional) */
   trigger?: React.ReactNode

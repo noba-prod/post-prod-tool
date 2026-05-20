@@ -36,8 +36,8 @@ export {
 
 // Supabase Profile Service
 export {
-  NOBA_ORGANIZATION_ID,
-  mapOrganizationTypeToEntityType,
+  NOBA_PLAYER_ID,
+  mapPlayerTypeToEntityType,
   determineEntityType,
   fetchSupabaseUserData,
   getNavBarVariant,

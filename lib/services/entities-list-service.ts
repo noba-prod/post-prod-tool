@@ -1,6 +1,6 @@
 import type { EntityType } from "@/lib/types"
 import { entityTypeToLabel } from "@/lib/types"
-import type { OrganizationType, Profile } from "@/lib/supabase/database.types"
+import type { PlayerType, Profile } from "@/lib/supabase/database.types"
 
 // =============================================================================
 // TYPES
@@ -21,6 +21,8 @@ export interface EntityListItem {
   admin: string
   /** Admin user ID (first admin if multiple, null if none) */
   adminUserId: string | null
+  /** Admin user email (first admin if multiple) */
+  adminEmail: string
   /** Count of team members */
   teamMembers: number
   /** Count of collections (placeholder for future) */
@@ -35,7 +37,7 @@ export interface EntityListItem {
  * Service for listing entities with computed columns.
  * Aggregates data from entity and user repositories.
  */
-const organizationTypeToEntityType: Record<OrganizationType, EntityType> = {
+const playerTypeToEntityType: Record<PlayerType, EntityType> = {
   noba: "noba",
   client: "client",
   photography_agency: "agency",
@@ -45,8 +47,8 @@ const organizationTypeToEntityType: Record<OrganizationType, EntityType> = {
   handprint_lab: "hand-print-lab",
 }
 
-function mapOrganizationTypeToEntityType(type: OrganizationType): EntityType {
-  return organizationTypeToEntityType[type]
+function mapPlayerTypeToEntityType(type: PlayerType): EntityType {
+  return playerTypeToEntityType[type]
 }
 
 function getEntityTypeLabel(entityType: EntityType): string {
@@ -57,66 +59,144 @@ function getEntityTypeLabel(entityType: EntityType): string {
 }
 
 export type EntitiesApiResponse = {
-  organizations: Array<{
+  players: Array<{
     id: string
     name: string
-    type: OrganizationType
+    type: PlayerType
   }>
-  profiles: Array<Pick<Profile, "id" | "organization_id" | "first_name" | "last_name" | "role">>
+  profiles: Array<
+    Pick<Profile, "id" | "player_id" | "first_name" | "last_name" | "role" | "email">
+  >
   collections: Array<{
     id: string
     client_id: string
+    photographer_id: string | null
+    photo_lab_id: string | null
+    retouch_studio_id: string | null
+    handprint_lab_id: string | null
+  }>
+  collectionMembers?: Array<{
+    collection_id: string
+    user_id: string
   }>
   debug?: Record<string, unknown>
 }
 
+type CollectionRow = EntitiesApiResponse["collections"][number]
+
+/** Unique collection count per player (client FK, entity FKs, or invited team user). */
+function buildCollectionsCountByPlayer(
+  collections: CollectionRow[],
+  members: Array<{ collection_id: string; user_id: string }>,
+  userIdToPlayerId: Map<string, string>
+): Map<string, number> {
+  const collectionIdsByPlayer = new Map<string, Set<string>>()
+
+  const linkPlayer = (playerId: string | null | undefined, collectionId: string) => {
+    if (!playerId) return
+    let set = collectionIdsByPlayer.get(playerId)
+    if (!set) {
+      set = new Set()
+      collectionIdsByPlayer.set(playerId, set)
+    }
+    set.add(collectionId)
+  }
+
+  const memberUserIdsByCollection = new Map<string, string[]>()
+  for (const member of members) {
+    const list = memberUserIdsByCollection.get(member.collection_id) ?? []
+    list.push(member.user_id)
+    memberUserIdsByCollection.set(member.collection_id, list)
+  }
+
+  for (const collection of collections) {
+    linkPlayer(collection.client_id, collection.id)
+    linkPlayer(collection.photographer_id, collection.id)
+    linkPlayer(collection.photo_lab_id, collection.id)
+    linkPlayer(collection.retouch_studio_id, collection.id)
+    linkPlayer(collection.handprint_lab_id, collection.id)
+
+    for (const userId of memberUserIdsByCollection.get(collection.id) ?? []) {
+      linkPlayer(userIdToPlayerId.get(userId), collection.id)
+    }
+  }
+
+  const counts = new Map<string, number>()
+  for (const [playerId, collectionIds] of collectionIdsByPlayer) {
+    counts.set(playerId, collectionIds.size)
+  }
+  return counts
+}
+
 /**
- * Maps raw GET /api/organizations response to EntityListItem[].
+ * Maps raw GET /api/players response to EntityListItem[].
  * Used when you already have the API response and want to avoid a second fetch.
  */
-export function mapOrganizationsApiToEntities(data: EntitiesApiResponse): EntityListItem[] {
-  if (!data.organizations || data.organizations.length === 0) {
+export function mapPlayersApiToEntities(data: EntitiesApiResponse): EntityListItem[] {
+  if (!data.players || data.players.length === 0) {
     return []
   }
 
-  const profilesByOrganization = new Map<string, typeof data.profiles[0][]>()
+  const profilesByPlayer = new Map<string, typeof data.profiles[0][]>()
   for (const profile of data.profiles || []) {
-    if (!profile.organization_id) continue
-    const existing = profilesByOrganization.get(profile.organization_id) || []
+    if (!profile.player_id) continue
+    const existing = profilesByPlayer.get(profile.player_id) || []
     existing.push(profile)
-    profilesByOrganization.set(profile.organization_id, existing)
+    profilesByPlayer.set(profile.player_id, existing)
   }
 
-  const collectionsCountByOrganization = new Map<string, number>()
-  for (const collection of data.collections || []) {
-    const existing = collectionsCountByOrganization.get(collection.client_id) || 0
-    collectionsCountByOrganization.set(collection.client_id, existing + 1)
+  const userIdToPlayerId = new Map<string, string>()
+  for (const profile of data.profiles || []) {
+    if (profile.player_id) {
+      userIdToPlayerId.set(profile.id, profile.player_id)
+    }
   }
 
-  return data.organizations.map((organization) => {
-    const entityType = mapOrganizationTypeToEntityType(organization.type)
+  const collectionsCountByPlayer = buildCollectionsCountByPlayer(
+    data.collections || [],
+    data.collectionMembers ?? [],
+    userIdToPlayerId
+  )
+
+  return data.players.map((player) => {
+    const entityType = mapPlayerTypeToEntityType(player.type)
     const typeLabel = getEntityTypeLabel(entityType)
-    const organizationProfiles = profilesByOrganization.get(organization.id) || []
-    const admins = organizationProfiles.filter((profile) => profile.role === "admin")
+    const playerProfiles = profilesByPlayer.get(player.id) || []
+    const admins = playerProfiles.filter((profile) => profile.role === "admin")
+
+    const isSelfPhotographer = entityType === "self-photographer"
+    const primaryProfile = admins[0] ?? playerProfiles[0]
 
     let adminDisplay = "No admin"
-    if (admins.length > 0) {
-      const admin = admins[0]
-      const adminName = [admin.first_name, admin.last_name].filter(Boolean).join(" ").trim()
+    let adminEmail = "—"
+    if (primaryProfile) {
+      const adminName = [primaryProfile.first_name, primaryProfile.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim()
       if (adminName) {
         adminDisplay = adminName
+      }
+      const email = primaryProfile.email?.trim()
+      if (email) {
+        adminEmail = email
       }
     }
 
     return {
-      id: organization.id,
-      name: organization.name,
+      id: player.id,
+      name: player.name,
       type: typeLabel,
       rawType: entityType,
       admin: adminDisplay,
-      adminUserId: admins.length > 0 ? admins[0].id : null,
-      teamMembers: organizationProfiles.length,
-      collections: collectionsCountByOrganization.get(organization.id) || 0,
+      adminUserId: isSelfPhotographer
+        ? (primaryProfile?.id ?? null)
+        : admins.length > 0
+          ? admins[0].id
+          : null,
+      adminEmail,
+      teamMembers: playerProfiles.length,
+      collections: collectionsCountByPlayer.get(player.id) || 0,
     }
   })
 }
@@ -129,7 +209,7 @@ export class EntitiesListService {
    * @returns Array of entities with admin name, team member count, etc.
    */
   async listEntities(): Promise<EntityListItem[]> {
-    const response = await fetch("/api/organizations", {
+    const response = await fetch("/api/players", {
       method: "GET",
       cache: "no-store",
     })
@@ -148,6 +228,6 @@ export class EntitiesListService {
     }
 
     const data = (await response.json()) as EntitiesApiResponse
-    return mapOrganizationsApiToEntities(data)
+    return mapPlayersApiToEntities(data)
   }
 }

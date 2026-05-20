@@ -9,18 +9,18 @@ export type CreateTeamMemberInvitationResult =
   | { success: false; error: string }
 
 /**
- * Create a platform invitation for a new team member (noba* / internal org).
+ * Create a platform invitation for a new team member (noba* / internal player).
  * Stores the invitation in Supabase and sends an email with an activation link.
- * When the user accepts, they are added to the organization with the given role and is_internal set as appropriate.
+ * When the user accepts, they are added to the player with the given role and is_internal set as appropriate.
  */
 export async function createTeamMemberInvitation(
-  organizationId: string,
+  playerId: string,
   email: string,
   role: UserRole
 ): Promise<CreateTeamMemberInvitationResult> {
   try {
     const result = await createInvitation({
-      organizationId,
+      playerId,
       email: email.trim().toLowerCase(),
       role,
       expiresInDays: 7,

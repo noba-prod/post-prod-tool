@@ -106,7 +106,7 @@ export default function AgencyCreationPage() {
       <CreationTemplate
         title="Create new agency"
         breadcrumbs={[
-          { label: "Players", href: "/organizations" },
+          { label: "Players", href: "/players" },
           { label: "Create new agency" },
         ]}
         sidebarItems={[
@@ -129,7 +129,7 @@ export default function AgencyCreationPage() {
                 initialData={creation.basicFormData ?? undefined}
                 existingProfilePictureUrl={creation.entity?.profilePictureUrl}
                 validateNameUniqueness={creation.entityId === null}
-                excludeOrganizationId={creation.entityId ?? undefined}
+                excludePlayerId={creation.entityId ?? undefined}
                 onDataChange={creation.handleFormDataChange}
                 onValidationChange={creation.handleValidationChange}
               />

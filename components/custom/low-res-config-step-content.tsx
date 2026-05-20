@@ -25,7 +25,7 @@ import { createClient } from "@/lib/supabase/client"
 import type { Location } from "@/lib/types"
 import type { CollectionDraft, ChronologyConstraint } from "@/lib/domain/collections"
 import type { CollectionConfig } from "@/lib/domain/collections"
-import type { Organization } from "@/lib/supabase/database.types"
+import type { Player } from "@/lib/supabase/database.types"
 import { mergeShippingProviderOptions } from "@/lib/utils/shipping-provider-picker"
 
 function formatEntityLocation(loc: Location): string {
@@ -89,24 +89,24 @@ function isSupabaseConfigured(): boolean {
   )
 }
 
-function formatOrgAddress(org: Pick<Organization, "street_address" | "zip_code" | "city" | "country">): string {
+function formatOrgAddress(org: Pick<Player, "street_address" | "zip_code" | "city" | "country">): string {
   const parts = [org.street_address, org.zip_code, org.city, org.country].filter(Boolean)
   return parts.length ? parts.join(" ") : "—"
 }
 
-async function fetchOrganizationById(id: string): Promise<{ name: string; address: string } | null> {
+async function fetchPlayerById(id: string): Promise<{ name: string; address: string } | null> {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase
-    .from("organizations") as any)
+    .from("players") as any)
     .select("id, name, street_address, zip_code, city, country")
     .eq("id", id)
     .single()
   if (error) {
-    console.error("[LowResConfigStepContent] Failed to fetch organization:", error)
+    console.error("[LowResConfigStepContent] Failed to fetch player:", error)
     return null
   }
-  const org = data as Organization | null
+  const org = data as Player | null
   if (!org) return null
   return { name: org.name, address: formatOrgAddress(org) }
 }
@@ -255,13 +255,13 @@ export function LowResConfigStepContent({
     const load = async () => {
       let address = "—"
       if (isSupabaseConfigured()) {
-        const org = await fetchOrganizationById(eid)
+        const org = await fetchPlayerById(eid)
         if (cancelled) return
         setLabName(org?.name ?? "—")
         address = org?.address ?? "—"
         setLabAddress(savedOriginAddress ?? address)
       } else {
-        const res = await fetch(`/api/organizations/${eid}`)
+        const res = await fetch(`/api/players/${eid}`)
         if (!res.ok) {
           setLabName("—")
           setLabAddress(savedOriginAddress ?? "—")
@@ -306,12 +306,12 @@ export function LowResConfigStepContent({
     const load = async () => {
       let address = "—"
       if (isSupabaseConfigured()) {
-        const org = await fetchOrganizationById(eid)
+        const org = await fetchPlayerById(eid)
         if (cancelled) return
         address = org?.address ?? "—"
         setHandprintLabAddress(address)
       } else {
-        const res = await fetch(`/api/organizations/${eid}`)
+        const res = await fetch(`/api/players/${eid}`)
         if (!res.ok) {
           setHandprintLabAddress("—")
           return

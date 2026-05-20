@@ -18,8 +18,10 @@ interface UserContextValue {
   loading: boolean
   /** Derived: true if user belongs to noba entity */
   isNobaUser: boolean
-  /** Derived: true if user can create collections (organization_id = noba producer org AND is_internal = true) */
+  /** Derived: true if user can create collections (player_id = noba producer player AND is_internal = true) */
   isNobaProducerUser: boolean
+  /** Derived: true if user is noba internal admin (is_internal + role admin; can delete clients) */
+  isNobaInternalAdmin: boolean
   /** Derived: true if user is a self-photographer */
   isSelfPhotographer: boolean
   /** Derived: true if user can access Entities section (only noba users) */
@@ -37,6 +39,7 @@ const DEFAULT_USER_CONTEXT: UserContextValue = {
   loading: false,
   isNobaUser: false,
   isNobaProducerUser: false,
+  isNobaInternalAdmin: false,
   isSelfPhotographer: false,
   canAccessEntities: false,
   canAccessTeam: true,
@@ -76,11 +79,12 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
   const [user, setUser] = React.useState<User | null>(null)
   const [entity, setEntity] = React.useState<Entity | null>(null)
   const [isNobaProducerUser, setIsNobaProducerUser] = React.useState(false)
+  const [isNobaInternalAdmin, setIsNobaInternalAdmin] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
 
   // Load user and entity data when session changes.
   // When refetching due to "session-changed" (e.g. token refresh on tab return), do not set loading
-  // so that pages depending on userContext.loading (organizations, team) don't re-run and "refresh".
+  // so that pages depending on userContext.loading (players, team) don't re-run and "refresh".
   React.useEffect(() => {
     let cancelled = false
 
@@ -95,6 +99,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
             setUser(null)
             setEntity(null)
             setIsNobaProducerUser(false)
+            setIsNobaInternalAdmin(false)
             setLoading(false)
           }
           return
@@ -109,13 +114,15 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
           setUser(null)
           setEntity(null)
           setIsNobaProducerUser(false)
+          setIsNobaInternalAdmin(false)
           setLoading(false)
           return
         }
 
         setUser(userData.user)
         setEntity(userData.entity)
-        setIsNobaProducerUser("isNobaProducerUser" in userData && userData.isNobaProducerUser === true)
+        setIsNobaProducerUser(userData.isNobaProducerUser === true)
+        setIsNobaInternalAdmin(userData.isNobaInternalAdmin === true)
         setLoading(false)
       } catch (error) {
         console.error("[UserContext] Failed to load user data:", error)
@@ -123,6 +130,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
           setUser(null)
           setEntity(null)
           setIsNobaProducerUser(false)
+          setIsNobaInternalAdmin(false)
           setLoading(false)
         }
       }
@@ -164,6 +172,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
       loading,
       isNobaUser,
       isNobaProducerUser,
+      isNobaInternalAdmin,
       isSelfPhotographer,
       canAccessEntities,
       canAccessTeam,
@@ -175,6 +184,7 @@ export function UserContextProvider({ children }: UserContextProviderProps) {
       loading,
       isNobaUser,
       isNobaProducerUser,
+      isNobaInternalAdmin,
       isSelfPhotographer,
       canAccessEntities,
       canAccessTeam,
