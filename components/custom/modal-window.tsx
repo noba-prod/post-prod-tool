@@ -39,8 +39,16 @@ interface ModalWindowProps {
   secondaryVariant?: "default" | "destructive"
   /** Primary button disabled */
   primaryDisabled?: boolean
+  /** Primary button loading (spinner + gerund) */
+  primaryLoading?: boolean
+  /** Override gerund text while primary is loading */
+  primaryLoadingText?: string
   /** Secondary button disabled */
   secondaryDisabled?: boolean
+  /** Secondary button loading */
+  secondaryLoading?: boolean
+  /** Secondary button loading text */
+  secondaryLoadingText?: string
   /** Callback when primary action is clicked */
   onPrimaryClick?: () => void
   /** Callback when secondary action is clicked */
@@ -107,7 +115,11 @@ function ModalWindow({
   showSecondary = true,
   secondaryVariant = "default",
   primaryDisabled = false,
+  primaryLoading = false,
+  primaryLoadingText,
   secondaryDisabled = false,
+  secondaryLoading = false,
+  secondaryLoadingText,
   onPrimaryClick,
   onSecondaryClick,
   width = "600px",
@@ -200,7 +212,11 @@ function ModalWindow({
                 showSecondary={showSecondary}
                 secondaryVariant={secondaryVariant}
                 primaryDisabled={primaryDisabled}
+                primaryLoading={primaryLoading}
+                primaryLoadingText={primaryLoadingText}
                 secondaryDisabled={secondaryDisabled}
+                secondaryLoading={secondaryLoading}
+                secondaryLoadingText={secondaryLoadingText}
                 onPrimaryClick={onPrimaryClick}
                 onSecondaryClick={onSecondaryClick}
               />

@@ -61,6 +61,10 @@ export interface ViewSection {
   onPrimaryClick?: () => void
   /** Whether primary button is disabled */
   primaryDisabled?: boolean
+  /** Primary button loading (spinner + gerund) */
+  primaryLoading?: boolean
+  /** Override gerund text while primary is loading */
+  primaryLoadingText?: string
   /** Whether to show the primary action button */
   showPrimaryAction?: boolean
 }
@@ -847,6 +851,8 @@ export function ViewTemplate({
                         primaryLabel={section.primaryLabel || "Save changes"}
                         onPrimaryClick={showPrimaryButton ? section.onPrimaryClick : undefined}
                         primaryDisabled={section.primaryDisabled}
+                        primaryLoading={section.primaryLoading}
+                        primaryLoadingText={section.primaryLoadingText}
                         onExpand={() => handleBlockExpand(section.id)}
                         onCollapse={() => handleBlockCollapse(section.id)}
                       >
@@ -902,6 +908,7 @@ export function ViewTemplate({
           secondaryLabel="Cancel"
           showSecondary={true}
           primaryDisabled={!isCompanyFormValid || isUpdatingCompany}
+          primaryLoading={isUpdatingCompany}
           onPrimaryClick={handleCompanyUpdate}
           onSecondaryClick={() => setIsCompanyModalOpen(false)}
           width="644px"

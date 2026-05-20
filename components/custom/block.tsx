@@ -6,6 +6,7 @@ import { Titles } from "./titles"
 import { BlockHeading } from "./block-heading"
 import { ParticipantSummary } from "./participant-summary"
 import { Button } from "@/components/ui/button"
+import { toLoadingLabel } from "@/lib/ui/loading-labels"
 import { ChevronDown } from "lucide-react"
 
 // ============================================================================
@@ -53,6 +54,10 @@ interface BlockTemplateCreationProps {
   onPrimaryClick?: () => void
   /** Whether primary button is disabled */
   primaryDisabled?: boolean
+  /** Primary button loading (spinner + gerund) */
+  primaryLoading?: boolean
+  /** Override gerund text while primary is loading */
+  primaryLoadingText?: string
   /** Secondary button label (e.g. "Previous") */
   secondaryLabel?: string
   /** Callback when secondary button is clicked */
@@ -88,6 +93,10 @@ interface BlockTemplateViewProps {
   onPrimaryClick?: () => void
   /** Whether primary button is disabled */
   primaryDisabled?: boolean
+  /** Primary button loading (spinner + gerund) */
+  primaryLoading?: boolean
+  /** Override gerund text while primary is loading */
+  primaryLoadingText?: string
   /** Callback when expand/collapse is clicked */
   onExpand?: () => void
   onCollapse?: () => void
@@ -160,6 +169,8 @@ export function BlockTemplate(props: BlockTemplateProps) {
       primaryLabel = "Primary",
       onPrimaryClick,
       primaryDisabled = false,
+      primaryLoading = false,
+      primaryLoadingText,
       secondaryLabel,
       onSecondaryClick,
       onEdit,
@@ -285,6 +296,8 @@ export function BlockTemplate(props: BlockTemplateProps) {
                 size="lg"
                 onClick={handlePrimaryClick}
                 disabled={primaryDisabled}
+                loading={primaryLoading}
+                loadingText={primaryLoadingText ?? toLoadingLabel(primaryLabel)}
                 className="rounded-xl"
               >
                 {primaryLabel}
@@ -311,6 +324,8 @@ export function BlockTemplate(props: BlockTemplateProps) {
     primaryLabel = "Primary",
     onPrimaryClick,
     primaryDisabled = false,
+    primaryLoading = false,
+    primaryLoadingText,
     onExpand,
     onCollapse,
   } = props as BlockTemplateViewProps
@@ -405,6 +420,8 @@ export function BlockTemplate(props: BlockTemplateProps) {
             size="lg"
             onClick={onPrimaryClick}
             disabled={primaryDisabled}
+            loading={primaryLoading}
+            loadingText={primaryLoadingText ?? toLoadingLabel(primaryLabel)}
             className="rounded-xl"
           >
             {primaryLabel}

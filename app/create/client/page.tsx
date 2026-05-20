@@ -137,6 +137,7 @@ export default function ClientCreationPage() {
             primaryLabel: creation.step1PrimaryLabel,
             onPrimaryClick: creation.handleStep1Primary,
             primaryDisabled: !creation.isBasicInfoValid || creation.isUpdating || creation.isCreating,
+            primaryLoading: creation.isUpdating || creation.isCreating,
             onEdit: creation.handleEditBasicInfo,
           },
           {
@@ -168,6 +169,7 @@ export default function ClientCreationPage() {
         onCancel={creation.closeAdminModal}
         primaryLabel="Create admin user"
         secondaryLabel="Cancel"
+        isSubmitting={creation.isCreating}
       />
 
       {/* New Team Member Modal */}
@@ -196,6 +198,7 @@ export default function ClientCreationPage() {
           onCancel={creation.closeNewMemberModal}
           primaryLabel="Register member"
           secondaryLabel="Cancel"
+          isSubmitting={creation.isCreatingMember}
         />
       )}
 
@@ -215,8 +218,9 @@ export default function ClientCreationPage() {
           disabled={false}
           onSubmit={creation.handleEditUserSubmit}
           onCancel={creation.closeEditUserModal}
-          primaryLabel={creation.isUpdatingMember ? "Saving..." : "Save changes"}
+          primaryLabel="Save changes"
           secondaryLabel="Cancel"
+          isSubmitting={creation.isUpdatingMember}
         />
       )}
     </>

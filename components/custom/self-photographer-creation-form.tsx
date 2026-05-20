@@ -187,10 +187,12 @@ export function SelfPhotographerCreationForm({
       onOpenChange={onOpenChange}
       title="Create Photographer"
       subtitle="Create a new photographer entity and its admin user"
-      primaryLabel={isSubmitting ? "Creating..." : "Create photographer"}
+      primaryLabel="Create photographer"
       secondaryLabel="Cancel"
       showSecondary={false}
       primaryDisabled={!isFormValid || isSubmitting}
+      primaryLoading={isSubmitting}
+      primaryLoadingText="Creating..."
       onPrimaryClick={handleSubmit}
       onSecondaryClick={handleCancel}
       width="644px"

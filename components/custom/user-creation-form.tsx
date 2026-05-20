@@ -90,6 +90,10 @@ interface UserCreationFormProps {
   showPrimary?: boolean
   /** Show secondary button (default: false; set true for Cancel in edit mode, or Delete when onDeleteClick) */
   showSecondary?: boolean
+  /** Primary button loading (spinner + gerund) */
+  isSubmitting?: boolean
+  /** Override gerund text while submitting */
+  primaryLoadingText?: string
 }
 
 // ============================================================================
@@ -134,6 +138,8 @@ export function UserCreationForm({
   secondaryLabel = "Cancel",
   showPrimary: showPrimaryProp,
   showSecondary: showSecondaryProp,
+  isSubmitting = false,
+  primaryLoadingText,
 }: UserCreationFormProps) {
   // Determine title and primary label based on mode (profile-details variant when editing self)
   const title =
@@ -352,7 +358,9 @@ export function UserCreationForm({
       showPrimary={showPrimary}
       showSecondary={showSecondary}
       secondaryVariant={secondaryVariant}
-      primaryDisabled={!isFormValid || disabled}
+      primaryDisabled={!isFormValid || disabled || isSubmitting}
+      primaryLoading={isSubmitting}
+      primaryLoadingText={primaryLoadingText}
       onPrimaryClick={handleSubmit}
       onSecondaryClick={useDeleteAsSecondary ? onDeleteClick : handleCancel}
       width="644px"

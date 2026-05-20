@@ -8,6 +8,7 @@ import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
+import { TableSkeleton } from "@/components/custom/loading-skeletons"
 import { CreateEntityCommand } from "@/components/custom/create-entity-command"
 import { UserCreationForm } from "@/components/custom/user-creation-form"
 import { useAuthAdapter } from "@/lib/auth"
@@ -394,9 +395,7 @@ export default function PlayersPage() {
         </LayoutSection>
         <LayoutSection>
           {loadingEntities ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-sm text-muted-foreground">Loading players...</p>
-            </div>
+            <TableSkeleton variant="entities" />
           ) : (
             <>
               <Tables

@@ -40,6 +40,8 @@ export interface PublishCollectionDialogProps {
   onEditParticipants?: () => void
   /** Disable publish CTA (until draft is complete) */
   publishDisabled?: boolean
+  /** Primary button loading while publish is in progress */
+  isPublishing?: boolean
   /** Called when user confirms publish */
   onPublish?: () => void
 }
@@ -57,6 +59,7 @@ export function PublishCollectionDialog({
   participants = [],
   onEditParticipants,
   publishDisabled = false,
+  isPublishing = false,
   onPublish,
 }: PublishCollectionDialogProps) {
   return (
@@ -155,6 +158,8 @@ export function PublishCollectionDialog({
             onSecondaryClick={() => onOpenChange(false)}
             onPrimaryClick={() => onPublish?.()}
             primaryDisabled={publishDisabled}
+            primaryLoading={isPublishing}
+            primaryLoadingText="Publishing..."
           />
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

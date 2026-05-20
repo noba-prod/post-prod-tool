@@ -272,16 +272,11 @@ function OTPContent() {
               <Button
                 type="submit"
                 className="w-full h-10 rounded-xl bg-[#18181b] text-[#fafafa] hover:bg-[#18181b]/90 font-medium text-sm"
-                disabled={loading || otp.length < 8}
+                disabled={otp.length < 8}
+                loading={loading}
+                loadingText="Validating..."
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Validating...
-                  </>
-                ) : (
-                  "Validate"
-                )}
+                Validate
               </Button>
             </form>
 

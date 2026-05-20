@@ -8,6 +8,7 @@ import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar, COLLECTION_STATUSES } from "@/components/custom/filter-bar"
 import { Grid } from "@/components/custom/grid"
 import { Tables } from "@/components/custom/tables"
+import { CollectionsGridSkeleton, TableSkeleton } from "@/components/custom/loading-skeletons"
 import { Button } from "@/components/ui/button"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
@@ -284,6 +285,7 @@ export default function CollectionsPage() {
   const { isNobaProducerUser, isNobaUser } = useUserContext()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingCollections, setLoadingCollections] = useState(false)
   const [collections, setCollections] = useState<Collection[]>([])
   const [clientNamesByEntityId, setClientNamesByEntityId] = useState<Record<string, string>>({})
   const [clientOptions, setClientOptions] = useState<{ id: string; name: string }[]>([])
@@ -319,8 +321,12 @@ export default function CollectionsPage() {
   // Fetch collections from service (single source of truth for list)
   const refetchCollections = React.useCallback(() => {
     if (!session) return
+    setLoadingCollections(true)
     const service = createCollectionsService()
-    service.listCollections().then(setCollections)
+    service
+      .listCollections()
+      .then(setCollections)
+      .finally(() => setLoadingCollections(false))
   }, [session])
 
   useEffect(() => {
@@ -730,56 +736,66 @@ export default function CollectionsPage() {
           />
         </LayoutSection>
         <LayoutSection>
-          {activeView === "Gallery" ? (
-            <Grid items={gridItems} />
+          {loadingCollections ? (
+            activeView === "Gallery" ? (
+              <CollectionsGridSkeleton />
+            ) : (
+              <TableSkeleton variant="collections" />
+            )
           ) : (
-            <Tables
-              variant="collections"
-              collectionsData={tableItems}
-              onCollectionRowClick={(id, status) => {
-                // UI status: draft | upcoming | in-progress | completed | canceled
-                const isDraft = status === "draft"
-                if (isDraft) router.push(`/collections/create/${id}`)
-                else router.push(`/collections/${id}`)
-              }}
-              onSettings={(id) => console.log("Settings for collection:", id)}
-            />
-          )}
-          {!hasItems && (
-            <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
-              {isEmpty ? (
-                <>
-                  <p className="text-lg font-medium text-muted-foreground">
-                    No collections yet
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {isNobaProducerUser
-                      ? "Create your first collection to get started."
-                      : "Only noba producer users can create collections."}
-                  </p>
-                  {isNobaProducerUser && (
-                    <Button
-                      onClick={() => {
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(new CustomEvent("noba:open-create-collection"))
-                        }
-                      }}
-                    >
-                      Create new
-                    </Button>
-                  )}
-                </>
+            <>
+              {activeView === "Gallery" ? (
+                <Grid items={gridItems} />
               ) : (
-                <>
-                  <p className="text-lg font-medium text-muted-foreground">
-                    No collections found
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Try adjusting your filters
-                  </p>
-                </>
+                <Tables
+                  variant="collections"
+                  collectionsData={tableItems}
+                  onCollectionRowClick={(id, status) => {
+                    // UI status: draft | upcoming | in-progress | completed | canceled
+                    const isDraft = status === "draft"
+                    if (isDraft) router.push(`/collections/create/${id}`)
+                    else router.push(`/collections/${id}`)
+                  }}
+                  onSettings={(id) => console.log("Settings for collection:", id)}
+                />
               )}
-            </div>
+              {!hasItems && (
+                <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
+                  {isEmpty ? (
+                    <>
+                      <p className="text-lg font-medium text-muted-foreground">
+                        No collections yet
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {isNobaProducerUser
+                          ? "Create your first collection to get started."
+                          : "Only noba producer users can create collections."}
+                      </p>
+                      {isNobaProducerUser && (
+                        <Button
+                          onClick={() => {
+                            if (typeof window !== "undefined") {
+                              window.dispatchEvent(new CustomEvent("noba:open-create-collection"))
+                            }
+                          }}
+                        >
+                          Create new
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-lg font-medium text-muted-foreground">
+                        No collections found
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Try adjusting your filters
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </LayoutSection>
       </Layout>

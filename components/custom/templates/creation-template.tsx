@@ -86,6 +86,8 @@ interface CreationBlock {
   primaryLabel?: string
   onPrimaryClick?: () => void
   primaryDisabled?: boolean
+  primaryLoading?: boolean
+  primaryLoadingText?: string
   /** Secondary button label (e.g. "Previous") */
   secondaryLabel?: string
   /** Callback when secondary button is clicked */
@@ -520,6 +522,8 @@ function CreationTemplateContent({
                     primaryLabel={block.primaryLabel}
                     onPrimaryClick={block.onPrimaryClick}
                     primaryDisabled={block.primaryDisabled}
+                    primaryLoading={block.primaryLoading}
+                    primaryLoadingText={block.primaryLoadingText}
                     secondaryLabel={block.secondaryLabel}
                     onSecondaryClick={block.onSecondaryClick}
                     onEdit={block.onEdit}
@@ -581,6 +585,7 @@ function CreationTemplateContent({
           secondaryLabel="Cancel"
           showSecondary={true}
           primaryDisabled={!isCompanyFormValid || isUpdatingCompany}
+          primaryLoading={isUpdatingCompany}
           onPrimaryClick={handleCompanyUpdate}
           onSecondaryClick={() => setIsCompanyModalOpen(false)}
           width="644px"

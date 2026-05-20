@@ -425,6 +425,7 @@ export function NewCollectionModal({
       showPrimary={true}
       showSecondary={true}
       primaryDisabled={!valid || isSubmitting}
+      primaryLoading={isSubmitting}
       onPrimaryClick={handleSubmit}
       onSecondaryClick={() => onOpenChange(false)}
       width="600px"

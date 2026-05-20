@@ -301,6 +301,7 @@ export function MainTemplate({
           secondaryLabel="Cancel"
           showSecondary={true}
           primaryDisabled={!isCompanyFormValid || isUpdatingCompany}
+          primaryLoading={isUpdatingCompany}
           onPrimaryClick={handleCompanyUpdate}
           onSecondaryClick={() => setIsCompanyModalOpen(false)}
           width="644px"

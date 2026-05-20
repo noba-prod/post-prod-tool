@@ -2382,7 +2382,8 @@ export function CollectionTemplate({
             </Button>
             <Button
               type="button"
-              disabled={addShipSaving}
+              loading={addShipSaving}
+              loadingText="Saving…"
               onClick={async () => {
                 if (!onAppendDropoffAdditionalShipment || !dropoffManagingShippingOptions?.length) return
                 if (!addShipManaging.trim()) {
@@ -2413,7 +2414,7 @@ export function CollectionTemplate({
                 }
               }}
             >
-              {addShipSaving ? "Saving…" : "Save"}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2532,7 +2533,9 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!uploadMorePhotosUrl.trim() || uploadSubmitting}
+              disabled={!uploadMorePhotosUrl.trim()}
+              loading={uploadSubmitting}
+              loadingText="Uploading…"
               onClick={async () => {
                 const url = uploadMorePhotosUrl.trim()
                 if (!url || uploadSubmitting) return
@@ -2549,7 +2552,7 @@ export function CollectionTemplate({
                 }
               }}
             >
-              {uploadSubmitting ? "Uploading…" : "Upload more photos"}
+              Upload more photos
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2639,7 +2642,9 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!uploadLowResUrl.trim() || uploadSubmitting}
+              disabled={!uploadLowResUrl.trim()}
+              loading={uploadSubmitting}
+              loadingText="Uploading…"
               onClick={async () => {
                 const url = uploadLowResUrl.trim()
                 if (!url || uploadSubmitting) return
@@ -2658,7 +2663,7 @@ export function CollectionTemplate({
                 }
               }}
             >
-              {uploadSubmitting ? "Uploading…" : "Upload low-res"}
+              Upload low-res
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2712,6 +2717,8 @@ export function CollectionTemplate({
               type="button"
               variant="default"
               disabled={!uploadPhotographerSelectionUrl.trim()}
+              loading={uploadSubmitting}
+              loadingText="Uploading…"
               onClick={async () => {
                 const url = uploadPhotographerSelectionUrl.trim()
                 if (!url || uploadSubmitting) return
@@ -2728,7 +2735,7 @@ export function CollectionTemplate({
                 }
               }}
             >
-              {uploadSubmitting ? "Uploading…" : "Upload selection"}
+              Upload selection
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2819,7 +2826,9 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!addCommentNotes.trim() || addCommentSubmitting}
+              disabled={!addCommentNotes.trim()}
+              loading={addCommentSubmitting}
+              loadingText="Adding…"
               onClick={async () => {
                 const text = addCommentNotes.trim()
                 if (!text || !addCommentContext || addCommentSubmitting) return
@@ -2837,7 +2846,7 @@ export function CollectionTemplate({
                 }
               }}
             >
-              {addCommentSubmitting ? "Adding…" : "Add comment"}
+              Add comment
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2890,7 +2899,9 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!clientUploadSelectionUrl.trim() || uploadSubmitting}
+              disabled={!clientUploadSelectionUrl.trim()}
+              loading={uploadSubmitting}
+              loadingText="Uploading…"
               onClick={async () => {
                 const url = clientUploadSelectionUrl.trim()
                 if (!url || uploadSubmitting) return
@@ -2909,7 +2920,7 @@ export function CollectionTemplate({
                 }
               }}
             >
-              {uploadSubmitting ? "Uploading…" : "Upload selection"}
+              Upload selection
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3359,6 +3370,7 @@ export function CollectionTemplate({
           secondaryLabel="Cancel"
           showSecondary={true}
           primaryDisabled={!isCompanyFormValid || isUpdatingCompany}
+          primaryLoading={isUpdatingCompany}
           onPrimaryClick={handleCompanyUpdate}
           onSecondaryClick={() => setIsCompanyModalOpen(false)}
           width="644px"

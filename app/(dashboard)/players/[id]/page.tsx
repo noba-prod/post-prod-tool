@@ -547,7 +547,8 @@ export default function PlayerDetailPage() {
         onPrimaryClick: handleSaveBasicInfo,
         showPrimaryAction: true,
         primaryDisabled: !isBasicInfoValid || isSavingBasicInfo,
-        primaryLabel: isSavingBasicInfo ? "Saving..." : "Save changes",
+        primaryLoading: isSavingBasicInfo,
+        primaryLabel: "Save changes",
       },
     }
   )
@@ -782,9 +783,10 @@ export default function PlayerDetailPage() {
             <Button
               variant="destructive"
               onClick={handleConfirmDeleteEntity}
-              disabled={isDeletingEntity}
+              loading={isDeletingEntity}
+              loadingText="Deleting..."
             >
-              {isDeletingEntity ? "Deleting..." : "Delete"}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

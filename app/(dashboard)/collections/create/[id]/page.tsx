@@ -1383,6 +1383,7 @@ export default function CollectionCreatePage({
           !isCreationStepContentComplete(draft, "check_finals") ||
           isPublishing
         }
+        isPublishing={isPublishing}
         onPublish={handleConfirmPublish}
       />
 
@@ -1409,9 +1410,10 @@ export default function CollectionCreatePage({
               variant="destructive"
               size="lg"
               onClick={handleConfirmDeleteCollection}
-              disabled={isDeleting}
+              loading={isDeleting}
+              loadingText="Deleting..."
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1440,9 +1442,10 @@ export default function CollectionCreatePage({
               variant="destructive"
               size="lg"
               onClick={handleConfirmCancelCollection}
-              disabled={isCancelingCollection}
+              loading={isCancelingCollection}
+              loadingText="Canceling..."
             >
-              {isCancelingCollection ? "Canceling..." : "Cancel collection"}
+              Cancel collection
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1470,9 +1473,10 @@ export default function CollectionCreatePage({
             <Button
               size="lg"
               onClick={handleConfirmReactivateCollection}
-              disabled={isReactivatingCollection}
+              loading={isReactivatingCollection}
+              loadingText="Re-activating..."
             >
-              {isReactivatingCollection ? "Re-activating..." : "Re-activate collection"}
+              Re-activate collection
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1531,13 +1535,12 @@ export default function CollectionCreatePage({
               size="lg"
               variant={structuralConfirmDialog.wasPublished ? "destructive" : "default"}
               onClick={handleConfirmStructuralChange}
-              disabled={isApplyingStructural}
+              loading={isApplyingStructural}
+              loadingText="Applying…"
             >
-              {isApplyingStructural
-                ? "Applying…"
-                : structuralConfirmDialog.wasPublished
-                  ? "Apply and move to draft"
-                  : "Apply workflow change"}
+              {structuralConfirmDialog.wasPublished
+                ? "Apply and move to draft"
+                : "Apply workflow change"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1627,9 +1630,10 @@ export default function CollectionCreatePage({
             <Button
               size="lg"
               onClick={handleConfirmSaveChanges}
-              disabled={isSavingChanges}
+              loading={isSavingChanges}
+              loadingText="Saving..."
             >
-              {isSavingChanges ? "Saving..." : "Save changes"}
+              Save changes
             </Button>
           </DialogFooter>
         </DialogContent>

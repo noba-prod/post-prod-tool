@@ -3,6 +3,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { toLoadingLabel } from "@/lib/ui/loading-labels"
 
 interface ActionBarProps {
   /** Primary action label */
@@ -17,8 +18,16 @@ interface ActionBarProps {
   secondaryVariant?: "default" | "destructive"
   /** Primary button disabled state */
   primaryDisabled?: boolean
+  /** Primary button loading state (spinner + gerund) */
+  primaryLoading?: boolean
+  /** Override gerund text while primary is loading */
+  primaryLoadingText?: string
   /** Secondary button disabled state */
   secondaryDisabled?: boolean
+  /** Secondary button loading state */
+  secondaryLoading?: boolean
+  /** Override gerund text while secondary is loading */
+  secondaryLoadingText?: string
   /** Callback when primary action is clicked */
   onPrimaryClick?: () => void
   /** Callback when secondary action is clicked */
@@ -46,7 +55,11 @@ export function ActionBar({
   showSecondary = true,
   secondaryVariant = "default",
   primaryDisabled = false,
+  primaryLoading = false,
+  primaryLoadingText,
   secondaryDisabled = false,
+  secondaryLoading = false,
+  secondaryLoadingText,
   onPrimaryClick,
   onSecondaryClick,
   className,
@@ -65,6 +78,8 @@ export function ActionBar({
           size="lg"
           onClick={onSecondaryClick}
           disabled={secondaryDisabled}
+          loading={secondaryLoading}
+          loadingText={secondaryLoadingText ?? toLoadingLabel(secondaryLabel)}
           className="rounded-xl px-4"
         >
           {secondaryLabel}
@@ -78,6 +93,8 @@ export function ActionBar({
           size="lg"
           onClick={onPrimaryClick}
           disabled={primaryDisabled}
+          loading={primaryLoading}
+          loadingText={primaryLoadingText ?? toLoadingLabel(primaryLabel)}
           className="rounded-xl px-4"
         >
           {primaryLabel}

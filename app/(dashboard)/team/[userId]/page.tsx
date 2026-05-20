@@ -253,6 +253,7 @@ export default function TeamMemberProfilePage() {
           onSubmit={handleUpdateUser}
           onCancel={() => setIsEditModalOpen(false)}
           primaryLabel="Save changes"
+          isSubmitting={isSaving}
         />
       )}
     </MainTemplate>

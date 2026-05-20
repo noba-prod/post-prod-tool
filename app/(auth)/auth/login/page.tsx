@@ -1,8 +1,8 @@
 "use client"
 
 import { Suspense, useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAuthAdapter } from "@/lib/auth"
@@ -155,16 +155,10 @@ function LoginContent() {
             <Button
               type="submit"
               className="w-full h-10 rounded-xl bg-[#18181b] text-[#fafafa] hover:bg-[#18181b]/90 font-medium text-sm"
-              disabled={loading}
+              loading={loading}
+              loadingText="Sending OTP..."
             >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending OTP...
-                </>
-              ) : (
-                "Request OTP"
-              )}
+              Request OTP
             </Button>
           </form>
 

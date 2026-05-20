@@ -7,6 +7,7 @@ import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
+import { TableSkeleton } from "@/components/custom/loading-skeletons"
 import { UserCreationForm, type UserFormData } from "@/components/custom/user-creation-form"
 import {
   Dialog,
@@ -536,9 +537,7 @@ export default function TeamPage() {
         </LayoutSection>
         <LayoutSection>
           {loadingTeam ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-sm text-muted-foreground">Loading team members...</p>
-            </div>
+            <TableSkeleton variant="team-members" />
           ) : (
             <>
               <Tables
@@ -584,6 +583,7 @@ export default function TeamPage() {
           onCancel={() => setIsNewMemberModalOpen(false)}
           primaryLabel="Register member"
           secondaryLabel="Cancel"
+          isSubmitting={isCreatingMember}
         />
       )}
 
@@ -606,6 +606,7 @@ export default function TeamPage() {
           onDeleteClick={isAdmin ? () => setIsDeleteConfirmOpen(true) : undefined}
           primaryLabel="Save changes"
           secondaryLabel="Cancel"
+          isSubmitting={isUpdatingMember}
         />
       )}
       {/* Delete team member confirmation (admin only) */}
