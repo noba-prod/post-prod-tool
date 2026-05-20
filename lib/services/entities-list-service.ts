@@ -163,7 +163,6 @@ export function mapPlayersApiToEntities(data: EntitiesApiResponse): EntityListIt
     const typeLabel = getEntityTypeLabel(entityType)
     const playerProfiles = profilesByPlayer.get(player.id) || []
     const admins = playerProfiles.filter((profile) => profile.role === "admin")
-
     const isSelfPhotographer = entityType === "self-photographer"
     const primaryProfile = admins[0] ?? playerProfiles[0]
 
