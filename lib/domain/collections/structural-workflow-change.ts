@@ -574,9 +574,9 @@ export interface ParticipantValidationResult {
 
 /**
  * Validate participants against required roles after a structural change.
- * The "orphanedRoles" bucket is informational only — the service does NOT
- * auto-remove memberships; it surfaces them to UI for the producer to clean up
- * consciously (plan §6.1 MVP).
+ * The "orphanedRoles" bucket lists roles that are no longer required. The service
+ * auto-removes them when applying a structural workflow change (see
+ * `CollectionsService.applyStructuralWorkflowChange`).
  */
 export function validateParticipantsForConfig(
   participants: CollectionParticipant[],

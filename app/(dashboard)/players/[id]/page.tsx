@@ -58,6 +58,8 @@ export default function PlayerDetailPage() {
   const [isEditUserModalOpen, setIsEditUserModalOpen] = React.useState(false)
   const [editingUserId, setEditingUserId] = React.useState<string | null>(null)
   const [isUpdatingUser, setIsUpdatingUser] = React.useState(false)
+  const [isDeleteUserConfirmOpen, setIsDeleteUserConfirmOpen] = React.useState(false)
+  const [isDeletingUser, setIsDeletingUser] = React.useState(false)
 
   // Delete entity confirmation dialog
   const [isDeleteEntityDialogOpen, setIsDeleteEntityDialogOpen] = React.useState(false)
@@ -98,6 +100,7 @@ export default function PlayerDetailPage() {
   // Permission (for form disabled state)
   // Get from user context - viewers cannot create or edit
   const userRole = userContext.user?.role || "admin"
+  const isAdmin = userRole === "admin"
   const canEdit = userRole === "admin" || userRole === "editor"
   const canCreate = userRole === "admin" || userRole === "editor" // viewers cannot create
 
@@ -340,6 +343,55 @@ export default function PlayerDetailPage() {
     setIsEditUserModalOpen(false)
     setEditingUserId(null)
   }, [])
+
+  const handleDeleteMember = React.useCallback(
+    async (userId: string) => {
+      if (!entityId) return
+
+      const member = entity?.teamMembers.find((m) => m.id === userId)
+      const name = member
+        ? `${member.firstName}${member.lastName ? ` ${member.lastName}` : ""}`.trim()
+        : "this member"
+
+      setIsDeletingUser(true)
+      try {
+        const response = await fetch(`/api/players/${entityId}/members/${userId}`, {
+          method: "DELETE",
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to remove member")
+        }
+
+        const updatedData = await fetchEntityData()
+        setEntity(updatedData)
+
+        toast.success("Member removed", {
+          description: `${name} has been removed from the team.`,
+        })
+      } catch (error) {
+        console.error("Failed to remove member:", error)
+        toast.error("Failed to remove member", {
+          description: error instanceof Error ? error.message : "An error occurred while removing the member.",
+        })
+      } finally {
+        setIsDeletingUser(false)
+      }
+    },
+    [entity?.teamMembers, entityId, fetchEntityData]
+  )
+
+  const handleConfirmDeleteUserFromModal = React.useCallback(async () => {
+    if (!editingUserId) return
+    await handleDeleteMember(editingUserId)
+    handleCloseEditUserModal()
+    setIsDeleteUserConfirmOpen(false)
+  }, [editingUserId, handleDeleteMember, handleCloseEditUserModal])
+
+  const editingUser = React.useMemo(
+    () => entity?.teamMembers.find((u) => u.id === editingUserId) ?? null,
+    [entity?.teamMembers, editingUserId]
+  )
 
   // Handle update user
   const handleUpdateUser = React.useCallback(async (userData: {
@@ -726,12 +778,51 @@ export default function PlayerDetailPage() {
             type: entity.entity.type,
             name: entity.entity.name,
           }}
-          initialUserData={entity.teamMembers.find((u) => u.id === editingUserId) || undefined}
+          initialUserData={editingUser || undefined}
           disabled={!canEdit}
           onSubmit={handleUpdateUser}
           onCancel={handleCloseEditUserModal}
+          onDeleteClick={isAdmin ? () => setIsDeleteUserConfirmOpen(true) : undefined}
+          primaryLabel="Save changes"
+          isSubmitting={isUpdatingUser}
         />
       )}
+
+      {/* Delete team member confirmation (admin only) */}
+      <Dialog open={isDeleteUserConfirmOpen} onOpenChange={setIsDeleteUserConfirmOpen}>
+        <DialogContent showCloseButton={true}>
+          <DialogHeader>
+            <DialogTitle>
+              Delete{" "}
+              {editingUser
+                ? `${editingUser.firstName}${editingUser.lastName ? ` ${editingUser.lastName}` : ""}`.trim() ||
+                  "this member"
+                : "this member"}
+              ?
+            </DialogTitle>
+            <DialogDescription>This action can&apos;t be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter showCloseButton={false} className="sm:justify-start">
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => setIsDeleteUserConfirmOpen(false)}
+              disabled={isDeletingUser}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="lg"
+              onClick={handleConfirmDeleteUserFromModal}
+              loading={isDeletingUser}
+              loadingText="Deleting..."
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete client: admin-only informational dialog */}
       <Dialog open={isDeleteAdminOnlyDialogOpen} onOpenChange={setIsDeleteAdminOnlyDialogOpen}>
