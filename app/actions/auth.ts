@@ -5,6 +5,86 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import type { Invitation, ProfileInsert } from "@/lib/supabase/database.types"
 import { revalidatePath } from "next/cache"
 
+function normalizeEmail(email: string): string {
+  return email.toLowerCase().trim()
+}
+
+/** Resolve auth user id by email — profiles first, then paginated Auth admin list. */
+async function resolveUserIdByEmail(email: string): Promise<string | null> {
+  const adminSupabase = createAdminClient()
+  const normalized = normalizeEmail(email)
+
+  const { data: profileData } = await adminSupabase
+    .from("profiles")
+    .select("id")
+    .eq("email", normalized)
+    .maybeSingle()
+  const profileRow = profileData as { id: string } | null
+
+  if (profileRow?.id) {
+    return profileRow.id
+  }
+
+  let page = 1
+  const perPage = 1000
+  while (page <= 20) {
+    const { data, error } = await adminSupabase.auth.admin.listUsers({ page, perPage })
+    if (error || !data?.users?.length) break
+
+    const match = data.users.find(
+      (u) => normalizeEmail(u.email ?? "") === normalized
+    )
+    if (match?.id) return match.id
+
+    if (data.users.length < perPage) break
+    page += 1
+  }
+
+  return null
+}
+
+function isDuplicateAuthUserError(message: string | undefined): boolean {
+  const msg = (message ?? "").toLowerCase()
+  return (
+    msg.includes("already") ||
+    msg.includes("exists") ||
+    msg.includes("registered") ||
+    msg.includes("duplicate")
+  )
+}
+
+/** Find existing auth user or create one for invitation activation. */
+async function ensureAuthUserForInvitation(
+  email: string
+): Promise<{ userId: string } | { error: string }> {
+  const adminSupabase = createAdminClient()
+  const normalized = normalizeEmail(email)
+
+  const existingId = await resolveUserIdByEmail(normalized)
+  if (existingId) {
+    return { userId: existingId }
+  }
+
+  const { data: newUser, error: createError } = await adminSupabase.auth.admin.createUser({
+    email: normalized,
+    email_confirm: false,
+  })
+
+  if (!createError && newUser.user?.id) {
+    return { userId: newUser.user.id }
+  }
+
+  if (isDuplicateAuthUserError(createError?.message)) {
+    const resolvedId = await resolveUserIdByEmail(normalized)
+    if (resolvedId) {
+      return { userId: resolvedId }
+    }
+  }
+
+  console.error("ensureAuthUserForInvitation createUser error:", createError?.message)
+  return { error: "Failed to create user account" }
+}
+
 export type PrecheckResult = {
   allowed: boolean
   reason?: "ok" | "not_invited" | "not_verified" | "error"
@@ -144,12 +224,11 @@ export async function verifyOTP(email: string, token: string) {
  * Activate invitation token
  */
 export async function activateInvitation(token: string) {
-  const supabase = await createClient()
   const adminSupabase = createAdminClient()
 
   try {
-    // Find invitation (cast: Supabase client can infer never in build)
-    const { data: invitationData, error: inviteError } = await supabase
+    // Token lookup: anon SELECT is allowed by RLS; admin avoids edge-case policy gaps.
+    const { data: invitationData, error: inviteError } = await adminSupabase
       .from("invitations")
       .select("*")
       .eq("token", token)
@@ -171,8 +250,9 @@ export async function activateInvitation(token: string) {
     }
 
     if (new Date(invitation.expires_at) < new Date()) {
-      // Update status to expired (cast: Supabase client can infer never in build)
-      await (supabase.from("invitations") as any).update({ status: "expired" }).eq("id", invitation.id)
+      await (adminSupabase.from("invitations") as any)
+        .update({ status: "expired" })
+        .eq("id", invitation.id)
 
       return {
         success: false,
@@ -180,34 +260,17 @@ export async function activateInvitation(token: string) {
       }
     }
 
-    // Check if user exists
-    // Note: getUserByEmail doesn't exist in Supabase v2, use listUsers with filter instead
-    const { data: users } = await adminSupabase.auth.admin.listUsers()
-    const existingUser = users.users.find((u) => u.email === invitation.email)
-
-    let userId: string
-
-    if (existingUser) {
-      userId = existingUser.id
-    } else {
-      // Create user via admin API
-      const { data: newUser, error: createError } = await adminSupabase.auth.admin.createUser({
-        email: invitation.email,
-        email_confirm: false, // User must verify email
-      })
-
-      if (createError || !newUser.user) {
-        return {
-          success: false,
-          error: "Failed to create user account",
-        }
+    const ensured = await ensureAuthUserForInvitation(invitation.email)
+    if ("error" in ensured) {
+      return {
+        success: false,
+        error: ensured.error,
       }
-
-      userId = newUser.user.id
     }
 
-    // Update invitation (cast: Supabase client can infer never in build)
-    const { error: updateError } = await (supabase.from("invitations") as any)
+    const userId = ensured.userId
+
+    const { error: updateError } = await (adminSupabase.from("invitations") as any)
       .update({
         status: "accepted",
         accepted_at: new Date().toISOString(),
@@ -217,6 +280,10 @@ export async function activateInvitation(token: string) {
 
     if (updateError) {
       console.error("Update invitation error:", updateError)
+      return {
+        success: false,
+        error: "Failed to accept invitation",
+      }
     }
 
     // Player-only (platform/team) invite: resolve player type for is_internal
@@ -237,7 +304,7 @@ export async function activateInvitation(token: string) {
     // Never write is_internal=false here: internal users must keep that flag forever.
     const profilePayload: Record<string, unknown> = {
       id: userId,
-      email: invitation.email,
+      email: normalizeEmail(invitation.email),
     }
     if (!collectionId && playerId) {
       profilePayload.player_id = playerId
@@ -246,9 +313,10 @@ export async function activateInvitation(token: string) {
         profilePayload.is_internal = true
       }
     }
-    const { error: profileError } = await (adminSupabase.from("profiles") as any).upsert(profilePayload as Record<string, string | boolean | null>, {
-      onConflict: "id",
-    })
+    const { error: profileError } = await (adminSupabase.from("profiles") as any).upsert(
+      profilePayload as Record<string, string | boolean | null>,
+      { onConflict: "id" }
+    )
 
     if (profileError) {
       console.error("Profile upsert error:", profileError)
@@ -257,32 +325,24 @@ export async function activateInvitation(token: string) {
     // Add user to collection when invitation is collection-scoped
     const invitedRole = invitation.invited_collection_role ?? "client"
     if (collectionId) {
-      const { error: memberError } = await (supabase.from("collection_members") as any)
-        .insert({
-          collection_id: collectionId,
-          user_id: userId,
-          role: invitedRole,
-        })
-        .select()
-        .single()
+      const { error: memberError } = await (adminSupabase.from("collection_members") as any).insert({
+        collection_id: collectionId,
+        user_id: userId,
+        role: invitedRole,
+      })
 
-      if (memberError) {
-        if (memberError.code !== "23505") {
-          console.error("Collection member error:", memberError)
-        }
+      if (memberError && memberError.code !== "23505") {
+        console.error("Collection member error:", memberError)
       }
     }
 
     // Send email verification if not verified
     const { data: userData } = await adminSupabase.auth.admin.getUserById(userId)
-    if (userData && userData.user && !userData.user.email_confirmed_at) {
-      // Trigger email verification
-      // Note: generateLink requires password for signup type, but we're using passwordless auth
-      // In production, use magic link or OTP flow instead
+    if (userData?.user && !userData.user.email_confirmed_at) {
       try {
         await adminSupabase.auth.admin.generateLink({
           type: "magiclink",
-          email: invitation.email,
+          email: normalizeEmail(invitation.email),
         })
       } catch (error) {
         console.error("Failed to generate verification link:", error)
@@ -292,8 +352,8 @@ export async function activateInvitation(token: string) {
     revalidatePath("/")
     return {
       success: true,
-      email: invitation.email,
-      needsVerification: !userData.user?.email_confirmed_at,
+      email: normalizeEmail(invitation.email),
+      needsVerification: !userData?.user?.email_confirmed_at,
     }
   } catch (error) {
     console.error("Activate invitation error:", error)

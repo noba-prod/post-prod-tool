@@ -32,6 +32,7 @@ import type { CollectionMemberRole } from "@/lib/supabase/database.types"
 import type {
   ParticipantsModalIndividual,
   ParticipantsModalEntity,
+  ParticipantsModalMyTeam,
 } from "@/components/custom/participants-modal"
 import { toast } from "sonner"
 
@@ -173,6 +174,7 @@ export default function CollectionViewPage({
   const [participantsNobaTeam, setParticipantsNobaTeam] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersIndividuals, setParticipantsMainPlayersIndividuals] = React.useState<ParticipantsModalIndividual[]>([])
   const [participantsMainPlayersEntities, setParticipantsMainPlayersEntities] = React.useState<ParticipantsModalEntity[]>([])
+  const [participantsMyTeam, setParticipantsMyTeam] = React.useState<ParticipantsModalMyTeam | undefined>(undefined)
   const [noteAuthorsByUserId, setNoteAuthorsByUserId] = React.useState<Record<string, { name: string; userImageUrl?: string; entityName?: string; entityImageUrl?: string }>>({})
   const inFlightEventKeysRef = React.useRef<Set<string>>(new Set())
 
@@ -879,50 +881,52 @@ export default function CollectionViewPage({
     if (!clientId) setClientName("—")
   }, [collection])
 
-  // Load participants for modal: full list for everyone who can view the collection (server resolves with admin so no per-role filtering)
-  React.useEffect(() => {
-    if (!collection?.id) {
-      setParticipantsNobaTeam([])
-      setParticipantsMainPlayersIndividuals([])
-      setParticipantsMainPlayersEntities([])
-      return
-    }
-    let cancelled = false
-    fetch(`/api/collections/${collection.id}/participants-display`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: {
+  const refetchParticipantsDisplay = React.useCallback(async () => {
+    if (!collection?.id) return
+    try {
+      const res = await fetch(`/api/collections/${collection.id}/participants-display`)
+      if (!res.ok) return
+      const data = (await res.json()) as {
         nobaTeam?: ParticipantsModalIndividual[]
         mainPlayersIndividuals?: ParticipantsModalIndividual[]
         mainPlayersEntities?: ParticipantsModalEntity[]
         photographerName?: string
         clientDisplayName?: string
         noteAuthorsByUserId?: Record<string, { name: string; userImageUrl?: string; entityName?: string; entityImageUrl?: string }>
-      } | null) => {
-        if (cancelled || !data) return
-        setParticipantsNobaTeam(data.nobaTeam ?? [])
-        setParticipantsMainPlayersIndividuals(data.mainPlayersIndividuals ?? [])
-        setParticipantsMainPlayersEntities(data.mainPlayersEntities ?? [])
-        setPhotographerName(data.photographerName ?? undefined)
-        setNoteAuthorsByUserId(data.noteAuthorsByUserId ?? {})
-        setClientName(
-          data.clientDisplayName
-            ? `@${data.clientDisplayName.toLowerCase()}`
-            : "—"
-        )
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setParticipantsNobaTeam([])
-          setParticipantsMainPlayersIndividuals([])
-          setParticipantsMainPlayersEntities([])
-          setPhotographerName(undefined)
-          setClientName("—")
-        }
-      })
-    return () => {
-      cancelled = true
+        myTeam?: ParticipantsModalMyTeam
+      }
+      setParticipantsNobaTeam(data.nobaTeam ?? [])
+      setParticipantsMainPlayersIndividuals(data.mainPlayersIndividuals ?? [])
+      setParticipantsMainPlayersEntities(data.mainPlayersEntities ?? [])
+      setParticipantsMyTeam(data.myTeam)
+      setPhotographerName(data.photographerName ?? undefined)
+      setNoteAuthorsByUserId(data.noteAuthorsByUserId ?? {})
+      setClientName(
+        data.clientDisplayName
+          ? `@${data.clientDisplayName.toLowerCase()}`
+          : "—"
+      )
+    } catch {
+      setParticipantsNobaTeam([])
+      setParticipantsMainPlayersIndividuals([])
+      setParticipantsMainPlayersEntities([])
+      setParticipantsMyTeam(undefined)
+      setPhotographerName(undefined)
+      setClientName("—")
     }
   }, [collection?.id])
+
+  // Load participants for modal: full list for everyone who can view the collection (server resolves with admin so no per-role filtering)
+  React.useEffect(() => {
+    if (!collection?.id) {
+      setParticipantsNobaTeam([])
+      setParticipantsMainPlayersIndividuals([])
+      setParticipantsMainPlayersEntities([])
+      setParticipantsMyTeam(undefined)
+      return
+    }
+    void refetchParticipantsDisplay()
+  }, [collection?.id, refetchParticipantsDisplay])
 
   // Per-step owners (used for canShowModalActions — must use open step's owners, not collection.currentOwners)
   const stepOwners = React.useMemo((): Record<string, CollectionMemberRole[]> => {
@@ -1064,6 +1068,8 @@ export default function CollectionViewPage({
       participantsNobaTeam={participantsNobaTeam}
       participantsMainPlayersIndividuals={participantsMainPlayersIndividuals}
       participantsMainPlayersEntities={participantsMainPlayersEntities}
+      participantsMyTeam={participantsMyTeam}
+      onParticipantsMyTeamChange={refetchParticipantsDisplay}
       shootingStreetAddress={collection.config.shootingStreetAddress}
       shootingCity={collection.config.shootingCity}
       shootingZipCode={collection.config.shootingZipCode}

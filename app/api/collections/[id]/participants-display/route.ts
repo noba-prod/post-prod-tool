@@ -10,6 +10,11 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { SupabaseCollectionsRepository } from "@/lib/infra/collections/supabase-collections.repository"
 import { getRequiredParticipantRoles } from "@/lib/domain/collections/workflow"
+import {
+  findParticipantsForEntity,
+  isEntityTeamAdminProfile,
+} from "@/lib/auth/entity-team-admin"
+import { mapPlayerTypeToEntityType } from "@/lib/services/supabase-profile-service"
 import type { Profile, Player } from "@/lib/supabase/database.types"
 
 type ParticipantsModalIndividual = {
@@ -27,6 +32,19 @@ type ParticipantsModalEntity = {
   teamMembersCount?: number
   imageUrl?: string
   entityTypeLabel?: string
+}
+
+type ParticipantsModalMyTeamMember = {
+  id: string
+  name: string
+  email: string
+  editPermission: boolean
+}
+
+type ParticipantsModalMyTeam = {
+  canManage: boolean
+  entityHandle: string
+  members: ParticipantsModalMyTeamMember[]
 }
 
 type EntityDisplayTarget = {
@@ -78,6 +96,17 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const admin = createAdminClient()
+    const { data: viewerProfileRow } = await admin
+      .from("profiles")
+      .select("id, role, is_internal, player_id")
+      .eq("id", user.id)
+      .maybeSingle()
+    const viewerProfile = viewerProfileRow as Pick<
+      Profile,
+      "id" | "role" | "is_internal" | "player_id"
+    > | null
+
     // 1) Verify user can view the collection (RLS check)
     const userRepo = new SupabaseCollectionsRepository(supabase)
     const canView = await userRepo.getById(id)
@@ -86,7 +115,6 @@ export async function GET(
     }
 
     // 2) Fetch full collection + members with admin (avoid RLS filtering members for non-noba users)
-    const admin = createAdminClient()
     const adminRepo = new SupabaseCollectionsRepository(admin)
     const collection = await adminRepo.getById(id)
     if (!collection) {
@@ -339,6 +367,68 @@ export async function GET(
       }
     }
 
+    // My team section for entity admins (Figma node 233-32423)
+    let myTeam: ParticipantsModalMyTeam | undefined
+    if (viewerProfile?.player_id) {
+      const { data: viewerPlayerRow } = await admin
+        .from("players")
+        .select("id, name, type")
+        .eq("id", viewerProfile.player_id)
+        .maybeSingle()
+      const viewerPlayer = viewerPlayerRow as Pick<Player, "id" | "name" | "type"> | null
+      const viewerEntityType = viewerPlayer
+        ? mapPlayerTypeToEntityType(viewerPlayer.type)
+        : null
+      const canManage = isEntityTeamAdminProfile(viewerProfile, viewerEntityType)
+      const entityParticipants = findParticipantsForEntity(
+        participants,
+        viewerProfile.player_id
+      )
+      if (entityParticipants.length > 0) {
+        const memberIds = Array.from(
+          new Set(entityParticipants.flatMap((p) => p.userIds ?? []))
+        )
+        const editByUserId: Record<string, boolean> = {}
+        for (const ep of entityParticipants) {
+          for (const [uid, canEdit] of Object.entries(ep.editPermissionByUserId ?? {})) {
+            editByUserId[uid] = editByUserId[uid] === true || canEdit === true
+          }
+        }
+        const myTeamMembers: ParticipantsModalMyTeamMember[] = []
+        if (memberIds.length > 0) {
+          const { data: teamProfileRows } = await admin
+            .from("profiles")
+            .select("id, first_name, last_name, email")
+            .in("id", memberIds)
+            .eq("player_id", viewerProfile.player_id)
+          for (const p of (teamProfileRows ?? []) as Profile[]) {
+            const uid = p.id?.trim() ?? ""
+            if (!uid) continue
+            const firstName = p.first_name ?? ""
+            const lastName = p.last_name ?? ""
+            const email = p.email ?? ""
+            const name =
+              [firstName, lastName].filter(Boolean).join(" ").trim() || email || "—"
+            myTeamMembers.push({
+              id: uid,
+              name,
+              email,
+              editPermission: editByUserId[uid] ?? false,
+            })
+          }
+          myTeamMembers.sort((a, b) => a.name.localeCompare(b.name))
+        }
+        const entityHandle = (viewerPlayer?.name ?? "team")
+          .toLowerCase()
+          .replace(/\s+/g, "")
+        myTeam = {
+          canManage,
+          entityHandle,
+          members: myTeamMembers,
+        }
+      }
+    }
+
     return NextResponse.json({
       nobaTeam,
       mainPlayersIndividuals: mainIndividuals,
@@ -346,6 +436,7 @@ export async function GET(
       photographerName,
       clientDisplayName,
       noteAuthorsByUserId,
+      myTeam,
     })
   } catch (err) {
     console.error("[GET /api/collections/[id]/participants-display]", err)

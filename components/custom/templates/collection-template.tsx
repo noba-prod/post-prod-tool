@@ -12,7 +12,9 @@ import {
   ParticipantsModal,
   type ParticipantsModalIndividual,
   type ParticipantsModalEntity,
+  type ParticipantsModalMyTeam,
 } from "../participants-modal"
+import type { User } from "@/lib/types"
 
 /**
  * Main players variant "mainContextual": returns the subset of players to show in the step modal.
@@ -266,6 +268,10 @@ export interface CollectionTemplateProps {
   participantsMainPlayersIndividuals?: ParticipantsModalIndividual[]
   /** Participants modal: main players as entities */
   participantsMainPlayersEntities?: ParticipantsModalEntity[]
+  /** Participants modal: entity admin "My team" section */
+  participantsMyTeam?: ParticipantsModalMyTeam
+  /** Called after entity admin mutates my-team participants (parent should refetch display data) */
+  onParticipantsMyTeamChange?: () => void | Promise<void>
   /** Step 1 (Shooting) only: shooting location for modal card and Google Maps link */
   shootingStreetAddress?: string
   shootingCity?: string
@@ -452,6 +458,8 @@ export function CollectionTemplate({
   participantsNobaTeam,
   participantsMainPlayersIndividuals,
   participantsMainPlayersEntities,
+  participantsMyTeam,
+  onParticipantsMyTeamChange,
   shootingStreetAddress,
   shootingCity,
   shootingZipCode,
@@ -928,6 +936,8 @@ export function CollectionTemplate({
   )
 
   const [participantsModalOpen, setParticipantsModalOpen] = React.useState(false)
+  const [availableTeamUsers, setAvailableTeamUsers] = React.useState<User[]>([])
+  const [loadingTeamUsers, setLoadingTeamUsers] = React.useState(false)
   const [editCollectionDialogOpen, setEditCollectionDialogOpen] = React.useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false)
   const [isUpdatingProfile, setIsUpdatingProfile] = React.useState(false)
@@ -938,6 +948,112 @@ export function CollectionTemplate({
 
   const isNobaOwnerWithEditPermission =
     currentUserCollectionRole === "noba" && currentUserHasEditPermission
+  const canManageEntityTeamInCollection = React.useMemo(
+    () =>
+      !userContext?.isNobaUser &&
+      !userContext?.isSelfPhotographer &&
+      userContext?.user?.role === "admin" &&
+      Boolean(participantsMyTeam?.canManage),
+    [
+      userContext?.isNobaUser,
+      userContext?.isSelfPhotographer,
+      userContext?.user?.role,
+      participantsMyTeam?.canManage,
+    ]
+  )
+
+  React.useEffect(() => {
+    const playerId = userContext?.user?.entityId
+    if (!participantsModalOpen || !canManageEntityTeamInCollection || !playerId) {
+      if (!participantsModalOpen) setAvailableTeamUsers([])
+      return
+    }
+    let cancelled = false
+    setLoadingTeamUsers(true)
+    fetch(`/api/players/${playerId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { teamMembers?: User[] } | null) => {
+        if (cancelled) return
+        setAvailableTeamUsers(data?.teamMembers ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableTeamUsers([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTeamUsers(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [participantsModalOpen, canManageEntityTeamInCollection, userContext?.user?.entityId])
+
+  const postEntityTeamParticipantAction = React.useCallback(
+    async (body: { action: string; userId: string; editPermission?: boolean }) => {
+      if (!collectionId) return
+      const res = await fetch(`/api/collections/${collectionId}/entity-team-participants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to update participants")
+      }
+      await onParticipantsMyTeamChange?.()
+      return data as { invitationsCreated?: number }
+    },
+    [collectionId, onParticipantsMyTeamChange]
+  )
+
+  const handleAddMyTeamMember = React.useCallback(
+    async (userId: string) => {
+      try {
+        const result = await postEntityTeamParticipantAction({ action: "add", userId })
+        toast.success("Team member added", {
+          description:
+            result?.invitationsCreated && result.invitationsCreated > 0
+              ? "An invitation email was sent."
+              : "They can now access this collection once they accept the invite.",
+        })
+      } catch (err) {
+        toast.error("Failed to add team member", {
+          description: err instanceof Error ? err.message : "An unexpected error occurred.",
+        })
+      }
+    },
+    [postEntityTeamParticipantAction]
+  )
+
+  const handleRemoveMyTeamMember = React.useCallback(
+    async (userId: string) => {
+      try {
+        await postEntityTeamParticipantAction({ action: "remove", userId })
+        toast.success("Team member removed from this collection")
+      } catch (err) {
+        toast.error("Failed to remove team member", {
+          description: err instanceof Error ? err.message : "An unexpected error occurred.",
+        })
+      }
+    },
+    [postEntityTeamParticipantAction]
+  )
+
+  const handleMyTeamEditPermissionChange = React.useCallback(
+    async (userId: string, editPermission: boolean) => {
+      try {
+        await postEntityTeamParticipantAction({
+          action: "setEditPermission",
+          userId,
+          editPermission,
+        })
+      } catch (err) {
+        toast.error("Failed to update edit permission", {
+          description: err instanceof Error ? err.message : "An unexpected error occurred.",
+        })
+      }
+    },
+    [postEntityTeamParticipantAction]
+  )
   const effectiveShowSettingsButton =
     showSettingsButton &&
     (currentUserCollectionRole
@@ -2283,6 +2399,13 @@ export function CollectionTemplate({
         open={participantsModalOpen}
         onOpenChange={setParticipantsModalOpen}
         isInternalUser={(userContext?.isNobaUser && currentUserHasEditPermission) ?? false}
+        myTeam={participantsMyTeam}
+        availableTeamUsers={availableTeamUsers}
+        onAddMyTeamMember={canManageEntityTeamInCollection ? handleAddMyTeamMember : undefined}
+        onRemoveMyTeamMember={canManageEntityTeamInCollection ? handleRemoveMyTeamMember : undefined}
+        onMyTeamEditPermissionChange={
+          canManageEntityTeamInCollection ? handleMyTeamEditPermissionChange : undefined
+        }
         nobaTeam={participantsNobaTeam}
         mainPlayersIndividuals={participantsMainPlayersIndividuals}
         mainPlayersEntities={participantsMainPlayersEntities}

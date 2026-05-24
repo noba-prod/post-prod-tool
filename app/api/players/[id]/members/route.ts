@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { mapProfileToUser } from "@/lib/utils/supabase-mappers"
+import { canManagePlayerTeamMembers } from "@/lib/auth/entity-team-admin"
 import type { Profile } from "@/lib/supabase/database.types"
 
 type CreateMemberPayload = {
@@ -46,12 +47,7 @@ export async function POST(
   }
 
   const playerId = resolvedParams.id
-  const isInternal = Boolean(profile.is_internal)
-  const canEditSamePlayer =
-    profile.player_id === playerId &&
-    (profile.role === "admin" || profile.role === "editor")
-
-  if (!isInternal && !canEditSamePlayer) {
+  if (!canManagePlayerTeamMembers(profile, playerId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

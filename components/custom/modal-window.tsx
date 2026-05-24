@@ -62,6 +62,11 @@ interface ModalWindowProps {
    * Use `false` when children need nested Popovers that port to `body` (e.g. FilterBar command lists).
    */
   modal?: boolean
+  /**
+   * When false, outside clicks, overlay clicks, and Escape won't close the modal.
+   * Use while a nested overlay/popover is open (e.g. AddMemberOverlay).
+   */
+  dismissible?: boolean
 }
 
 // ============================================================================
@@ -125,11 +130,24 @@ function ModalWindow({
   width = "600px",
   className,
   modal = true,
+  dismissible = true,
 }: ModalWindowProps) {
   const useNonModal = modal === false
 
+  const handleDismissRequest = React.useCallback(() => {
+    if (dismissible) onOpenChange?.(false)
+  }, [dismissible, onOpenChange])
+
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen && !dismissible) return
+      onOpenChange?.(nextOpen)
+    },
+    [dismissible, onOpenChange]
+  )
+
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} modal={!useNonModal}>
+    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange} modal={!useNonModal}>
       <DialogPrimitive.Portal>
         {useNonModal ? (
           open ? (
@@ -137,7 +155,7 @@ function ModalWindow({
               role="presentation"
               aria-hidden
               className="fixed inset-0 z-50 bg-black/[0.36] animate-in fade-in-0 duration-200"
-              onClick={() => onOpenChange?.(false)}
+              onClick={handleDismissRequest}
             />
           ) : null
         ) : (
@@ -147,6 +165,15 @@ function ModalWindow({
         )}
 
         <DialogPrimitive.Content
+          onPointerDownOutside={(event) => {
+            if (!dismissible) event.preventDefault()
+          }}
+          onInteractOutside={(event) => {
+            if (!dismissible) event.preventDefault()
+          }}
+          onEscapeKeyDown={(event) => {
+            if (!dismissible) event.preventDefault()
+          }}
           className={cn(
             // Below 760px: full width between horizontal margins; height uses dvh so inner scroll works with keyboard
             "fixed inset-x-3 top-3 z-50 w-auto max-w-none bg-background shadow-xl rounded-xl overflow-hidden",
