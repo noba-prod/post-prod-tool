@@ -37,6 +37,7 @@ function ActivateContent() {
             router.push(`/auth/login?email=${encodeURIComponent(result.email ?? "")}`)
           }, 2000)
         } else {
+          setError(result.error ?? "Invalid or expired invitation")
           toast.error(result.error ?? "Invalid or expired invitation")
         }
       } catch (err) {

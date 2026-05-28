@@ -6,14 +6,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { OptionPicker } from "./option-picker"
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-} from "@/components/ui/command"
+import { AddMemberOverlay } from "./add-member-overlay"
 import {
   Table,
   TableBody,
@@ -1121,87 +1114,3 @@ function useUsersByIds(userIds: string[], refreshTrigger?: unknown): Map<string,
   return byId
 }
 
-function AddMemberOverlay({
-  open,
-  onOpenChange,
-  users,
-  existingIds,
-  onSelect,
-  getSupportiveText,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  users: User[]
-  existingIds: Set<string>
-  onSelect: (user: User) => void
-  getSupportiveText?: (user: User) => string
-}) {
-  const [search, setSearch] = React.useState("")
-  const filtered = React.useMemo(() => {
-    if (!search.trim()) return users.filter((u) => !existingIds.has(u.id))
-    const t = search.toLowerCase()
-    return users.filter(
-      (u) =>
-        !existingIds.has(u.id) &&
-        (u.firstName?.toLowerCase().includes(t) ||
-          u.lastName?.toLowerCase().includes(t) ||
-          u.email?.toLowerCase().includes(t))
-    )
-  }, [users, existingIds, search])
-
-  if (!open) return null
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add new member"
-    >
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/40"
-        aria-hidden
-        onClick={() => onOpenChange(false)}
-      />
-      <div
-        className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-background p-2 shadow-xl mx-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Command className="rounded-lg border-0 bg-transparent" shouldFilter={false}>
-          <CommandInput
-            placeholder="Search by name or email"
-            value={search}
-            onValueChange={setSearch}
-          />
-          <CommandList className="max-h-60 mt-2">
-            <CommandEmpty>No member found.</CommandEmpty>
-            <CommandGroup>
-              {filtered.map((u) => (
-                <CommandItem
-                  key={u.id}
-                  value={u.id}
-                  onSelect={() => onSelect(u)}
-                  className="w-full py-2.5 px-3 cursor-pointer flex items-center justify-between gap-2"
-                >
-                  <div className="flex flex-1 min-w-0 justify-between items-center gap-2">
-                    <span className="font-medium text-foreground truncate min-w-0">
-                      {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
-                    </span>
-                    {getSupportiveText ? (
-                      <span className="text-muted-foreground text-sm shrink-0">
-                        {getSupportiveText(u)}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-sm truncate min-w-0">{u.email}</span>
-                    )}
-                  </div>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </div>
-    </div>
-  )
-}

@@ -476,10 +476,13 @@ export default function TeamPage() {
     [selectedMemberId, userContext.user?.entityId, handleCloseUserDetailModal]
   )
 
-  // Permissions based on user role: only admin can edit; editor/viewer can only view
+  // Permissions: entity admins can manage team; noba internal admin/editor can manage too.
   const isAdmin = userContext.user?.role === "admin"
-  const canManageTeam = userContext.user?.role === "admin" || userContext.user?.role === "editor"
-  const canDelete = userContext.user?.role === "admin" || userContext.user?.role === "editor"
+  const isEditor = userContext.user?.role === "editor"
+  const canManageTeam = userContext.isNobaUser
+    ? isAdmin || isEditor
+    : isAdmin
+  const canDelete = canManageTeam
 
   if (loading || userContext.loading) {
     return (

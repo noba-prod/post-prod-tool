@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { Profile } from "@/lib/supabase/database.types"
 import { mapProfilesToUsers } from "@/lib/utils/supabase-mappers"
+import { canManagePlayerTeamMembers } from "@/lib/auth/entity-team-admin"
 
 async function getSessionProfile(): Promise<{
   session: { user: { id: string } } | null
@@ -49,12 +50,7 @@ export async function DELETE(
   const playerId = resolvedParams.id
   const targetUserId = resolvedParams.userId
 
-  const isInternal = Boolean(profile.is_internal)
-  const canEditSamePlayer =
-    profile.player_id === playerId &&
-    (profile.role === "admin" || profile.role === "editor")
-
-  if (!isInternal && !canEditSamePlayer) {
+  if (!canManagePlayerTeamMembers(profile, playerId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
