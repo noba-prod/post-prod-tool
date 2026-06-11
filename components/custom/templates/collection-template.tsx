@@ -181,6 +181,13 @@ import { updatePlayerFromDraft } from "@/app/actions/entity-creation"
 import { InformativeToast } from "@/components/custom/informative-toast"
 import { ValidateLinksDialog, type ValidateLinksDialogItem } from "@/components/custom/validate-links-dialog"
 import type { DropoffAdditionalShipment } from "@/lib/domain/collections"
+import {
+  canCompleteClientConfirmation,
+  canShowPhotographerLastCheckExtraLinks,
+  getClientConfirmationBannerCopy,
+  getClientConfirmationMaterialUrls,
+  isClientConfirmationStepReady,
+} from "@/lib/domain/collections"
 import { RowVariants } from "../row-variants"
 import { OptionPicker } from "../option-picker"
 import { mergeShippingProviderOptions } from "@/lib/utils/shipping-provider-picker"
@@ -280,6 +287,8 @@ export interface CollectionTemplateProps {
   /** Step 2 (Negatives drop-off) only: drop-off shipping for modal (Tracking shipping card + Delivery blocks) */
   dropoffShippingCarrier?: string
   dropoffShippingTracking?: string
+  /** Who manages primary drop-off shipping (from collection creation). */
+  dropoffManagingShipping?: string
   dropoffShippingOriginAddress?: string
   dropoffShippingDate?: string
   dropoffShippingTime?: string
@@ -292,6 +301,10 @@ export interface CollectionTemplateProps {
   dropoffManagingShippingOptions?: { value: string; label: string }[]
   /** Persist one supplemental shipment (producer). */
   onAppendDropoffAdditionalShipment?: (
+    shipment: DropoffAdditionalShipment
+  ) => void | Promise<void>
+  /** Persist primary drop-off shipping (Analog producer at pickup confirmation). */
+  onUpdateDropoffPrimaryShipping?: (
     shipment: DropoffAdditionalShipment
   ) => void | Promise<void>
   /** Called when owner confirms pickup (Shooting step). For Digital: shootingType="digital" triggers shooting_completed_confirmed. For Analog: triggers negatives_pickup_marked. */
@@ -466,6 +479,7 @@ export function CollectionTemplate({
   shootingCountry,
   dropoffShippingCarrier,
   dropoffShippingTracking,
+  dropoffManagingShipping,
   dropoffShippingOriginAddress,
   dropoffShippingDate,
   dropoffShippingTime,
@@ -475,6 +489,7 @@ export function CollectionTemplate({
   dropoffAdditionalShipments = [],
   dropoffManagingShippingOptions,
   onAppendDropoffAdditionalShipment,
+  onUpdateDropoffPrimaryShipping,
   onConfirmPickup,
   onConfirmDropoffDelivery,
   onUploadLowRes,
@@ -829,7 +844,10 @@ export function CollectionTemplate({
     () => new Set()
   )
   const [confirmDropoffDialogOpen, setConfirmDropoffDialogOpen] = React.useState(false)
-  const [addDropoffShippingDialogOpen, setAddDropoffShippingDialogOpen] = React.useState(false)
+  const [dropoffShippingDialogMode, setDropoffShippingDialogMode] = React.useState<
+    "confirm" | "add" | null
+  >(null)
+  const dropoffShippingDialogOpen = dropoffShippingDialogMode !== null
   const [addShipManaging, setAddShipManaging] = React.useState("")
   const [addShipProvider, setAddShipProvider] = React.useState("")
   const [addShipTracking, setAddShipTracking] = React.useState("")
@@ -1289,9 +1307,38 @@ export function CollectionTemplate({
     () =>
       mergeShippingProviderOptions(
         VIEW_DROPOFF_SHIPPING_PROVIDER_OPTIONS,
-        addShipProvider || undefined
+        addShipProvider || dropoffShippingCarrier || undefined
       ),
-    [addShipProvider]
+    [addShipProvider, dropoffShippingCarrier]
+  )
+  const openDropoffShippingDialog = React.useCallback(
+    (mode: "confirm" | "add") => {
+      if (mode === "confirm") {
+        const managing =
+          dropoffManagingShipping?.trim() ||
+          dropoffManagingShippingOptions?.find((o) => o.value === "noba")?.value ||
+          dropoffManagingShippingOptions?.[0]?.value ||
+          ""
+        setAddShipManaging(managing)
+        setAddShipProvider(dropoffShippingCarrier?.trim() ?? "")
+        setAddShipTracking(dropoffShippingTracking?.trim() ?? "")
+      } else {
+        const managing =
+          dropoffManagingShippingOptions?.find((o) => o.value === "noba")?.value ??
+          dropoffManagingShippingOptions?.[0]?.value ??
+          ""
+        setAddShipManaging(managing)
+        setAddShipProvider("")
+        setAddShipTracking("")
+      }
+      setDropoffShippingDialogMode(mode)
+    },
+    [
+      dropoffManagingShipping,
+      dropoffManagingShippingOptions,
+      dropoffShippingCarrier,
+      dropoffShippingTracking,
+    ]
   )
   const canShowModalActions = React.useMemo(() => {
     if (!openStep) return false
@@ -1328,6 +1375,26 @@ export function CollectionTemplate({
     const clientSelectionStep = steps?.find((s) => s.id === "client_selection")
     return clientSelectionStep?.status !== "completed"
   }, [openStep, currentUserCollectionRole, steps])
+
+  const photographerLastCheckCompleted = React.useMemo(
+    () => steps?.find((s) => s.id === "photographer_last_check")?.status === "completed",
+    [steps]
+  )
+
+  const isClientConfirmationReady = React.useMemo(
+    () => isClientConfirmationStepReady(steps),
+    [steps]
+  )
+
+  const clientConfirmationBannerCopy = React.useMemo(
+    () =>
+      getClientConfirmationBannerCopy({
+        isReady: isClientConfirmationReady,
+        hasEditionStudio,
+        canShowModalActions,
+      }),
+    [isClientConfirmationReady, hasEditionStudio, canShowModalActions]
+  )
 
   return (
     <div
@@ -2092,12 +2159,10 @@ export function CollectionTemplate({
                     <div className="relative z-10 px-5 py-5 flex flex-col gap-6 items-center justify-center text-center">
                       <div className="flex flex-col gap-2 items-center text-center">
                         <span className="block font-semibold text-xl leading-8 text-white">
-                          Final selection is ready!
+                          {clientConfirmationBannerCopy.title}
                         </span>
                         <span className="text-sm font-medium block text-white/90">
-                          {canShowModalActions
-                            ? "Check and review the finals before confirming the closing of the project"
-                            : "View the final selection."}
+                          {clientConfirmationBannerCopy.subtitle}
                         </span>
                       </div>
                     </div>
@@ -2133,11 +2198,15 @@ export function CollectionTemplate({
                     // Analog or with edition: photographer validates in step 10 (or high-res when no edition)
                     const materialUrls = hasEditionStudio ? finalsSelectionUrl : highResSelectionUrl
                     const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
-                    const materialUrlsList = allUrls(materialUrls)
-                    const validatedUrls =
-                      photographerApprovedMaterialUrls && photographerApprovedMaterialUrls.length > 0
-                        ? photographerApprovedMaterialUrls
-                        : materialUrlsList
+                    const validatedUrls = getClientConfirmationMaterialUrls({
+                      photographerApprovedMaterialUrls,
+                      materialUrls: allUrls(materialUrls),
+                      photographerLastCheckCompleted,
+                    })
+                    const showExtraLastCheckLinks = canShowPhotographerLastCheckExtraLinks({
+                      photographerApprovedMaterialUrls,
+                      photographerLastCheckCompleted,
+                    })
                     const validatedNotesForMaterial = (stepNotesPhotographerLastCheck ?? []).filter((n) => {
                       const u = (n as { url?: string }).url?.trim()
                       if (!u) return true
@@ -2157,15 +2226,17 @@ export function CollectionTemplate({
                             ? `${materialLabel} (validated by photographer)`
                             : `${materialLabel} (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
                       ),
-                      ...buildUrlHistoryItems(
-                        photographerLastCheckUrl,
-                        stepNotesPhotographerLastCheck,
-                        "photographer",
-                        resolveUploaderDisplay("photographer"),
-                        photographerLastCheckUploadedAt,
-                        "photographer_last_check",
-                        "Finals"
-                      ),
+                      ...(showExtraLastCheckLinks
+                        ? buildUrlHistoryItems(
+                            photographerLastCheckUrl,
+                            stepNotesPhotographerLastCheck,
+                            "photographer",
+                            resolveUploaderDisplay("photographer"),
+                            photographerLastCheckUploadedAt,
+                            "photographer_last_check",
+                            "Finals"
+                          )
+                        : []),
                     ].map((item, idx) => (
                       <UrlHistory
                         key={`client-confirmation-${idx}-${item.url}`}
@@ -2181,7 +2252,11 @@ export function CollectionTemplate({
                     ))
                   })()}
                   {/* Action block: Complete collection — hide once collection is completed */}
-                  {canShowModalActions && openStep.status !== "completed" && (
+                  {canCompleteClientConfirmation({
+                    isReady: isClientConfirmationReady,
+                    canShowModalActions,
+                    stepStatus: openStep.status,
+                  }) && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
                       aria-label="Step owner action"
@@ -2238,14 +2313,14 @@ export function CollectionTemplate({
                     size="lg"
                     className="w-fit rounded-xl"
                     onClick={async () => {
+                      if (isAnalogHandprintShooting(shootingType)) {
+                        openDropoffShippingDialog("confirm")
+                        return
+                      }
                       try {
                         await onConfirmPickup?.("shooting", shootingType)
-                        if (shootingType === "digital") {
-                          closeStepModalAndClearUrl()
-                        }
-                        toast.success(
-                          shootingType === "digital" ? "Shooting confirmed." : "Pickup confirmed."
-                        )
+                        closeStepModalAndClearUrl()
+                        toast.success("Shooting confirmed.")
                       } catch {
                         // Error toast is shown by the page callback.
                       }
@@ -2276,16 +2351,7 @@ export function CollectionTemplate({
                       variant="default"
                       size="lg"
                       className="w-fit rounded-xl"
-                      onClick={() => {
-                        const d =
-                          dropoffManagingShippingOptions?.find((o) => o.value === "noba")?.value ??
-                          dropoffManagingShippingOptions?.[0]?.value ??
-                          ""
-                        setAddShipManaging(d)
-                        setAddShipProvider("")
-                        setAddShipTracking("")
-                        setAddDropoffShippingDialogOpen(true)
-                      }}
+                      onClick={() => openDropoffShippingDialog("add")}
                     >
                       Add new shipping
                     </Button>
@@ -2455,13 +2521,24 @@ export function CollectionTemplate({
         </DialogContent>
       </Dialog>
 
-      {/* Add supplemental shipment (producer, Analog Shooting step modal) */}
-      <Dialog open={addDropoffShippingDialogOpen} onOpenChange={setAddDropoffShippingDialogOpen}>
+      {/* Primary / supplemental drop-off shipping (producer, Analog Shooting step modal) */}
+      <Dialog
+        open={dropoffShippingDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) setDropoffShippingDialogMode(null)
+        }}
+      >
         <DialogContent className="sm:max-w-2xl" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Add shipping</DialogTitle>
+            <DialogTitle>
+              {dropoffShippingDialogMode === "confirm"
+                ? "Confirm shipping details"
+                : "Add shipping"}
+            </DialogTitle>
             <DialogDescription>
-              Additional shipments are informational for the lab. The lab confirms a single delivery to move to the next step.
+              {dropoffShippingDialogMode === "confirm"
+                ? "Confirm who is shipping the negatives and the tracking details so the lab has up-to-date information for the next step."
+                : "Additional shipments are informational for the lab. The lab confirms a single delivery to move to the next step."}
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
@@ -2499,16 +2576,16 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setAddDropoffShippingDialogOpen(false)}
+              onClick={() => setDropoffShippingDialogMode(null)}
             >
               Cancel
             </Button>
             <Button
               type="button"
               loading={addShipSaving}
-              loadingText="Saving…"
+              loadingText={dropoffShippingDialogMode === "confirm" ? "Confirming…" : "Saving…"}
               onClick={async () => {
-                if (!onAppendDropoffAdditionalShipment || !dropoffManagingShippingOptions?.length) return
+                if (!dropoffManagingShippingOptions?.length) return
                 if (!addShipManaging.trim()) {
                   toast.error("Select who is responsible for shipping.")
                   return
@@ -2521,15 +2598,24 @@ export function CollectionTemplate({
                   toast.error("Enter a tracking number.")
                   return
                 }
+                const shipment = {
+                  managingShipping: addShipManaging.trim(),
+                  provider: addShipProvider.trim(),
+                  tracking: addShipTracking.trim(),
+                }
                 setAddShipSaving(true)
                 try {
-                  await onAppendDropoffAdditionalShipment({
-                    managingShipping: addShipManaging.trim(),
-                    provider: addShipProvider.trim(),
-                    tracking: addShipTracking.trim(),
-                  })
-                  toast.success("Additional shipping saved.")
-                  setAddDropoffShippingDialogOpen(false)
+                  if (dropoffShippingDialogMode === "confirm") {
+                    if (!onUpdateDropoffPrimaryShipping) return
+                    await onUpdateDropoffPrimaryShipping(shipment)
+                    await onConfirmPickup?.("shooting", shootingType)
+                    toast.success("Pickup confirmed.")
+                  } else {
+                    if (!onAppendDropoffAdditionalShipment) return
+                    await onAppendDropoffAdditionalShipment(shipment)
+                    toast.success("Additional shipping saved.")
+                  }
+                  setDropoffShippingDialogMode(null)
                 } catch {
                   /* Parent shows error */
                 } finally {
@@ -2537,7 +2623,7 @@ export function CollectionTemplate({
                 }
               }}
             >
-              Save
+              {dropoffShippingDialogMode === "confirm" ? "Confirm" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

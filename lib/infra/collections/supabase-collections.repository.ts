@@ -10,6 +10,8 @@ import type {
   CollectionUpdatePatch,
   ICollectionsRepository,
   ListCollectionsFilters,
+  ListCollectionsPageOptions,
+  ListCollectionsPageResult,
 } from "@/lib/domain/collections"
 import { createClient } from "@/lib/supabase/client"
 import type { Database } from "@/lib/supabase/database.types"
@@ -164,46 +166,100 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
   }
 
   async list(filters?: ListCollectionsFilters): Promise<Collection[]> {
+    const { items } = await this.listPage({
+      ...filters,
+      limit: Number.MAX_SAFE_INTEGER,
+      offset: 0,
+    })
+    return items
+  }
+
+  async listPage(options: ListCollectionsPageOptions): Promise<ListCollectionsPageResult> {
     const supabase = this.supabase
+    const { limit, offset, sortOrder = "desc", ...filters } = options
+
     let idsToFilter: string[] | null = null
-    if (filters?.createdByUserId) {
+    if (filters.createdByUserId) {
       const { data: memberRows } = await (supabase
         .from("collection_members") as ReturnType<typeof supabase.from>)
         .select("collection_id")
         .eq("user_id", filters.createdByUserId)
       const ids = (memberRows ?? []).map((r: { collection_id: string }) => r.collection_id)
-      if (ids.length === 0) return []
+      if (ids.length === 0) return { items: [], hasMore: false }
       idsToFilter = ids
+    }
+
+    if (filters.photographerUserId) {
+      const { data: memberRows } = await (supabase
+        .from("collection_members") as ReturnType<typeof supabase.from>)
+        .select("collection_id")
+        .eq("user_id", filters.photographerUserId)
+      const ids = (memberRows ?? []).map((r: { collection_id: string }) => r.collection_id)
+      if (ids.length === 0) return { items: [], hasMore: false }
+      idsToFilter = idsToFilter
+        ? idsToFilter.filter((id) => ids.includes(id))
+        : ids
     }
 
     let query = (supabase.from("collections") as ReturnType<typeof supabase.from>)
       .select("*")
-      .order("updated_at", { ascending: false })
-    if (filters?.clientEntityId) {
+      .order("updated_at", { ascending: sortOrder === "asc" })
+
+    if (filters.clientEntityId) {
       query = query.eq("client_id", filters.clientEntityId)
+    }
+    if (filters.jobReference) {
+      query = query.eq("reference", filters.jobReference)
+    }
+    if (filters.photographerEntityId) {
+      query = query.eq("photographer_id", filters.photographerEntityId)
+    }
+    if (filters.status) {
+      query = query.eq("status", filters.status)
     }
     if (idsToFilter) {
       query = query.in("id", idsToFilter)
     }
+
+    const from = offset
+    const to = offset + limit
+    query = query.range(from, to)
+
     const { data: rows, error } = await query
     if (error) {
       const msg =
         (error as { message?: string }).message ??
         (error as { code?: string }).code ??
         JSON.stringify(error)
-      console.error("[SupabaseCollectionsRepository] list error:", msg, error)
-      return []
+      console.error("[SupabaseCollectionsRepository] listPage error:", msg, error)
+      return { items: [], hasMore: false }
     }
+
     const list = (rows ?? []) as DbCollection[]
-    const result: Collection[] = []
-    for (const row of list) {
-      const members = await this.fetchMembers(row.id)
-      result.push(mapDbCollectionToDomain(row, members))
+    const hasMore = list.length > limit
+    const pageRows = hasMore ? list.slice(0, limit) : list
+
+    const membersByCollectionId = await this.fetchMembersBatch(pageRows.map((r) => r.id))
+    const result: Collection[] = pageRows.map((row) =>
+      mapDbCollectionToDomain(row, membersByCollectionId.get(row.id) ?? [])
+    )
+
+    return { items: result, hasMore }
+  }
+
+  private async fetchMembersBatch(collectionIds: string[]): Promise<Map<string, CollectionMember[]>> {
+    if (collectionIds.length === 0) return new Map()
+    const supabase = this.supabase
+    const tbl = supabase.from("collection_members") as ReturnType<typeof supabase.from>
+    const { data, error } = await tbl.select("*").in("collection_id", collectionIds)
+    if (error) return new Map()
+    const map = new Map<string, CollectionMember[]>()
+    for (const row of (data ?? []) as CollectionMember[]) {
+      const list = map.get(row.collection_id) ?? []
+      list.push(row)
+      map.set(row.collection_id, list)
     }
-    if (filters?.status) {
-      return result.filter((c) => c.status === filters.status)
-    }
-    return result
+    return map
   }
 
   private async fetchMembers(collectionId: string): Promise<CollectionMember[]> {

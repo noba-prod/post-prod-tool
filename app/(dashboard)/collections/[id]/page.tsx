@@ -492,6 +492,32 @@ export default function CollectionViewPage({
     [id, patchCollection, fireEvent, refetchCollection]
   )
 
+  /** Analog: producer confirms primary drop-off shipping at pickup (before advancing to negatives drop-off). */
+  const handleUpdateDropoffPrimaryShipping = React.useCallback(
+    async (row: DropoffAdditionalShipment) => {
+      if (!id) return
+      const managing = row.managingShipping?.trim()
+      const provider = row.provider?.trim()
+      const tracking = row.tracking?.trim()
+      if (!managing || !provider || !tracking) {
+        throw new Error("Shipping details are incomplete")
+      }
+      try {
+        await patchCollection({
+          dropoff_managing_shipping: managing,
+          dropoff_shipping_carrier: provider,
+          dropoff_shipping_tracking: tracking,
+        })
+        await refetchCollection()
+      } catch (err) {
+        console.error("[CollectionViewPage] Update dropoff primary shipping error:", err)
+        toast.error(err instanceof Error ? err.message : "Failed to save shipping details")
+        throw err
+      }
+    },
+    [id, patchCollection, refetchCollection]
+  )
+
   /** Analog: producer adds supplemental negative shipments after pickup (informational for lab). */
   const handleAppendDropoffAdditionalShipment = React.useCallback(
     async (row: DropoffAdditionalShipment) => {
@@ -815,10 +841,19 @@ export default function CollectionViewPage({
   // =============================================================================
   const handleValidateFinals = React.useCallback(
     async (selectedUrls?: string[]) => {
-      if (!id) return
+      if (!id || !collection) return
       try {
-        if (selectedUrls && selectedUrls.length > 0) {
-          await patchCollection({ photographer_approved_material_urls: selectedUrls })
+        const materialUrls = collection.config.hasEditionStudio
+          ? collection.finalsSelectionUrl ?? []
+          : collection.highResSelectionUrl ?? []
+        const allMaterialUrls = (Array.isArray(materialUrls) ? materialUrls : [materialUrls]).filter(
+          (url): url is string => Boolean(url?.trim())
+        )
+        const urlsToApprove =
+          selectedUrls && selectedUrls.length > 0 ? selectedUrls : allMaterialUrls
+
+        if (urlsToApprove.length > 0) {
+          await patchCollection({ photographer_approved_material_urls: urlsToApprove })
         }
         // Bypass: cierra todos los pasos previos pendientes para no bloquear
         // el flujo (incluye handprint_high_res cuando no hay edition studio).
@@ -830,7 +865,7 @@ export default function CollectionViewPage({
         toast.error("Failed to validate finals")
       }
     },
-    [id, patchCollection, fireEvent, fireBypassChainUpTo, refetchCollection]
+    [id, collection, patchCollection, fireEvent, fireBypassChainUpTo, refetchCollection]
   )
 
   // =============================================================================
@@ -1074,6 +1109,7 @@ export default function CollectionViewPage({
       shootingCity={collection.config.shootingCity}
       shootingZipCode={collection.config.shootingZipCode}
       shootingCountry={collection.config.shootingCountry}
+      dropoffManagingShipping={collection.config.dropoff_managing_shipping}
       dropoffShippingCarrier={collection.config.dropoff_shipping_carrier}
       dropoffShippingTracking={collection.config.dropoff_shipping_tracking}
       dropoffShippingOriginAddress={collection.config.dropoff_shipping_origin_address}
@@ -1085,6 +1121,7 @@ export default function CollectionViewPage({
       dropoffAdditionalShipments={collection.config.dropoffAdditionalShipments ?? []}
       dropoffManagingShippingOptions={dropoffManagingShippingOptionsForView}
       onAppendDropoffAdditionalShipment={handleAppendDropoffAdditionalShipment}
+      onUpdateDropoffPrimaryShipping={handleUpdateDropoffPrimaryShipping}
       onConfirmPickup={handleConfirmPickup}
       onConfirmDropoffDelivery={handleConfirmDropoffDelivery}
       onUploadLowRes={handleUploadLowRes}

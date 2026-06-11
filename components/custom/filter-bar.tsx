@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/command"
 import { ChevronDown, Search, ArrowUpDown, ArrowDownUp, Plus, Circle, Settings2, X } from "lucide-react"
 import { ModalWindow } from "./modal-window"
+import { COLLECTION_TYPE_FILTER_OPTIONS } from "@/lib/domain/collections"
+import type { CollectionShootingType } from "@/lib/domain/collections"
 
 type FilterBarVariant = "default" | "collections" | "members" | "entities"
 
@@ -59,6 +61,7 @@ interface FilterBarProps {
     status: string | null
     jobReference: string | null
     photographer: string | null
+    collectionType: string | null
     sortOrder: "asc" | "desc"
   }
   /**
@@ -66,6 +69,8 @@ interface FilterBarProps {
    * Defaults to all collection statuses when omitted.
    */
   collectionStatusOptions?: { value: string; label: string }[]
+  /** Collection type options scoped by upstream filters (Analog HP / HR / Digital). */
+  collectionTypeOptions?: { value: CollectionShootingType; label: string }[]
   /**
    * When false (default) with `members` or `entities`, the action button is hidden below 940px
    * to avoid duplicating the nav FAB. Set true on routes like `/team` where the inline
@@ -457,6 +462,7 @@ export function FilterBar({
   jobReferenceOptions = [],
   collectionFilterState,
   collectionStatusOptions,
+  collectionTypeOptions,
   showActionOnNarrowScreens = false,
   actionIconOnlyBelow760 = false,
 }: FilterBarProps) {
@@ -465,11 +471,14 @@ export function FilterBar({
 
   const collectionStatusOptionsResolved =
     collectionStatusOptions ?? COLLECTION_STATUSES
+  const collectionTypeOptionsResolved =
+    collectionTypeOptions ?? COLLECTION_TYPE_FILTER_OPTIONS
   // State for popover open/close
   const [clientOpen, setClientOpen] = React.useState(false)
   const [statusOpen, setStatusOpen] = React.useState(false)
   const [jobReferenceOpen, setJobReferenceOpen] = React.useState(false)
   const [photographerOpen, setPhotographerOpen] = React.useState(false)
+  const [collectionTypeOpen, setCollectionTypeOpen] = React.useState(false)
   const [roleOpen, setRoleOpen] = React.useState(false)
   const [typeOpen, setTypeOpen] = React.useState(false)
   const [filterModalOpen, setFilterModalOpen] = React.useState(false)
@@ -481,6 +490,7 @@ export function FilterBar({
       setStatusOpen(false)
       setJobReferenceOpen(false)
       setPhotographerOpen(false)
+      setCollectionTypeOpen(false)
       setRoleOpen(false)
       setTypeOpen(false)
     }
@@ -491,6 +501,7 @@ export function FilterBar({
   const [statusInternal, setStatusInternal] = React.useState<string | null>(null)
   const [jobRefInternal, setJobRefInternal] = React.useState<string | null>(null)
   const [photographerInternal, setPhotographerInternal] = React.useState<string | null>(null)
+  const [collectionTypeInternal, setCollectionTypeInternal] = React.useState<string | null>(null)
   const [selectedRole, setSelectedRole] = React.useState<string | null>(null)
   const [selectedType, setSelectedType] = React.useState<string | null>(null)
   const [sortOrderInternal, setSortOrderInternal] = React.useState<"asc" | "desc">("desc")
@@ -500,6 +511,7 @@ export function FilterBar({
   const selectedStatus = isCollectionsControlled ? ctl!.status : statusInternal
   const selectedJobReference = isCollectionsControlled ? ctl!.jobReference : jobRefInternal
   const selectedPhotographer = isCollectionsControlled ? ctl!.photographer : photographerInternal
+  const selectedCollectionType = isCollectionsControlled ? ctl!.collectionType : collectionTypeInternal
   const sortOrder = isCollectionsControlled ? ctl!.sortOrder : sortOrderInternal
 
   const clientsForFilter = clientOptions ?? []
@@ -512,6 +524,7 @@ export function FilterBar({
       setStatusInternal(null)
       setJobRefInternal(null)
       setPhotographerInternal(null)
+      setCollectionTypeInternal(null)
     }
     setClientOpen(false)
     onFilterChange?.("client", clientId)
@@ -523,6 +536,7 @@ export function FilterBar({
       setStatusInternal(null)
       setJobRefInternal(null)
       setPhotographerInternal(null)
+      setCollectionTypeInternal(null)
     }
     onFilterChange?.("client", "")
   }
@@ -532,15 +546,27 @@ export function FilterBar({
       setStatusInternal(status)
       setJobRefInternal(null)
       setPhotographerInternal(null)
+      setCollectionTypeInternal(null)
     }
     setStatusOpen(false)
     onFilterChange?.("status", status)
+  }
+
+  const clearStatusFilter = () => {
+    if (!isCollectionsControlled) {
+      setStatusInternal(null)
+      setJobRefInternal(null)
+      setPhotographerInternal(null)
+      setCollectionTypeInternal(null)
+    }
+    onFilterChange?.("status", "")
   }
 
   const handleJobReferenceSelect = (value: string) => {
     if (!isCollectionsControlled) {
       setJobRefInternal(value)
       setPhotographerInternal(null)
+      setCollectionTypeInternal(null)
     }
     setJobReferenceOpen(false)
     onFilterChange?.("jobReference", value)
@@ -550,6 +576,7 @@ export function FilterBar({
     if (!isCollectionsControlled) {
       setJobRefInternal(null)
       setPhotographerInternal(null)
+      setCollectionTypeInternal(null)
     }
     onFilterChange?.("jobReference", "")
   }
@@ -567,6 +594,21 @@ export function FilterBar({
       setPhotographerInternal(null)
     }
     onFilterChange?.("photographer", "")
+  }
+
+  const handleCollectionTypeSelect = (value: string) => {
+    if (!isCollectionsControlled) {
+      setCollectionTypeInternal(value)
+    }
+    setCollectionTypeOpen(false)
+    onFilterChange?.("collectionType", value)
+  }
+
+  const clearCollectionTypeFilter = () => {
+    if (!isCollectionsControlled) {
+      setCollectionTypeInternal(null)
+    }
+    onFilterChange?.("collectionType", "")
   }
 
   const handleRoleSelect = (role: string) => {
@@ -596,9 +638,14 @@ export function FilterBar({
         setStatusInternal(null)
         setJobRefInternal(null)
         setPhotographerInternal(null)
+        setCollectionTypeInternal(null)
         setSortOrderInternal("desc")
       }
       onFilterChange?.("client", "")
+      onFilterChange?.("status", "")
+      onFilterChange?.("jobReference", "")
+      onFilterChange?.("photographer", "")
+      onFilterChange?.("collectionType", "")
       onSortChange?.("desc")
       setFilterModalOpen(false)
       return
@@ -629,20 +676,21 @@ export function FilterBar({
       ? clientsForFilter.find((c) => c.id === selectedClient)?.name ?? null
       : null
 
+  const selectedStatusName =
+    selectedStatus != null
+      ? collectionStatusOptionsResolved.find((s) => s.value === selectedStatus)?.label ?? null
+      : null
+
   const selectedPhotographerName =
     selectedPhotographer != null
       ? photographerOptions.find((p) => p.id === selectedPhotographer)?.name ?? null
       : null
 
-  const getStatusLabel = () => {
-    if (selectedStatus) {
-      const status = collectionStatusOptionsResolved.find(
-        (s) => s.value === selectedStatus
-      )
-      return status?.label || "Status"
-    }
-    return "Status"
-  }
+  const selectedCollectionTypeName =
+    selectedCollectionType != null
+      ? collectionTypeOptionsResolved.find((option) => option.value === selectedCollectionType)
+          ?.label ?? null
+      : null
 
   const getRoleLabel = () => {
     if (selectedRole) {
@@ -735,10 +783,12 @@ export function FilterBar({
         </CollectionFilterPopoverButton>
       )}
 
-      <FilterButtonWithPopover
-        label={getStatusLabel()}
+      <CollectionFilterPopoverButton
+        prefix="Status:"
+        selectedLabel={selectedStatusName}
         open={statusOpen}
         onOpenChange={setStatusOpen}
+        onClear={clearStatusFilter}
       >
         <Command>
           <CommandList>
@@ -756,7 +806,7 @@ export function FilterBar({
             </CommandGroup>
           </CommandList>
         </Command>
-      </FilterButtonWithPopover>
+      </CollectionFilterPopoverButton>
 
       <CollectionFilterPopoverButton
         prefix="Job reference:"
@@ -812,6 +862,32 @@ export function FilterBar({
         </Command>
       </CollectionFilterPopoverButton>
 
+      <CollectionFilterPopoverButton
+        prefix="Collection type:"
+        selectedLabel={selectedCollectionTypeName}
+        open={collectionTypeOpen}
+        onOpenChange={setCollectionTypeOpen}
+        onClear={clearCollectionTypeFilter}
+      >
+        <Command>
+          <CommandList>
+            <CommandEmpty>No collection type found.</CommandEmpty>
+            <CommandGroup>
+              {collectionTypeOptionsResolved.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={() => handleCollectionTypeSelect(option.value)}
+                  data-checked={selectedCollectionType === option.value}
+                >
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </CollectionFilterPopoverButton>
+
       <SortButton sortOrder={sortOrder} onToggle={handleSortToggle} />
     </>
   )
@@ -823,6 +899,7 @@ export function FilterBar({
         setStatusOpen(false)
         setJobReferenceOpen(false)
         setPhotographerOpen(false)
+        setCollectionTypeOpen(false)
       }
       setClientOpen(open)
     }
@@ -831,6 +908,7 @@ export function FilterBar({
         setClientOpen(false)
         setJobReferenceOpen(false)
         setPhotographerOpen(false)
+        setCollectionTypeOpen(false)
       }
       setStatusOpen(open)
     }
@@ -839,6 +917,7 @@ export function FilterBar({
         setClientOpen(false)
         setStatusOpen(false)
         setPhotographerOpen(false)
+        setCollectionTypeOpen(false)
       }
       setJobReferenceOpen(open)
     }
@@ -847,8 +926,18 @@ export function FilterBar({
         setClientOpen(false)
         setStatusOpen(false)
         setJobReferenceOpen(false)
+        setCollectionTypeOpen(false)
       }
       setPhotographerOpen(open)
+    }
+    const openCollectionType = (open: boolean) => {
+      if (open) {
+        setClientOpen(false)
+        setStatusOpen(false)
+        setJobReferenceOpen(false)
+        setPhotographerOpen(false)
+      }
+      setCollectionTypeOpen(open)
     }
 
     return (
@@ -882,15 +971,12 @@ export function FilterBar({
           </CollectionFilterInlineRow>
         )}
 
-        <FilterButtonInlineRow
-          prefix="Status"
-          valueLabel={
-            selectedStatus
-              ? collectionStatusOptionsResolved.find((s) => s.value === selectedStatus)?.label ?? null
-              : null
-          }
+        <CollectionFilterInlineRow
+          prefix="Status:"
+          selectedLabel={selectedStatusName}
           open={statusOpen}
           onOpenChange={openStatus}
+          onClear={clearStatusFilter}
         >
           <Command>
             <CommandList>
@@ -908,7 +994,7 @@ export function FilterBar({
               </CommandGroup>
             </CommandList>
           </Command>
-        </FilterButtonInlineRow>
+        </CollectionFilterInlineRow>
 
         <CollectionFilterInlineRow
           prefix="Job reference:"
@@ -957,6 +1043,32 @@ export function FilterBar({
                     data-checked={selectedPhotographer === photographer.id}
                   >
                     {photographer.name}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </CollectionFilterInlineRow>
+
+        <CollectionFilterInlineRow
+          prefix="Collection type:"
+          selectedLabel={selectedCollectionTypeName}
+          open={collectionTypeOpen}
+          onOpenChange={openCollectionType}
+          onClear={clearCollectionTypeFilter}
+        >
+          <Command>
+            <CommandList>
+              <CommandEmpty>No collection type found.</CommandEmpty>
+              <CommandGroup>
+                {collectionTypeOptionsResolved.map((option) => (
+                  <CommandItem
+                    key={option.value}
+                    value={option.value}
+                    onSelect={() => handleCollectionTypeSelect(option.value)}
+                    data-checked={selectedCollectionType === option.value}
+                  >
+                    {option.label}
                   </CommandItem>
                 ))}
               </CommandGroup>

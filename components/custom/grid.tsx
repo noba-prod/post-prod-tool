@@ -27,6 +27,8 @@ import { CollectionCard, CollectionCardProps } from "./collection-card"
 interface GridProps {
   /** Array of collection data to render */
   items?: CollectionCardProps[]
+  /** Index from which items should animate in (for lazy-load batches) */
+  animateFromIndex?: number
   /** Additional class names */
   className?: string
 }
@@ -99,7 +101,7 @@ const defaultItems: CollectionCardProps[] = [
   },
 ]
 
-export function Grid({ items = defaultItems, className }: GridProps) {
+export function Grid({ items = defaultItems, animateFromIndex = 0, className }: GridProps) {
   return (
     <div
       className={cn(
@@ -127,7 +129,11 @@ export function Grid({ items = defaultItems, className }: GridProps) {
           <CollectionCard
             key={item.id ?? index}
             {...item}
-            className="!w-full h-[192px]"
+            className={cn(
+              "!w-full h-[192px]",
+              index >= animateFromIndex &&
+                "animate-in fade-in slide-in-from-bottom-2 duration-500 ease-in"
+            )}
           />
         ))}
       </div>

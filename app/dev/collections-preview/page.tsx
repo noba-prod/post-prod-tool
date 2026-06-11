@@ -89,6 +89,7 @@ interface Filters {
   status: string | null
   jobReference: string | null
   photographer: string | null
+  collectionType: string | null
   sortOrder: "asc" | "desc"
 }
 
@@ -101,6 +102,7 @@ export default function CollectionsPreviewPage() {
     status: null,
     jobReference: null,
     photographer: null,
+    collectionType: null,
     sortOrder: "desc",
   })
 
@@ -140,6 +142,9 @@ export default function CollectionsPreviewPage() {
       }
       if (filterId === "photographer") {
         return { ...prev, photographer: v }
+      }
+      if (filterId === "collectionType") {
+        return { ...prev, collectionType: v }
       }
       return prev
     })

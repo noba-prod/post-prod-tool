@@ -8,6 +8,8 @@ import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
 import { TableSkeleton } from "@/components/custom/loading-skeletons"
+import { LazyLoadSentinel } from "@/components/custom/lazy-load-sentinel"
+import { useInfiniteScroll, useLazyLoadSlice } from "@/hooks/use-infinite-scroll"
 import { UserCreationForm, type UserFormData } from "@/components/custom/user-creation-form"
 import {
   Dialog,
@@ -365,6 +367,20 @@ export default function TeamPage() {
     return result
   }, [teamMembers, filters])
 
+  const {
+    visibleItems: visibleMembers,
+    hasMore: hasMoreVisibleMembers,
+    isLoadingMore: isLoadingMoreVisibleMembers,
+    loadMore: loadMoreVisibleMembers,
+    animateFromIndex: tableAnimateFromIndex,
+  } = useLazyLoadSlice(filteredMembers)
+
+  const infiniteScrollRef = useInfiniteScroll({
+    onLoadMore: loadMoreVisibleMembers,
+    hasMore: hasMoreVisibleMembers,
+    isLoading: isLoadingMoreVisibleMembers,
+  })
+
   // Open modal with team member data when row or name is clicked (no navigation)
   const handleEditUser = useCallback(
     async (memberId: string) => {
@@ -545,9 +561,15 @@ export default function TeamPage() {
             <>
               <Tables
                 variant="team-members"
-                teamMembersData={filteredMembers}
+                teamMembersData={visibleMembers}
+                animateRowsFromIndex={tableAnimateFromIndex}
                 onDelete={canDelete ? handleDelete : undefined}
                 onEditUser={handleEditUser}
+              />
+              <LazyLoadSentinel
+                sentinelRef={infiniteScrollRef}
+                isLoading={isLoadingMoreVisibleMembers}
+                hasMore={hasMoreVisibleMembers}
               />
               {filteredMembers.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">

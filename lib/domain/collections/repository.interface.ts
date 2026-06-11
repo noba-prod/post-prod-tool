@@ -11,6 +11,20 @@ export interface ListCollectionsFilters {
   status?: CollectionStatus
   clientEntityId?: string
   createdByUserId?: string
+  jobReference?: string
+  photographerEntityId?: string
+  photographerUserId?: string
+  sortOrder?: "asc" | "desc"
+}
+
+export interface ListCollectionsPageOptions extends ListCollectionsFilters {
+  limit: number
+  offset: number
+}
+
+export interface ListCollectionsPageResult {
+  items: Collection[]
+  hasMore: boolean
 }
 
 /** Patch for update: top-level fields optional; config is merged (partial). */
@@ -59,4 +73,6 @@ export interface ICollectionsRepository {
   delete(id: string): Promise<void>
 
   list(filters?: ListCollectionsFilters): Promise<Collection[]>
+
+  listPage(options: ListCollectionsPageOptions): Promise<ListCollectionsPageResult>
 }

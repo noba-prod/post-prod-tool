@@ -79,7 +79,13 @@ export type EntitiesApiResponse = {
     collection_id: string
     user_id: string
   }>
+  hasMore?: boolean
   debug?: Record<string, unknown>
+}
+
+export interface EntitiesPageResult {
+  items: EntityListItem[]
+  hasMore: boolean
 }
 
 type CollectionRow = EntitiesApiResponse["collections"][number]
@@ -228,5 +234,38 @@ export class EntitiesListService {
 
     const data = (await response.json()) as EntitiesApiResponse
     return mapPlayersApiToEntities(data)
+  }
+
+  async listEntitiesPage(options: {
+    limit: number
+    offset: number
+  }): Promise<EntitiesPageResult> {
+    const params = new URLSearchParams({
+      limit: String(options.limit),
+      offset: String(options.offset),
+    })
+    const response = await fetch(`/api/players?${params.toString()}`, {
+      method: "GET",
+      cache: "no-store",
+    })
+
+    if (!response.ok) {
+      let errorMessage = `Failed to load entities (${response.status})`
+      try {
+        const errorBody = (await response.json()) as { error?: string }
+        if (errorBody.error) {
+          errorMessage = errorBody.error
+        }
+      } catch {
+        // ignore JSON parse errors
+      }
+      throw new Error(errorMessage)
+    }
+
+    const data = (await response.json()) as EntitiesApiResponse
+    return {
+      items: mapPlayersApiToEntities(data),
+      hasMore: Boolean(data.hasMore),
+    }
   }
 }

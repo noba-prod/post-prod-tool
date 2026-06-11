@@ -9,6 +9,12 @@ import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar } from "@/components/custom/filter-bar"
 import { Tables } from "@/components/custom/tables"
 import { TableSkeleton } from "@/components/custom/loading-skeletons"
+import { LazyLoadSentinel } from "@/components/custom/lazy-load-sentinel"
+import {
+  LAZY_LOAD_PAGE_SIZE,
+  useInfiniteScroll,
+  useLazyLoadSlice,
+} from "@/hooks/use-infinite-scroll"
 import { CreateEntityCommand } from "@/components/custom/create-entity-command"
 import { UserCreationForm } from "@/components/custom/user-creation-form"
 import { useAuthAdapter } from "@/lib/auth"
@@ -83,6 +89,10 @@ export default function PlayersPage() {
   // Players data from repository
   const [entities, setEntities] = useState<Entity[]>([])
   const [loadingEntities, setLoadingEntities] = useState(false)
+  const [loadingMoreEntities, setLoadingMoreEntities] = useState(false)
+  const [hasMoreEntities, setHasMoreEntities] = useState(false)
+  const entitiesRef = React.useRef<Entity[]>([])
+  const [serverAnimateFromIndex, setServerAnimateFromIndex] = useState(0)
   
   // Filters state
   const [filters, setFilters] = useState<Filters>({
@@ -104,13 +114,27 @@ export default function PlayersPage() {
   const canEdit = userRole === "admin" || userRole === "editor"
   const canCreate = userRole === "admin" || userRole === "editor"
 
-  // Load players from repository (exclude noba* — product owners)
-  const loadEntities = useCallback(async () => {
-    setLoadingEntities(true)
+  React.useEffect(() => {
+    entitiesRef.current = entities
+  }, [entities])
+
+  const fetchEntitiesPage = useCallback(async (mode: "reset" | "append") => {
+    const isReset = mode === "reset"
+    if (isReset) {
+      setLoadingEntities(true)
+    } else {
+      setLoadingMoreEntities(true)
+    }
+
+    const offset = isReset ? 0 : entitiesRef.current.length
+
     try {
       const service = createEntitiesListService()
-      const items = await service.listEntities()
-      
+      const { items, hasMore } = await service.listEntitiesPage({
+        limit: LAZY_LOAD_PAGE_SIZE,
+        offset,
+      })
+
       const mappedEntities: Entity[] = items
         .filter((item) => item.name?.trim() !== "noba*")
         .map((item) => ({
@@ -124,14 +148,30 @@ export default function PlayersPage() {
           teamMembers: item.teamMembers,
           collections: item.collections,
         }))
-      
-      setEntities(mappedEntities)
+
+      if (isReset) {
+        setEntities(mappedEntities)
+        setServerAnimateFromIndex(0)
+      } else {
+        setServerAnimateFromIndex(entitiesRef.current.length)
+        setEntities((prev) => {
+          const existingIds = new Set(prev.map((entity) => entity.id))
+          const newItems = mappedEntities.filter((entity) => !existingIds.has(entity.id))
+          return [...prev, ...newItems]
+        })
+      }
+      setHasMoreEntities(hasMore)
     } catch (error) {
       console.error("Failed to load players:", error)
     } finally {
       setLoadingEntities(false)
+      setLoadingMoreEntities(false)
     }
   }, [])
+
+  const loadEntities = useCallback(async () => {
+    await fetchEntitiesPage("reset")
+  }, [fetchEntitiesPage])
 
   // Auth check only (stable deps like collections — no refetch on tab return)
   useEffect(() => {
@@ -347,6 +387,40 @@ export default function PlayersPage() {
     return result
   }, [entities, filters])
 
+  const {
+    visibleItems: visibleEntities,
+    hasMore: hasMoreVisibleEntities,
+    isLoadingMore: isLoadingMoreVisibleEntities,
+    loadMore: loadMoreVisibleEntities,
+    animateFromIndex: sliceAnimateFromIndex,
+  } = useLazyLoadSlice(filteredEntities)
+
+  const handleLoadMoreEntities = React.useCallback(() => {
+    if (hasMoreVisibleEntities) {
+      loadMoreVisibleEntities()
+      return
+    }
+    if (hasMoreEntities && !loadingMoreEntities && !loadingEntities) {
+      void fetchEntitiesPage("append")
+    }
+  }, [
+    hasMoreVisibleEntities,
+    loadMoreVisibleEntities,
+    hasMoreEntities,
+    loadingMoreEntities,
+    loadingEntities,
+    fetchEntitiesPage,
+  ])
+
+  const infiniteScrollRef = useInfiniteScroll({
+    onLoadMore: handleLoadMoreEntities,
+    hasMore: hasMoreVisibleEntities || hasMoreEntities,
+    isLoading: isLoadingMoreVisibleEntities || loadingMoreEntities,
+  })
+
+  const displayAnimateFromIndex =
+    sliceAnimateFromIndex > 0 ? sliceAnimateFromIndex : serverAnimateFromIndex
+
   if (loading || userContext.loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -400,9 +474,15 @@ export default function PlayersPage() {
             <>
               <Tables
                 variant="entities"
-                entitiesData={filteredEntities}
+                entitiesData={visibleEntities}
+                animateRowsFromIndex={displayAnimateFromIndex}
                 onEntityRowClick={handleEntityRowClick}
                 onEditAdminUser={handleEditAdminUser}
+              />
+              <LazyLoadSentinel
+                sentinelRef={infiniteScrollRef}
+                isLoading={isLoadingMoreVisibleEntities || loadingMoreEntities}
+                hasMore={hasMoreVisibleEntities || hasMoreEntities}
               />
               {filteredEntities.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">

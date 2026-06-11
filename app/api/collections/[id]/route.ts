@@ -37,6 +37,10 @@ interface PatchBody {
   step_note_client_confirmation?: { from: string; text: string; url?: string }
   /** Replace supplemental drop-off shipments (Analog). Producer-only use case; full array replace. */
   dropoff_additional_shipments?: DropoffAdditionalShipment[]
+  /** Primary drop-off shipment (Analog). Updated when producer confirms pickup. */
+  dropoff_managing_shipping?: string
+  dropoff_shipping_carrier?: string
+  dropoff_shipping_tracking?: string
 }
 
 const NOTE_KEY_TO_URL_FIELD: Partial<Record<keyof PatchBody, keyof PatchBody>> = {
@@ -323,6 +327,37 @@ export async function PATCH(
       dbUpdate.dropoff_additional_shipments = sanitizeDropoffAdditionalShipmentsInput(
         body.dropoff_additional_shipments
       )
+    }
+
+    if (body.dropoff_managing_shipping !== undefined) {
+      const v = body.dropoff_managing_shipping.trim()
+      if (!v) {
+        return NextResponse.json(
+          { error: "dropoff_managing_shipping is required" },
+          { status: 400 }
+        )
+      }
+      dbUpdate.dropoff_managing_shipping = v
+    }
+    if (body.dropoff_shipping_carrier !== undefined) {
+      const v = body.dropoff_shipping_carrier.trim()
+      if (!v) {
+        return NextResponse.json(
+          { error: "dropoff_shipping_carrier is required" },
+          { status: 400 }
+        )
+      }
+      dbUpdate.dropoff_shipping_carrier = v
+    }
+    if (body.dropoff_shipping_tracking !== undefined) {
+      const v = body.dropoff_shipping_tracking.trim()
+      if (!v) {
+        return NextResponse.json(
+          { error: "dropoff_shipping_tracking is required" },
+          { status: 400 }
+        )
+      }
+      dbUpdate.dropoff_shipping_tracking = v
     }
 
     if (Object.keys(dbUpdate).length === 0) {

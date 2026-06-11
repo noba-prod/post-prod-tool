@@ -101,6 +101,8 @@ interface TablesProps {
   onEditAdminUser?: (userId: string, entityId: string) => void
   /** Whether delete actions should be shown (for team members table) */
   canDelete?: boolean
+  /** Index from which rows should animate in (lazy-load batches) */
+  animateRowsFromIndex?: number
   className?: string
 }
 
@@ -159,11 +161,13 @@ function TableWrapper({ children, className }: { children: React.ReactNode; clas
 function TeamMembersTable({
   data = sampleTeamMembers,
   onEditUser,
+  animateRowsFromIndex = 0,
 }: {
   data?: TeamMember[]
   onDelete?: (id: string) => void
   onEditUser?: (userId: string) => void
   canDelete?: boolean
+  animateRowsFromIndex?: number
 }) {
   return (
     <TableWrapper>
@@ -178,10 +182,14 @@ function TeamMembersTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((member) => (
+          {data.map((member, index) => (
             <TableRow
               key={member.id}
-              className="h-[52px] cursor-pointer hover:bg-muted/50 transition-colors"
+              className={cn(
+                "h-[52px] cursor-pointer hover:bg-muted/50 transition-colors",
+                index >= animateRowsFromIndex &&
+                  "animate-in fade-in slide-in-from-bottom-1 duration-500 ease-in"
+              )}
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -232,11 +240,13 @@ function EntitiesTable({
   onViewDetails,
   onEntityRowClick,
   onEditAdminUser,
+  animateRowsFromIndex = 0,
 }: {
   data?: Entity[]
   onViewDetails?: (id: string) => void
   onEntityRowClick?: (entity: Entity) => void
   onEditAdminUser?: (userId: string, entityId: string) => void
+  animateRowsFromIndex?: number
 }) {
   const handleEntityRowActivate = React.useCallback(
     (entity: Entity) => {
@@ -326,12 +336,16 @@ function EntitiesTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedData.map((entity) => {
+          {sortedData.map((entity, index) => {
             const isSelfPhotographer = entity.rawType === "self-photographer"
             return (
             <TableRow
               key={entity.id}
-              className="h-[52px] cursor-pointer hover:bg-muted/50 transition-colors"
+              className={cn(
+                "h-[52px] cursor-pointer hover:bg-muted/50 transition-colors",
+                index >= animateRowsFromIndex &&
+                  "animate-in fade-in slide-in-from-bottom-1 duration-500 ease-in"
+              )}
               onClick={() => handleEntityRowActivate(entity)}
               role="button"
               tabIndex={0}
@@ -414,11 +428,13 @@ function CollectionsTable({
   data = sampleCollections,
   onSettings,
   onRowClick,
+  animateRowsFromIndex = 0,
 }: {
   data?: Collection[]
   onSettings?: (id: string) => void
   /** Callback when row is clicked (id, status). If provided, row becomes clickable. */
   onRowClick?: (id: string, status: CollectionStatus) => void
+  animateRowsFromIndex?: number
 }) {
   const [sortColumn, setSortColumn] = React.useState<CollectionSortColumn | null>(null)
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc")
@@ -497,12 +513,14 @@ function CollectionsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedData.map((collection) => (
+          {sortedData.map((collection, index) => (
             <TableRow
               key={collection.id}
               className={cn(
                 "h-[52px]",
-                onRowClick && "cursor-pointer hover:bg-muted/50 transition-colors"
+                onRowClick && "cursor-pointer hover:bg-muted/50 transition-colors",
+                index >= animateRowsFromIndex &&
+                  "animate-in fade-in slide-in-from-bottom-1 duration-500 ease-in"
               )}
               onClick={onRowClick ? () => onRowClick(collection.id, collection.status) : undefined}
               role={onRowClick ? "button" : undefined}
@@ -624,6 +642,7 @@ export function Tables({
   onEditUser,
   onEditAdminUser,
   canDelete = true,
+  animateRowsFromIndex = 0,
   className,
 }: TablesProps) {
   switch (variant) {
@@ -635,6 +654,7 @@ export function Tables({
             onDelete={onDelete}
             onEditUser={onEditUser}
             canDelete={canDelete}
+            animateRowsFromIndex={animateRowsFromIndex}
           />
         </div>
       )
@@ -646,6 +666,7 @@ export function Tables({
             onViewDetails={onViewDetails}
             onEntityRowClick={onEntityRowClick}
             onEditAdminUser={onEditAdminUser}
+            animateRowsFromIndex={animateRowsFromIndex}
           />
         </div>
       )
@@ -656,6 +677,7 @@ export function Tables({
             data={collectionsData}
             onSettings={onSettings}
             onRowClick={onCollectionRowClick}
+            animateRowsFromIndex={animateRowsFromIndex}
           />
         </div>
       )
