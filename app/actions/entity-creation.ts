@@ -1,6 +1,10 @@
 "use server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  ensureProfilePicturesBucket,
+  PROFILE_PICTURES_BUCKET,
+} from "@/lib/supabase/ensure-profile-pictures-bucket"
 import type { Database, PlayerType, Profile, Player } from "@/lib/supabase/database.types"
 import type { CreateEntityDraftPayload, Entity, EntityType, User } from "@/lib/types"
 
@@ -123,8 +127,10 @@ async function uploadProfilePicture(
   const objectPath = `profiles/${userId}/avatar.${extension}`
   const arrayBuffer = await file.arrayBuffer()
 
+  await ensureProfilePicturesBucket(adminSupabase)
+
   const { error: uploadError } = await adminSupabase.storage
-    .from("profile-pictures")
+    .from(PROFILE_PICTURES_BUCKET)
     .upload(objectPath, arrayBuffer, {
       contentType: file.type || "application/octet-stream",
       upsert: true,
@@ -136,7 +142,7 @@ async function uploadProfilePicture(
   }
 
   const { data } = adminSupabase.storage
-    .from("profile-pictures")
+    .from(PROFILE_PICTURES_BUCKET)
     .getPublicUrl(objectPath)
 
   const publicUrl = data.publicUrl || null
@@ -164,8 +170,10 @@ async function uploadPlayerProfilePicture(
   const objectPath = `${playerId}/logo.${extension}`
   const arrayBuffer = await file.arrayBuffer()
 
+  await ensureProfilePicturesBucket(adminSupabase)
+
   const { error: uploadError } = await adminSupabase.storage
-    .from("profile-pictures")
+    .from(PROFILE_PICTURES_BUCKET)
     .upload(objectPath, arrayBuffer, {
       contentType: file.type || "application/octet-stream",
       upsert: true,
@@ -177,7 +185,7 @@ async function uploadPlayerProfilePicture(
   }
 
   const { data } = adminSupabase.storage
-    .from("profile-pictures")
+    .from(PROFILE_PICTURES_BUCKET)
     .getPublicUrl(objectPath)
 
   return data.publicUrl || null

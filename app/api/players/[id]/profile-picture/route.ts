@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  ensureProfilePicturesBucket,
+  PROFILE_PICTURES_BUCKET,
+} from "@/lib/supabase/ensure-profile-pictures-bucket"
 import type { Profile, Player } from "@/lib/supabase/database.types"
 import { mapPlayerToEntity } from "@/lib/utils/supabase-mappers"
 
@@ -79,8 +83,18 @@ export async function POST(
   const objectPath = `${playerId}/logo.${extension}`
   const arrayBuffer = await file.arrayBuffer()
 
+  try {
+    await ensureProfilePicturesBucket(adminClient)
+  } catch (bucketError) {
+    console.error("Profile pictures bucket setup failed:", bucketError)
+    return NextResponse.json(
+      { error: "Profile picture storage is not configured. Contact support." },
+      { status: 500 }
+    )
+  }
+
   const { error: uploadError } = await adminClient.storage
-    .from("profile-pictures")
+    .from(PROFILE_PICTURES_BUCKET)
     .upload(objectPath, arrayBuffer, {
       contentType: file.type || "application/octet-stream",
       upsert: true,
@@ -95,7 +109,7 @@ export async function POST(
   }
 
   const { data } = adminClient.storage
-    .from("profile-pictures")
+    .from(PROFILE_PICTURES_BUCKET)
     .getPublicUrl(objectPath)
 
   const profilePictureUrl = data.publicUrl || null

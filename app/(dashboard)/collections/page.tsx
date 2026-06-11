@@ -9,6 +9,8 @@ import { FilterBar, COLLECTION_STATUSES } from "@/components/custom/filter-bar"
 import { Grid } from "@/components/custom/grid"
 import { Tables } from "@/components/custom/tables"
 import { CollectionsGridSkeleton, TableSkeleton } from "@/components/custom/loading-skeletons"
+import { LazyLoadSentinel } from "@/components/custom/lazy-load-sentinel"
+import { LAZY_LOAD_PAGE_SIZE, useInfiniteScroll } from "@/hooks/use-infinite-scroll"
 import { Button } from "@/components/ui/button"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
@@ -20,8 +22,11 @@ import { createClient } from "@/lib/supabase/client"
 import {
   deriveStageStatusFromShootingStart,
   VIEW_STEP_IDS,
+  COLLECTION_TYPE_FILTER_OPTIONS,
+  getCollectionShootingType,
+  type CollectionShootingType,
 } from "@/lib/domain/collections"
-import type { Collection } from "@/lib/domain/collections"
+import type { Collection, ListCollectionsPageOptions } from "@/lib/domain/collections"
 import type { Player } from "@/lib/supabase/database.types"
 
 // ============================================================================
@@ -114,6 +119,7 @@ interface Filters {
   status: string | null
   jobReference: string | null
   photographer: string | null
+  collectionType: CollectionShootingType | null
   sortOrder: "asc" | "desc"
 }
 
@@ -196,8 +202,25 @@ function collectionMatchesPhotographerFilter(
   )
 }
 
-// ============================================================================
-// DRAFT → CARD HELPERS
+function buildListPageOptions(
+  filters: Filters,
+  offset: number
+): ListCollectionsPageOptions {
+  const options: ListCollectionsPageOptions = {
+    limit: LAZY_LOAD_PAGE_SIZE,
+    offset,
+    sortOrder: filters.sortOrder,
+  }
+  if (filters.client) options.clientEntityId = filters.client
+  const photographerFilter = parsePhotographerFilter(filters.photographer)
+  if (photographerFilter?.kind === "entity") {
+    options.photographerEntityId = photographerFilter.id
+  } else if (photographerFilter?.kind === "user") {
+    options.photographerUserId = photographerFilter.id
+  }
+  return options
+}
+
 // ============================================================================
 
 /**
@@ -286,6 +309,10 @@ export default function CollectionsPage() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingCollections, setLoadingCollections] = useState(false)
+  const [loadingMoreCollections, setLoadingMoreCollections] = useState(false)
+  const [hasMoreCollections, setHasMoreCollections] = useState(false)
+  const [gridAnimateFromIndex, setGridAnimateFromIndex] = useState(0)
+  const collectionsRef = React.useRef<Collection[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
   const [clientNamesByEntityId, setClientNamesByEntityId] = useState<Record<string, string>>({})
   const [clientOptions, setClientOptions] = useState<{ id: string; name: string }[]>([])
@@ -301,6 +328,7 @@ export default function CollectionsPage() {
     status: null,
     jobReference: null,
     photographer: null,
+    collectionType: null,
     sortOrder: "desc",
   })
 
@@ -318,30 +346,66 @@ export default function CollectionsPage() {
     checkSession()
   }, [router, authAdapter])
 
-  // Fetch collections from service (single source of truth for list)
-  const refetchCollections = React.useCallback(() => {
-    if (!session) return
-    setLoadingCollections(true)
-    const service = createCollectionsService()
-    service
-      .listCollections()
-      .then(setCollections)
-      .finally(() => setLoadingCollections(false))
-  }, [session])
+  React.useEffect(() => {
+    collectionsRef.current = collections
+  }, [collections])
 
+  const buildPageOptions = React.useCallback(
+    (offset: number) => buildListPageOptions(filters, offset),
+    [filters]
+  )
+
+  const fetchCollectionsPage = React.useCallback(
+    async (mode: "reset" | "append") => {
+      if (!session) return
+      const isReset = mode === "reset"
+      if (isReset) {
+        setLoadingCollections(true)
+      } else {
+        setLoadingMoreCollections(true)
+      }
+
+      const offset = isReset ? 0 : collectionsRef.current.length
+
+      try {
+        const service = createCollectionsService()
+        const { items, hasMore } = await service.listCollectionsPage(buildPageOptions(offset))
+
+        if (isReset) {
+          setCollections(items)
+          setGridAnimateFromIndex(0)
+        } else {
+          setGridAnimateFromIndex(collectionsRef.current.length)
+          setCollections((prev) => {
+            const existingIds = new Set(prev.map((c) => c.id))
+            const newItems = items.filter((item) => !existingIds.has(item.id))
+            return [...prev, ...newItems]
+          })
+        }
+        setHasMoreCollections(hasMore)
+      } finally {
+        setLoadingCollections(false)
+        setLoadingMoreCollections(false)
+      }
+    },
+    [session, buildPageOptions]
+  )
+
+  // Fetch first page when session or filters change
   useEffect(() => {
     if (!session) return
-    refetchCollections()
-  }, [session, refetchCollections])
+    void fetchCollectionsPage("reset")
+  }, [session, filters, fetchCollectionsPage])
 
-  // Refetch when navigating to this page so list and card status stay in sync with shooting dates
+  // Refetch first page when navigating to this page
   useEffect(() => {
-    if (pathname === "/collections" && session) refetchCollections()
-  }, [pathname, session, refetchCollections])
+    if (pathname !== "/collections" || !session) return
+    void fetchCollectionsPage("reset")
+  }, [pathname, session, fetchCollectionsPage])
 
-  // Refetch list when window/tab gains focus or becomes visible so that after editing shooting dates we show updated status
+  // Refetch first page when window/tab gains focus or becomes visible
   useEffect(() => {
-    const refetch = () => refetchCollections()
+    const refetch = () => void fetchCollectionsPage("reset")
     const onVisibility = () => {
       if (document.visibilityState === "visible") refetch()
     }
@@ -351,7 +415,23 @@ export default function CollectionsPage() {
       window.removeEventListener("focus", refetch)
       document.removeEventListener("visibilitychange", onVisibility)
     }
-  }, [refetchCollections])
+  }, [fetchCollectionsPage])
+
+  const loadMoreCollections = React.useCallback(() => {
+    if (loadingCollections || loadingMoreCollections || !hasMoreCollections) return
+    void fetchCollectionsPage("append")
+  }, [
+    loadingCollections,
+    loadingMoreCollections,
+    hasMoreCollections,
+    fetchCollectionsPage,
+  ])
+
+  const infiniteScrollRef = useInfiniteScroll({
+    onLoadMore: loadMoreCollections,
+    hasMore: hasMoreCollections,
+    isLoading: loadingMoreCollections,
+  })
 
   // Load client and photographer options for filters (registered entities)
   useEffect(() => {
@@ -470,11 +550,26 @@ export default function CollectionsPage() {
     return result
   }, [scopeAfterStatus, filters.jobReference])
 
+  const collectionTypeOptionsForBar = React.useMemo(() => {
+    const seen = new Set<CollectionShootingType>()
+    for (const c of scopeAfterJobRef) {
+      seen.add(getCollectionShootingType(c.config))
+    }
+    return COLLECTION_TYPE_FILTER_OPTIONS.filter((option) => seen.has(option.value))
+  }, [scopeAfterJobRef])
+
+  const scopeAfterCollectionType = React.useMemo(() => {
+    if (!filters.collectionType) return scopeAfterJobRef
+    return scopeAfterJobRef.filter((c) =>
+      getCollectionShootingType(c.config) === filters.collectionType
+    )
+  }, [scopeAfterJobRef, filters.collectionType])
+
   const photographerOptionsForBar = React.useMemo(() => {
     const entityNamesById = new Map(photographerOptions.map((p) => [p.id, p.name]))
     const optionsByNameKey = new Map<string, string>()
 
-    for (const c of scopeAfterJobRef) {
+    for (const c of scopeAfterCollectionType) {
       const photographerParticipant = c.participants.find((p) => p.role === "photographer")
       if (!photographerParticipant) continue
 
@@ -496,7 +591,7 @@ export default function CollectionsPage() {
       .sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
       )
-  }, [photographerNamesByUserId, photographerOptions, scopeAfterJobRef])
+  }, [photographerNamesByUserId, photographerOptions, scopeAfterCollectionType])
 
   const clientOptionsForBar = React.useMemo(() => {
     const ids = new Set(
@@ -518,6 +613,7 @@ export default function CollectionsPage() {
           status: null,
           jobReference: null,
           photographer: null,
+          collectionType: null,
         }
       }
       if (filterId === "status") {
@@ -526,13 +622,17 @@ export default function CollectionsPage() {
           status: v,
           jobReference: null,
           photographer: null,
+          collectionType: null,
         }
       }
       if (filterId === "jobReference") {
-        return { ...prev, jobReference: v, photographer: null }
+        return { ...prev, jobReference: v, photographer: null, collectionType: null }
       }
       if (filterId === "photographer") {
         return { ...prev, photographer: v }
+      }
+      if (filterId === "collectionType") {
+        return { ...prev, collectionType: v as CollectionShootingType | null }
       }
       return prev
     })
@@ -579,6 +679,11 @@ export default function CollectionsPage() {
         (c) => (c.config.reference?.trim() ?? "") === filters.jobReference
       )
     }
+    if (filters.collectionType) {
+      result = result.filter(
+        (c) => getCollectionShootingType(c.config) === filters.collectionType
+      )
+    }
     result.sort((a, b) => {
       const tA = new Date(a.updatedAt).getTime()
       const tB = new Date(b.updatedAt).getTime()
@@ -592,6 +697,7 @@ export default function CollectionsPage() {
     filters.status,
     filters.photographer,
     filters.jobReference,
+    filters.collectionType,
     filters.sortOrder,
     photographerOptions,
     photographerNamesByUserId,
@@ -730,6 +836,7 @@ export default function CollectionsPage() {
             showAction={false}
             collectionFilterState={filters}
             collectionStatusOptions={collectionStatusOptionsForBar}
+            collectionTypeOptions={collectionTypeOptionsForBar}
             clientOptions={clientOptionsForBar}
             photographerOptions={photographerOptionsForBar}
             jobReferenceOptions={jobReferenceOptionsForBar}
@@ -745,19 +852,37 @@ export default function CollectionsPage() {
           ) : (
             <>
               {activeView === "Gallery" ? (
-                <Grid items={gridItems} />
+                <>
+                  <Grid
+                    items={gridItems}
+                    animateFromIndex={gridAnimateFromIndex}
+                  />
+                  <LazyLoadSentinel
+                    sentinelRef={infiniteScrollRef}
+                    isLoading={loadingMoreCollections}
+                    hasMore={hasMoreCollections}
+                  />
+                </>
               ) : (
-                <Tables
-                  variant="collections"
-                  collectionsData={tableItems}
-                  onCollectionRowClick={(id, status) => {
-                    // UI status: draft | upcoming | in-progress | completed | canceled
-                    const isDraft = status === "draft"
-                    if (isDraft) router.push(`/collections/create/${id}`)
-                    else router.push(`/collections/${id}`)
-                  }}
-                  onSettings={(id) => console.log("Settings for collection:", id)}
-                />
+                <>
+                  <Tables
+                    variant="collections"
+                    collectionsData={tableItems}
+                    animateRowsFromIndex={gridAnimateFromIndex}
+                    onCollectionRowClick={(id, status) => {
+                      // UI status: draft | upcoming | in-progress | completed | canceled
+                      const isDraft = status === "draft"
+                      if (isDraft) router.push(`/collections/create/${id}`)
+                      else router.push(`/collections/${id}`)
+                    }}
+                    onSettings={(id) => console.log("Settings for collection:", id)}
+                  />
+                  <LazyLoadSentinel
+                    sentinelRef={infiniteScrollRef}
+                    isLoading={loadingMoreCollections}
+                    hasMore={hasMoreCollections}
+                  />
+                </>
               )}
               {!hasItems && (
                 <div className="flex flex-col items-center justify-center py-16 text-center gap-4">

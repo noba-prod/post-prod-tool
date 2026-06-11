@@ -12,6 +12,8 @@ import type {
   CollectionSubstatus,
   ICollectionsRepository,
   ListCollectionsFilters,
+  ListCollectionsPageOptions,
+  ListCollectionsPageResult,
   StructuralReconciliationResult,
 } from "@/lib/domain/collections"
 import {
@@ -290,6 +292,18 @@ export class CollectionsService {
 
   async listCollections(filters?: ListCollectionsFilters): Promise<Collection[]> {
     const list = await this.repository.list(filters)
+    return this.syncCollectionStatuses(list)
+  }
+
+  async listCollectionsPage(
+    options: ListCollectionsPageOptions
+  ): Promise<ListCollectionsPageResult> {
+    const page = await this.repository.listPage(options)
+    const items = await this.syncCollectionStatuses(page.items)
+    return { items, hasMore: page.hasMore }
+  }
+
+  private async syncCollectionStatuses(list: Collection[]): Promise<Collection[]> {
     const now = new Date()
     const result: Collection[] = []
     for (const c of list) {

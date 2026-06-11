@@ -10,6 +10,8 @@ import type {
   CollectionUpdatePatch,
   ICollectionsRepository,
   ListCollectionsFilters,
+  ListCollectionsPageOptions,
+  ListCollectionsPageResult,
 } from "@/lib/domain/collections"
 import { generateUuidV4 } from "@/lib/utils/uuid"
 
@@ -130,17 +132,56 @@ export class LocalStorageCollectionsRepository implements ICollectionsRepository
   }
 
   async list(filters?: ListCollectionsFilters): Promise<Collection[]> {
-    let items = readAll()
-    if (filters?.status) {
-      items = items.filter((c) => c.status === filters.status)
-    }
-    if (filters?.clientEntityId) {
-      items = items.filter((c) => c.config.clientEntityId === filters.clientEntityId)
-    }
-    if (filters?.createdByUserId) {
-      items = items.filter((c) => c.config.managerUserId === filters.createdByUserId)
-    }
-    items.sort((a, b) => (b.updatedAt > a.updatedAt ? 1 : b.updatedAt < a.updatedAt ? -1 : 0))
+    const { items } = await this.listPage({
+      ...filters,
+      limit: Number.MAX_SAFE_INTEGER,
+      offset: 0,
+    })
     return items
+  }
+
+  async listPage(options: ListCollectionsPageOptions): Promise<ListCollectionsPageResult> {
+    let items = readAll()
+    if (options.status) {
+      items = items.filter((c) => c.status === options.status)
+    }
+    if (options.clientEntityId) {
+      items = items.filter((c) => c.config.clientEntityId === options.clientEntityId)
+    }
+    if (options.createdByUserId) {
+      items = items.filter((c) => c.config.managerUserId === options.createdByUserId)
+    }
+    if (options.jobReference) {
+      items = items.filter(
+        (c) => (c.config.reference?.trim() ?? "") === options.jobReference
+      )
+    }
+    if (options.photographerEntityId) {
+      items = items.filter((c) =>
+        c.participants.some(
+          (p) => p.role === "photographer" && p.entityId === options.photographerEntityId
+        )
+      )
+    }
+    if (options.photographerUserId) {
+      items = items.filter((c) =>
+        c.participants.some(
+          (p) =>
+            p.role === "photographer" &&
+            (p.userIds ?? []).includes(options.photographerUserId!)
+        )
+      )
+    }
+    const sortOrder = options.sortOrder ?? "desc"
+    items.sort((a, b) => {
+      const tA = new Date(a.updatedAt).getTime()
+      const tB = new Date(b.updatedAt).getTime()
+      return sortOrder === "desc" ? tB - tA : tA - tB
+    })
+    const page = items.slice(options.offset, options.offset + options.limit)
+    return {
+      items: page,
+      hasMore: options.offset + options.limit < items.length,
+    }
   }
 }

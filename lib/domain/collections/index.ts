@@ -86,6 +86,8 @@ export type {
   CollectionUpdatePatch,
   ICollectionsRepository,
   ListCollectionsFilters,
+  ListCollectionsPageOptions,
+  ListCollectionsPageResult,
 } from "./repository.interface"
 
 // Stage status from shooting start (so changing dates after publish updates UI)
@@ -111,6 +113,25 @@ export type {
   ViewStepStatus,
   ViewStepsFromCollectionOptions,
 } from "./view-mode-steps"
+
+export {
+  canShowPhotographerLastCheckExtraLinks,
+  canCompleteClientConfirmation,
+  getClientConfirmationBannerCopy,
+  getClientConfirmationMaterialUrls,
+  isClientConfirmationStepReady,
+} from "./client-confirmation-visibility"
+export type {
+  ClientConfirmationMaterialVisibilityInput,
+  ClientConfirmationStepLike,
+} from "./client-confirmation-visibility"
+
+export {
+  COLLECTION_TYPE_FILTER_OPTIONS,
+  collectionMatchesShootingTypeFilter,
+  getCollectionShootingType,
+} from "./collection-shooting-type"
+export type { CollectionShootingType } from "./collection-shooting-type"
 
 // Step health computation (per-step stage + health labels)
 export {
