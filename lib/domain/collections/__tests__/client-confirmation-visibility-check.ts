@@ -2,6 +2,7 @@ import {
   canCompleteClientConfirmation,
   canShowPhotographerLastCheckExtraLinks,
   getClientConfirmationBannerCopy,
+  getClientConfirmationLastCheckUrls,
   getClientConfirmationMaterialUrls,
   isClientConfirmationStepReady,
 } from "../client-confirmation-visibility"
@@ -38,15 +39,55 @@ function runChecks(): void {
   )
 
   assert(
+    getClientConfirmationMaterialUrls({
+      photographerApprovedMaterialUrls: ["https://example.com/photographer-new"],
+      materialUrls: ["https://example.com/lab"],
+      photographerLastCheckUrls: ["https://example.com/photographer-new"],
+      photographerLastCheckCompleted: true,
+    }).join() === "https://example.com/photographer-new",
+    "Client sees only photographer-approved new link, not lab"
+  )
+
+  assert(
+    getClientConfirmationMaterialUrls({
+      photographerApprovedMaterialUrls: ["https://example.com/lab"],
+      materialUrls: ["https://example.com/lab"],
+      photographerLastCheckUrls: ["https://example.com/photographer-new"],
+      photographerLastCheckCompleted: true,
+    }).join() === "https://example.com/lab",
+    "Client sees only lab link when photographer validated lab selection"
+  )
+
+  // Add-new-link bug: step completed with photographer finals link but no approved list.
+  assert(
+    getClientConfirmationMaterialUrls({
+      materialUrls: ["https://example.com/lab"],
+      photographerLastCheckUrls: ["https://example.com/photographer"],
+      photographerLastCheckCompleted: true,
+    }).length === 0,
+    "Must not legacy-fallback lab link when photographer added separate finals link"
+  )
+
+  assert(
+    getClientConfirmationLastCheckUrls({
+      photographerApprovedMaterialUrls: ["https://example.com/finals"],
+      photographerLastCheckUrls: ["https://example.com/finals", "https://example.com/other"],
+    }).join() === "https://example.com/finals",
+    "Only approved last-check URLs are visible"
+  )
+
+  assert(
     !canShowPhotographerLastCheckExtraLinks({
       photographerLastCheckCompleted: false,
+      photographerLastCheckUrls: ["https://example.com/finals"],
     }),
-    "Extra last-check links hidden until photographer shares or step completes"
+    "Extra last-check links hidden until photographer shares approved material"
   )
 
   assert(
     canShowPhotographerLastCheckExtraLinks({
-      photographerApprovedMaterialUrls: ["https://example.com/approved"],
+      photographerApprovedMaterialUrls: ["https://example.com/finals"],
+      photographerLastCheckUrls: ["https://example.com/finals"],
       photographerLastCheckCompleted: false,
     }),
     "Extra links allowed once photographer has shared approved material"

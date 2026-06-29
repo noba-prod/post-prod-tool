@@ -75,6 +75,8 @@ export type CollectionEventType =
   | 'photographer_review_deadline_missed'
   | 'client_confirmation_confirmed'
   | 'comment_added'
+  | 'link_edited'
+  | 'link_deleted'
   // Cross-cutting structural workflow reconfiguration (migration 084, plan §17).
   | 'collection_workflow_reconfigured'
   | 'collection_completed'

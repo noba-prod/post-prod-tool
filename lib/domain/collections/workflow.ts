@@ -546,7 +546,9 @@ export function getStepOwner(
     case "handprint_high_res":
       // Digital: photographer converts LR→HR; Analog HP/HR: handprint_lab or photo_lab
       if (!config.hasHandprint) {
-        return (["photographer", producer] as ParticipantRole[])
+        return config.hasAgency
+          ? (["photographer", "agency", producer] as ParticipantRole[])
+          : (["photographer", producer] as ParticipantRole[])
       }
       return config.handprintIsDifferentLab
         ? (["handprint_lab", producer] as ParticipantRole[])
@@ -584,6 +586,30 @@ export function canUserEditStep(
   const owners = getStepOwner(stepId, draft)
   if (!owners.includes(user.role)) return false
   return user.hasEditPermission
+}
+
+// =============================================================================
+// CAN USER VIEW STEP URL HISTORY (collections-logic §8 — viewer vs owner)
+// Agency collaborators without edit permission still need post-production context:
+// same UrlHistory blocks as owners, but action blocks remain edit-gated.
+// =============================================================================
+
+export function canUserViewStepUrlHistory(
+  user: UserForPermission,
+  stepId: StepId,
+  draft: CollectionDraft
+): boolean {
+  if (canUserEditStep(user, stepId, draft)) return true
+  if (user.role === "agency" && getStepOwner(stepId, draft).includes("agency")) {
+    return true
+  }
+  // Photographer and agency collaborators can inspect client selection (and comment)
+  // without edit rights — same read-only exception as the photographer.
+  if (stepId === "client_selection") {
+    if (user.role === "photographer") return true
+    if (user.role === "agency" && draft.config.hasAgency) return true
+  }
+  return false
 }
 
 // =============================================================================

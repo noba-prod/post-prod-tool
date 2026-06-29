@@ -12,8 +12,10 @@ import { createCollectionsServiceForServer } from "@/lib/services/collections/se
 import { NotificationsService } from "@/lib/services/notifications/notifications.service"
 import { checkInternalUserCollectionMutationScope } from "@/lib/services/collections/internal-scope-guard"
 import type { StepNoteEntry } from "@/lib/domain/collections"
-import { appendToUrlArray, appendNote, isDuplicateNote } from "@/lib/utils/collection-mappers"
+import { appendToUrlArray, appendNote, isDuplicateNote, replaceUrlInArray, removeUrlFromArray, updateNotesUrlReference, removeNotesForUrl } from "@/lib/utils/collection-mappers"
+import { getStepLinkMutationConfig } from "@/lib/domain/collections/step-link-config"
 import type { DropoffAdditionalShipment } from "@/lib/domain/collections"
+import { dedupeDropoffAdditionalShipments } from "@/lib/domain/collections/dropoff-shipments"
 
 interface PatchBody {
   // URL appends (single URL string → appended to JSONB array)
@@ -41,6 +43,10 @@ interface PatchBody {
   dropoff_managing_shipping?: string
   dropoff_shipping_carrier?: string
   dropoff_shipping_tracking?: string
+  /** Edit an existing step link (replaces URL + updates associated notes). */
+  step_link_edit?: { step_id: string; old_url: string; new_url: string }
+  /** Delete a step link and its associated comments. */
+  step_link_delete?: { step_id: string; url: string }
 }
 
 const NOTE_KEY_TO_URL_FIELD: Partial<Record<keyof PatchBody, keyof PatchBody>> = {
@@ -130,7 +136,7 @@ function sanitizeDropoffAdditionalShipmentsInput(
     if (typeof t === "string" && t.trim()) row.tracking = t.trim()
     if (Object.keys(row).length > 0) out.push(row)
   }
-  return out
+  return dedupeDropoffAdditionalShipments(out)
 }
 
 export async function PATCH(
@@ -360,6 +366,119 @@ export async function PATCH(
       dbUpdate.dropoff_shipping_tracking = v
     }
 
+    // --- Step link edit/delete ---
+    let linkMutationNotification: { stepNoteKey: string; action: "edited" | "deleted" } | null = null
+
+    const applyStepLinkEdit = (config: ReturnType<typeof getStepLinkMutationConfig>, oldUrl: string, newUrl: string) => {
+      if (!config) return false
+      const existingUrls = parseStoredStringArray(raw[config.urlDbKey])
+      if (!existingUrls.includes(oldUrl)) return false
+
+      const nextUrls = replaceUrlInArray(existingUrls, oldUrl, newUrl)
+      dbUpdate[config.urlDbKey] = toColumnCompatibleArrayValue(raw[config.urlDbKey], nextUrls)
+      dbUpdate[config.uploadedAtDbKey] = now
+
+      const existingNotes = parseStoredNotes(raw[config.notesDbKey])
+      const nextNotes = updateNotesUrlReference(existingNotes, oldUrl, newUrl)
+      dbUpdate[config.notesDbKey] = toColumnCompatibleNotesValue(raw[config.notesDbKey], nextNotes)
+
+      if (config.syncHighResOnMutation) {
+        const highResExisting = parseStoredStringArray(raw.highres_selection_url)
+        if (highResExisting.includes(oldUrl)) {
+          const nextHighRes = replaceUrlInArray(highResExisting, oldUrl, newUrl)
+          dbUpdate.highres_selection_url = toColumnCompatibleArrayValue(raw.highres_selection_url, nextHighRes)
+          dbUpdate.highres_selection_uploaded_at = now
+          const highResNotes = parseStoredNotes(raw.step_notes_high_res)
+          const nextHighResNotes = updateNotesUrlReference(highResNotes, oldUrl, newUrl)
+          dbUpdate.step_notes_high_res = toColumnCompatibleNotesValue(raw.step_notes_high_res, nextHighResNotes)
+        }
+      }
+
+      const approvedRaw = (raw as { photographer_approved_material_urls?: unknown }).photographer_approved_material_urls
+      const approvedExisting = parseStoredStringArray(approvedRaw)
+      if (approvedExisting.includes(oldUrl)) {
+        const nextApproved = replaceUrlInArray(approvedExisting, oldUrl, newUrl)
+        dbUpdate.photographer_approved_material_urls = toColumnCompatibleArrayValue(approvedRaw, nextApproved)
+      }
+
+      return true
+    }
+
+    const applyStepLinkDelete = (config: ReturnType<typeof getStepLinkMutationConfig>, url: string) => {
+      if (!config) return false
+      const existingUrls = parseStoredStringArray(raw[config.urlDbKey])
+      if (!existingUrls.includes(url)) return false
+
+      const nextUrls = removeUrlFromArray(existingUrls, url)
+      dbUpdate[config.urlDbKey] = toColumnCompatibleArrayValue(raw[config.urlDbKey], nextUrls)
+      if (nextUrls.length > 0) {
+        dbUpdate[config.uploadedAtDbKey] = now
+      }
+
+      const existingNotes = parseStoredNotes(raw[config.notesDbKey])
+      const nextNotes = removeNotesForUrl(existingNotes, url)
+      dbUpdate[config.notesDbKey] = toColumnCompatibleNotesValue(raw[config.notesDbKey], nextNotes)
+
+      if (config.syncHighResOnMutation) {
+        const highResExisting = parseStoredStringArray(raw.highres_selection_url)
+        if (highResExisting.includes(url)) {
+          const nextHighRes = removeUrlFromArray(highResExisting, url)
+          dbUpdate.highres_selection_url = toColumnCompatibleArrayValue(raw.highres_selection_url, nextHighRes)
+          if (nextHighRes.length > 0) {
+            dbUpdate.highres_selection_uploaded_at = now
+          }
+          const highResNotes = parseStoredNotes(raw.step_notes_high_res)
+          const nextHighResNotes = removeNotesForUrl(highResNotes, url)
+          dbUpdate.step_notes_high_res = toColumnCompatibleNotesValue(raw.step_notes_high_res, nextHighResNotes)
+        }
+      }
+
+      const approvedRaw = (raw as { photographer_approved_material_urls?: unknown }).photographer_approved_material_urls
+      const approvedExisting = parseStoredStringArray(approvedRaw)
+      if (approvedExisting.includes(url)) {
+        const nextApproved = removeUrlFromArray(approvedExisting, url)
+        dbUpdate.photographer_approved_material_urls = toColumnCompatibleArrayValue(approvedRaw, nextApproved)
+      }
+
+      return true
+    }
+
+    if (body.step_link_edit) {
+      const { step_id, old_url, new_url } = body.step_link_edit
+      const oldTrimmed = old_url?.trim()
+      const newTrimmed = new_url?.trim()
+      if (!step_id?.trim() || !oldTrimmed || !newTrimmed) {
+        return NextResponse.json({ error: "step_link_edit requires step_id, old_url, and new_url" }, { status: 400 })
+      }
+      if (oldTrimmed === newTrimmed) {
+        return NextResponse.json({ error: "New URL must be different from the current URL" }, { status: 400 })
+      }
+      const config = getStepLinkMutationConfig(step_id.trim())
+      if (!config) {
+        return NextResponse.json({ error: "Unknown step_id for link edit" }, { status: 400 })
+      }
+      if (!applyStepLinkEdit(config, oldTrimmed, newTrimmed)) {
+        return NextResponse.json({ error: "Link not found in step" }, { status: 404 })
+      }
+      linkMutationNotification = { stepNoteKey: config.stepNoteKey, action: "edited" }
+    }
+
+    if (body.step_link_delete) {
+      const { step_id, url } = body.step_link_delete
+      const urlTrimmed = url?.trim()
+      if (!step_id?.trim() || !urlTrimmed) {
+        return NextResponse.json({ error: "step_link_delete requires step_id and url" }, { status: 400 })
+      }
+      const config = getStepLinkMutationConfig(step_id.trim())
+      if (!config) {
+        return NextResponse.json({ error: "Unknown step_id for link delete" }, { status: 400 })
+      }
+      if (!applyStepLinkDelete(config, urlTrimmed)) {
+        return NextResponse.json({ error: "Link not found in step" }, { status: 404 })
+      }
+      linkMutationNotification = { stepNoteKey: config.stepNoteKey, action: "deleted" }
+    }
+
     if (Object.keys(dbUpdate).length === 0) {
       return NextResponse.json({ success: true, collection: current })
     }
@@ -404,6 +523,21 @@ export async function PATCH(
             )
         }
       }
+    }
+
+    // Notify participants when a step link is edited or deleted (non-blocking)
+    if (linkMutationNotification) {
+      const notifService = new NotificationsService(admin)
+      notifService
+        .handleLinkChanged(
+          id,
+          linkMutationNotification.stepNoteKey,
+          user.id,
+          linkMutationNotification.action
+        )
+        .catch((err) =>
+          console.error("[PATCH /api/collections/[id]] Link change notification error:", err)
+        )
     }
 
     return NextResponse.json({ success: true, collection: updated })

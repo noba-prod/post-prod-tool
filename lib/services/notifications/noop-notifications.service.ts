@@ -76,4 +76,13 @@ export class NoopNotificationsService implements INotificationsService {
   ): Promise<void> {
     // No-op
   }
+
+  async handleLinkChanged(
+    _collectionId: string,
+    _stepNoteKey: string,
+    _actorUserId: string,
+    _action: "edited" | "deleted"
+  ): Promise<void> {
+    // No-op
+  }
 }

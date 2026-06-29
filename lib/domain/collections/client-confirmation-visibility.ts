@@ -1,13 +1,14 @@
 /**
  * Visibility rules for client_confirmation step material links.
  * Clients must only see high-res / final edits after the photographer explicitly
- * shares them (photographerApprovedMaterialUrls) or, for legacy collections,
- * after photographer_last_check is completed.
+ * shares them via "Share high-res with client" (photographerApprovedMaterialUrls).
  */
 
 export interface ClientConfirmationMaterialVisibilityInput {
   photographerApprovedMaterialUrls?: string[]
   materialUrls?: string[]
+  /** URLs added in photographer_last_check (Add new link). */
+  photographerLastCheckUrls?: string[]
   photographerLastCheckCompleted: boolean
 }
 
@@ -21,25 +22,61 @@ export function getClientConfirmationMaterialUrls(
   }
 
   const material = (input.materialUrls ?? []).filter(Boolean)
-  // Legacy: collections that completed photographer_last_check before approval tracking.
-  if (input.photographerLastCheckCompleted && material.length > 0) {
+  const lastCheck = (input.photographerLastCheckUrls ?? []).filter(Boolean)
+
+  // Legacy only: collections that completed photographer_last_check before approval
+  // tracking existed — no approved list and no separate finals links from step 10.
+  if (
+    input.photographerLastCheckCompleted &&
+    material.length > 0 &&
+    lastCheck.length === 0
+  ) {
     return material
   }
 
   return []
 }
 
-/** Extra links added during photographer_last_check (photographerLastCheckUrl). */
+/** Photographer last-check URLs visible to the client (subset of approved list). */
+export function getClientConfirmationLastCheckUrls(
+  input: Pick<
+    ClientConfirmationMaterialVisibilityInput,
+    "photographerApprovedMaterialUrls" | "photographerLastCheckUrls"
+  >
+): string[] {
+  const approved = new Set((input.photographerApprovedMaterialUrls ?? []).filter(Boolean))
+  if (approved.size === 0) return []
+  return (input.photographerLastCheckUrls ?? []).filter((url) => approved.has(url))
+}
+
+/** @deprecated Prefer checking getClientConfirmationLastCheckUrls().length > 0 */
 export function canShowPhotographerLastCheckExtraLinks(
   input: Pick<
     ClientConfirmationMaterialVisibilityInput,
-    "photographerApprovedMaterialUrls" | "photographerLastCheckCompleted"
+    | "photographerApprovedMaterialUrls"
+    | "photographerLastCheckUrls"
+    | "photographerLastCheckCompleted"
   >
 ): boolean {
-  if ((input.photographerApprovedMaterialUrls ?? []).length > 0) {
-    return true
+  return getClientConfirmationLastCheckUrls(input).length > 0
+}
+
+export function getClientConfirmationLinkTitle(input: {
+  url: string
+  materialUrls: string[]
+  hasEditionStudio: boolean
+  materialIndex: number
+  lastCheckIndex: number
+}): string {
+  const materialLabel = input.hasEditionStudio ? "Final edits" : "High-res selection"
+  if (input.materialUrls.includes(input.url)) {
+    return input.materialIndex === 0
+      ? `${materialLabel} (validated by photographer)`
+      : `${materialLabel} (validated by photographer) - Additional link ${String(input.materialIndex).padStart(2, "0")}`
   }
-  return input.photographerLastCheckCompleted
+  return input.lastCheckIndex === 0
+    ? "Finals"
+    : `Finals - Additional link ${String(input.lastCheckIndex).padStart(2, "0")}`
 }
 
 export interface ClientConfirmationStepLike {

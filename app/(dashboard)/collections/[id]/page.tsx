@@ -28,6 +28,10 @@ import type {
   ViewStepId,
   DropoffAdditionalShipment,
 } from "@/lib/domain/collections"
+import {
+  dedupeDropoffAdditionalShipments,
+  isDuplicateDropoffShipment,
+} from "@/lib/domain/collections/dropoff-shipments"
 import type { CollectionMemberRole } from "@/lib/supabase/database.types"
 import type {
   ParticipantsModalIndividual,
@@ -507,6 +511,9 @@ export default function CollectionViewPage({
           dropoff_managing_shipping: managing,
           dropoff_shipping_carrier: provider,
           dropoff_shipping_tracking: tracking,
+          // Pickup confirm defines the primary shipment; supplemental rows only
+          // belong after shooting is completed via "Add new shipping".
+          dropoff_additional_shipments: [],
         })
         await refetchCollection()
       } catch (err) {
@@ -523,9 +530,21 @@ export default function CollectionViewPage({
     async (row: DropoffAdditionalShipment) => {
       if (!id || !collection) return
       const prev = collection.config.dropoffAdditionalShipments ?? []
+      const primary = {
+        provider: collection.config.dropoff_shipping_carrier,
+        tracking: collection.config.dropoff_shipping_tracking,
+      }
+      const existing = dedupeDropoffAdditionalShipments([...prev])
+      if (
+        isDuplicateDropoffShipment(row, existing) ||
+        isDuplicateDropoffShipment(row, [primary])
+      ) {
+        toast.message("This shipping is already recorded.")
+        return
+      }
       try {
         await patchCollection({
-          dropoff_additional_shipments: [...prev, row],
+          dropoff_additional_shipments: [...existing, row],
         })
         await refetchCollection()
       } catch (err) {
@@ -799,41 +818,59 @@ export default function CollectionViewPage({
     async (payload: { url?: string; comments?: string; from?: string }) => {
       if (!id) return
       try {
+        const url = payload.url?.trim()
+        const comments = payload.comments?.trim()
         const body: Record<string, unknown> = {}
-        if (payload.url?.trim()) {
-          body.photographer_last_check_url = payload.url.trim()
+        if (url) {
+          body.photographer_last_check_url = url
         }
-        if (payload.comments?.trim()) {
+        if (comments) {
           body.step_note_photographer_last_check = {
             from: payload.from ?? "photographer",
-            text: payload.comments.trim(),
-            ...(payload.url?.trim() ? { url: payload.url.trim() } : {}),
+            text: comments,
+            ...(url ? { url } : {}),
           }
         }
-        if (Object.keys(body).length > 0) {
-          const step10AlreadyDone = collection?.stepStatuses?.["photographer_last_check"]?.stage === "done"
+        if (Object.keys(body).length === 0) return
+
+        const step10AlreadyDone =
+          collection?.stepStatuses?.["photographer_last_check"]?.stage === "done"
+
+        if (url && !step10AlreadyDone) {
+          body.photographer_approved_material_urls = [url]
           await patchCollection(body)
-          if ((payload.url?.trim() || payload.comments?.trim()) && !step10AlreadyDone) {
-            // Bypass: cierra todos los pasos previos pendientes para no bloquear
-            // el flujo. Para flows con edition studio, edition_request y final_edits
-            // suelen estar ya completos antes de step 9 — el helper sólo dispara
-            // los que sigan pending.
-            await fireBypassChainUpTo("photographer_last_check")
-            await fireEvent("photographer_edits_approved")
-          } else if (payload.url?.trim() && step10AlreadyDone) {
-            await fireEvent("photographer_last_check_shared_additional_materials", {
-              url: payload.url.trim(),
-              notes: payload.comments?.trim() || undefined,
-            })
-          }
-          await refetchCollection()
+          await fireBypassChainUpTo("photographer_last_check")
+          await fireEvent("photographer_edits_approved", {
+            url,
+            notes: comments || undefined,
+          })
+        } else if (url && step10AlreadyDone) {
+          const prevApproved = collection?.photographerApprovedMaterialUrls ?? []
+          body.photographer_approved_material_urls = [...prevApproved, url]
+          await patchCollection(body)
+          await fireEvent("photographer_last_check_shared_additional_materials", {
+            url,
+            notes: comments || undefined,
+          })
+        } else {
+          await patchCollection(body)
         }
+        await refetchCollection()
       } catch (err) {
         console.error("[CollectionViewPage] Add photographer last check link error:", err)
         toast.error("Failed to save link or comment")
+        throw err
       }
     },
-    [id, collection?.stepStatuses, patchCollection, fireEvent, fireBypassChainUpTo, refetchCollection]
+    [
+      id,
+      collection?.stepStatuses,
+      collection?.photographerApprovedMaterialUrls,
+      patchCollection,
+      fireEvent,
+      fireBypassChainUpTo,
+      refetchCollection,
+    ]
   )
 
   // =============================================================================
@@ -852,9 +889,10 @@ export default function CollectionViewPage({
         const urlsToApprove =
           selectedUrls && selectedUrls.length > 0 ? selectedUrls : allMaterialUrls
 
-        if (urlsToApprove.length > 0) {
-          await patchCollection({ photographer_approved_material_urls: urlsToApprove })
+        if (urlsToApprove.length === 0) {
+          throw new Error("Select at least one link to share with the client")
         }
+        await patchCollection({ photographer_approved_material_urls: urlsToApprove })
         // Bypass: cierra todos los pasos previos pendientes para no bloquear
         // el flujo (incluye handprint_high_res cuando no hay edition studio).
         await fireBypassChainUpTo("photographer_last_check")
@@ -882,6 +920,49 @@ export default function CollectionViewPage({
       } catch (err) {
         console.error("[CollectionViewPage] Add step note error:", err)
         toast.error("Failed to add comment")
+        throw err
+      }
+    },
+    [id, patchCollection, refetchCollection]
+  )
+
+  const handleEditStepLink = React.useCallback(
+    async (payload: { stepId: string; oldUrl: string; newUrl: string }) => {
+      if (!id) return
+      try {
+        await patchCollection({
+          step_link_edit: {
+            step_id: payload.stepId,
+            old_url: payload.oldUrl,
+            new_url: payload.newUrl,
+          },
+        })
+        await refetchCollection()
+        window.dispatchEvent(new Event(NOTIFICATIONS_REFRESH_EVENT))
+      } catch (err) {
+        console.error("[CollectionViewPage] Edit step link error:", err)
+        toast.error(err instanceof Error ? err.message : "Failed to update link")
+        throw err
+      }
+    },
+    [id, patchCollection, refetchCollection]
+  )
+
+  const handleDeleteStepLink = React.useCallback(
+    async (payload: { stepId: string; url: string }) => {
+      if (!id) return
+      try {
+        await patchCollection({
+          step_link_delete: {
+            step_id: payload.stepId,
+            url: payload.url,
+          },
+        })
+        await refetchCollection()
+        window.dispatchEvent(new Event(NOTIFICATIONS_REFRESH_EVENT))
+      } catch (err) {
+        console.error("[CollectionViewPage] Delete step link error:", err)
+        toast.error(err instanceof Error ? err.message : "Failed to delete link")
         throw err
       }
     },
@@ -1146,6 +1227,8 @@ export default function CollectionViewPage({
       stepNotesPhotographerSelection={collection.stepNotesPhotographerSelection}
       onRequestAdditionalPhotos={handleRequestAdditionalPhotos}
       onAddStepNote={handleAddStepNote}
+      onEditStepLink={handleEditStepLink}
+      onDeleteStepLink={handleDeleteStepLink}
       onUploadClientSelection={handleUploadClientSelection}
       onRequestMorePhotosFromPhotographer={handleRequestMorePhotosFromPhotographer}
       clientSelectionUrl={collection.clientSelectionUrl ?? undefined}
