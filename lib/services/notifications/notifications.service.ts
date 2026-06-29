@@ -1700,6 +1700,154 @@ export class NotificationsService implements INotificationsService {
     }
   }
 
+  /**
+   * Handle a step link being edited or deleted.
+   * Notifies all relevant parties for the step except the user who made the change.
+   */
+  async handleLinkChanged(
+    collectionId: string,
+    stepNoteKey: string,
+    actorUserId: string,
+    action: "edited" | "deleted"
+  ): Promise<void> {
+    const config = STEP_NOTE_COMMENT_CONFIG[stepNoteKey]
+    if (!config) {
+      console.warn("[NotificationsService] Unknown step note key for link change notification:", stepNoteKey)
+      return
+    }
+
+    const context = await getCollectionContext(this.supabase, collectionId)
+    if (!context) {
+      console.error("[NotificationsService] Collection not found for link change notification:", collectionId)
+      return
+    }
+
+    const { data: actorProfile } = await this.supabase
+      .from("profiles")
+      .select("first_name, last_name, email")
+      .eq("id", actorUserId)
+      .single()
+    const actor = actorProfile as {
+      first_name: string | null
+      last_name: string | null
+      email: string | null
+    } | null
+    const actorHandle = NotificationsService.buildCommenterHandle(actor)
+
+    const linkEventInsert = await this.supabase
+      .from("collection_events")
+      .insert({
+        collection_id: collectionId,
+        event_type: action === "edited" ? "link_edited" : "link_deleted",
+        triggered_by_user_id: actorUserId,
+        metadata: { stepNoteKey, stepName: config.stepName, action },
+        notifications_processed: true,
+      } as never)
+      .select("id")
+      .single()
+    const linkEventId = (linkEventInsert.data as { id: string } | null)?.id ?? null
+
+    const recipientsByUserId = new Map<string, {
+      userId: string
+      email: string
+      firstName: string | null
+      lastName: string | null
+      recipientType?: RecipientType
+    }>()
+    for (const recipientType of config.recipients) {
+      const typedRecipients = await resolveRecipients(this.supabase, collectionId, [recipientType])
+      for (const recipient of typedRecipients) {
+        if (!recipientsByUserId.has(recipient.userId)) {
+          recipientsByUserId.set(recipient.userId, { ...recipient, recipientType })
+        }
+      }
+    }
+
+    const recipients = Array.from(recipientsByUserId.values()).filter((r) => r.userId !== actorUserId)
+    if (recipients.length === 0) return
+
+    const changeLabel = action === "edited" ? "Link updated" : "Link removed"
+    const title = formatNotificationTitle(changeLabel, context.name, context.reference)
+    const body =
+      action === "edited"
+        ? `There have been changes in the ${config.stepName} block`
+        : `A link was removed from ${config.stepName}. Please review that the team still has the information needed to continue.`
+
+    const emailSubject = `🔗 ${changeLabel} on ${config.stepName} - ${context.name} by ${context.clientName || "—"} - ${context.photographerName || "—"}`
+    const workflowOptions = await this.getCollectionWorkflowStepOptions(collectionId)
+
+    for (const recipient of recipients) {
+      const navigation = NotificationsService.getCommentStepNavigation(
+        stepNoteKey,
+        recipient.recipientType,
+        collectionId,
+        config.stepSlug,
+        config.stepName,
+        workflowOptions
+      )
+      try {
+        await this.createNotification({
+          collection_id: collectionId,
+          template_id: null,
+          user_id: recipient.userId,
+          channel: "email",
+          status: "pending",
+          title: emailSubject,
+          body: JSON.stringify({
+            emailTitle: changeLabel,
+            emailDescription: body,
+            collectionName: context.name,
+            clientName: context.clientName,
+            photographerName: context.photographerName,
+            shootingStartDate: context.shootingStartDate,
+            shootingEndDate: context.shootingEndDate,
+            shootingCity: context.shootingCity,
+            shootingCountry: context.shootingCountry,
+            stepStatus: "In progress",
+            stepName: navigation.stepName,
+          }),
+          cta_text: "View collection",
+          cta_url: navigation.ctaUrl,
+          dedupe_key: linkEventId
+            ? `link-change:${linkEventId}:user:${recipient.userId}:channel:email`
+            : null,
+        })
+      } catch (err) {
+        console.error("[NotificationsService] Failed creating link change email notification:", err)
+      }
+    }
+
+    for (const recipient of recipients) {
+      const navigation = NotificationsService.getCommentStepNavigation(
+        stepNoteKey,
+        recipient.recipientType,
+        collectionId,
+        config.stepSlug,
+        config.stepName,
+        workflowOptions
+      )
+      try {
+        await this.createNotification({
+          collection_id: collectionId,
+          template_id: null,
+          user_id: recipient.userId,
+          channel: "in_app",
+          status: "sent",
+          title: `${title} by @${actorHandle}`,
+          body: `${body}\n${context.name} · ${navigation.stepName}`,
+          cta_text: "View collection",
+          cta_url: navigation.ctaUrl,
+          sent_at: new Date().toISOString(),
+          dedupe_key: linkEventId
+            ? `link-change:${linkEventId}:user:${recipient.userId}:channel:in_app`
+            : null,
+        })
+      } catch (err) {
+        console.error("[NotificationsService] Failed creating link change in-app notification:", err)
+      }
+    }
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================

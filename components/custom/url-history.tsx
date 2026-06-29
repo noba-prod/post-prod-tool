@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
-import { SquareArrowOutUpRight, CirclePlus } from "lucide-react"
+import { SquareArrowOutUpRight, CirclePlus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { StepDetails } from "./step-details"
 
@@ -30,6 +30,10 @@ export interface UrlHistoryProps {
   onOpenLink?: () => void
   /** Callback for "Add comment" button. Button hidden when undefined. */
   onAddComment?: () => void
+  /** Callback for "Edit link" button. Button hidden when undefined. */
+  onEditLink?: () => void
+  /** Callback for delete (trash icon) button. Button hidden when undefined. */
+  onDeleteLink?: () => void
   className?: string
 }
 
@@ -140,8 +144,12 @@ export function UrlHistory({
   comments = [],
   onOpenLink,
   onAddComment,
+  onEditLink,
+  onDeleteLink,
   className,
 }: UrlHistoryProps) {
+  const showActions = onOpenLink || onAddComment || onEditLink || onDeleteLink
+
   return (
     <div
       className={cn(
@@ -163,7 +171,7 @@ export function UrlHistory({
       </div>
 
       {/* ── Section 2: Action buttons ── */}
-      {(onOpenLink || onAddComment) && (
+      {showActions && (
         <div className="flex items-center gap-3 border-t border-border p-4">
           {onOpenLink && (
             <Button variant="default" size="default" onClick={onOpenLink}>
@@ -176,6 +184,25 @@ export function UrlHistory({
               <CirclePlus data-icon="inline-start" className="size-4" />
               Add comment
             </Button>
+          )}
+          {(onEditLink || onDeleteLink) && (
+            <div className="flex items-center gap-2 ml-auto">
+              {onEditLink && (
+                <Button variant="secondary" size="default" onClick={onEditLink}>
+                  Edit link
+                </Button>
+              )}
+              {onDeleteLink && (
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  onClick={onDeleteLink}
+                  aria-label="Delete link"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
+            </div>
           )}
         </div>
       )}

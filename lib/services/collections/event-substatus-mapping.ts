@@ -43,6 +43,8 @@ const EVENT_TO_SUBSTATUS_ADVANCE: Record<
   scanning_deadline_missed: { action: "none" },
   lab_shared_additional_materials: { action: "none" },
   comment_added: { action: "none" },
+  link_edited: { action: "none" },
+  link_deleted: { action: "none" },
 
   // Photographer selection: uploaded completes the step → advance to client_selection
   photographer_selection_uploaded: { action: "advance", substatus: "client_selection" },

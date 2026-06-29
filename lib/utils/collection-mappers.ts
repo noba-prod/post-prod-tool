@@ -85,6 +85,11 @@ function parseCurrentOwners(raw: unknown): CurrentOwnerRole[] {
   )
 }
 
+import {
+  dedupeDropoffAdditionalShipments,
+  stripPrimaryFromDropoffAdditionalShipments,
+} from "@/lib/domain/collections/dropoff-shipments"
+
 /** Parse dropoff_additional_shipments JSONB (camelCase or legacy snake keys per entry). */
 export function parseDropoffAdditionalShipments(raw: unknown): DropoffAdditionalShipment[] {
   if (!raw) return []
@@ -126,7 +131,7 @@ export function parseDropoffAdditionalShipments(raw: unknown): DropoffAdditional
     if (tracking) row.tracking = tracking
     if (Object.keys(row).length > 0) out.push(row)
   }
-  return out
+  return dedupeDropoffAdditionalShipments(out)
 }
 
 /** Append a URL to an existing URL array (non-destructive). */
@@ -137,6 +142,59 @@ export function appendToUrlArray(existing: string[] | undefined, newUrl: string)
   // Guard against accidental double-submit/retry appending the same link.
   if (current[current.length - 1] === trimmed) return current
   return [...current, trimmed]
+}
+
+/** Replace a URL in an array. Returns unchanged array when old URL is not found. */
+export function replaceUrlInArray(
+  existing: string[] | undefined,
+  oldUrl: string,
+  newUrl: string
+): string[] {
+  const oldTrimmed = oldUrl.trim()
+  const newTrimmed = newUrl.trim()
+  if (!oldTrimmed || !newTrimmed) return [...(existing ?? [])]
+  const current = [...(existing ?? [])]
+  const idx = current.indexOf(oldTrimmed)
+  if (idx === -1) return current
+  current[idx] = newTrimmed
+  return current
+}
+
+/** Remove a URL from an array (first exact match). */
+export function removeUrlFromArray(existing: string[] | undefined, urlToRemove: string): string[] {
+  const trimmed = urlToRemove.trim()
+  if (!trimmed) return [...(existing ?? [])]
+  const current = [...(existing ?? [])]
+  const idx = current.indexOf(trimmed)
+  if (idx === -1) return current
+  current.splice(idx, 1)
+  return current
+}
+
+/** Update note URL references when a link is edited. */
+export function updateNotesUrlReference(
+  existing: StepNoteEntry[] | undefined,
+  oldUrl: string,
+  newUrl: string
+): StepNoteEntry[] {
+  const oldTrimmed = oldUrl.trim()
+  const newTrimmed = newUrl.trim()
+  if (!oldTrimmed || !newTrimmed) return [...(existing ?? [])]
+  return (existing ?? []).map((note) => {
+    const noteUrl = note.url?.trim()
+    if (noteUrl !== oldTrimmed) return note
+    return { ...note, url: newTrimmed }
+  })
+}
+
+/** Remove notes associated with a specific link URL. */
+export function removeNotesForUrl(
+  existing: StepNoteEntry[] | undefined,
+  urlToRemove: string
+): StepNoteEntry[] {
+  const trimmed = urlToRemove.trim()
+  if (!trimmed) return [...(existing ?? [])]
+  return (existing ?? []).filter((note) => note.url?.trim() !== trimmed)
 }
 
 /** Append a note entry to an existing notes array (non-destructive). */
@@ -229,7 +287,14 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
       const list = parseDropoffAdditionalShipments(
         (row as { dropoff_additional_shipments?: unknown }).dropoff_additional_shipments
       )
-      return list.length > 0 ? list : undefined
+      const normalized = stripPrimaryFromDropoffAdditionalShipments(
+        {
+          provider: row.dropoff_shipping_carrier ?? undefined,
+          tracking: row.dropoff_shipping_tracking ?? undefined,
+        },
+        list
+      )
+      return normalized.length > 0 ? normalized : undefined
     })(),
     lowResScanDeadlineDate: dbDateToIso(row.lowres_deadline_date),
     lowResScanDeadlineTime: row.lowres_deadline_time ?? undefined,

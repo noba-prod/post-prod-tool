@@ -33,6 +33,7 @@ export {
 // Workflow (pure functions)
 export {
   canUserEditStep,
+  canUserViewStepUrlHistory,
   computeCreationTemplate,
   derivePublishedStatus,
   deriveCanonicalCollectionStatus,
@@ -53,6 +54,12 @@ export {
 } from "./workflow"
 
 export type { ChronologyConstraint, ChronologyConstraintsResult } from "./workflow"
+
+export {
+  STEP_LINK_MUTATION_CONFIG,
+  getStepLinkMutationConfig,
+} from "./step-link-config"
+export type { StepLinkMutationConfig } from "./step-link-config"
 
 // Structural workflow reconfiguration (post-create / post-publish)
 export {
@@ -118,6 +125,8 @@ export {
   canShowPhotographerLastCheckExtraLinks,
   canCompleteClientConfirmation,
   getClientConfirmationBannerCopy,
+  getClientConfirmationLastCheckUrls,
+  getClientConfirmationLinkTitle,
   getClientConfirmationMaterialUrls,
   isClientConfirmationStepReady,
 } from "./client-confirmation-visibility"
@@ -132,6 +141,16 @@ export {
   getCollectionShootingType,
 } from "./collection-shooting-type"
 export type { CollectionShootingType } from "./collection-shooting-type"
+
+export {
+  dedupeDropoffAdditionalShipments,
+  dropoffShipmentIdentityKey,
+  getDropoffShipmentsForDisplay,
+  hasDropoffShipmentData,
+  isDuplicateDropoffShipment,
+  stripPrimaryFromDropoffAdditionalShipments,
+} from "./dropoff-shipments"
+export type { DropoffShipmentsForDisplayInput } from "./dropoff-shipments"
 
 // Step health computation (per-step stage + health labels)
 export {

@@ -170,6 +170,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -183,9 +193,10 @@ import { ValidateLinksDialog, type ValidateLinksDialogItem } from "@/components/
 import type { DropoffAdditionalShipment } from "@/lib/domain/collections"
 import {
   canCompleteClientConfirmation,
-  canShowPhotographerLastCheckExtraLinks,
   getClientConfirmationBannerCopy,
+  getClientConfirmationLinkTitle,
   getClientConfirmationMaterialUrls,
+  getDropoffShipmentsForDisplay,
   isClientConfirmationStepReady,
 } from "@/lib/domain/collections"
 import { RowVariants } from "../row-variants"
@@ -339,6 +350,10 @@ export interface CollectionTemplateProps {
   onRequestAdditionalPhotos?: (notes: string) => void | Promise<void>
   /** Called when user adds a comment via UrlHistory "Add comment" button. Appends to the step's notes column. url links the comment to a specific link block. */
   onAddStepNote?: (payload: { stepNoteKey: string; from: string; text: string; url?: string }) => void | Promise<void>
+  /** Called when step owner edits an existing link block. */
+  onEditStepLink?: (payload: { stepId: string; oldUrl: string; newUrl: string }) => void | Promise<void>
+  /** Called when step owner deletes an existing link block and its comments. */
+  onDeleteStepLink?: (payload: { stepId: string; url: string }) => void | Promise<void>
   /** Step 5 (Client selection): called when client uploads final selection. */
   onUploadClientSelection?: (payload: { url: string; notes?: string }) => void | Promise<void>
   /** Step 5 (Client selection): called when client requests more photos from photographer. */
@@ -506,6 +521,8 @@ export function CollectionTemplate({
   stepNotesPhotographerSelection,
   onRequestAdditionalPhotos,
   onAddStepNote,
+  onEditStepLink,
+  onDeleteStepLink,
   onUploadClientSelection,
   onRequestMorePhotosFromPhotographer,
   clientSelectionUrl,
@@ -778,7 +795,7 @@ export function CollectionTemplate({
       const fallbackEntityName = uploaderDisplay?.name?.trim() || (expectedNoteFrom ? expectedNoteFrom.charAt(0).toUpperCase() + expectedNoteFrom.slice(1).replace(/_/g, " ") : "Unknown")
       const resolveAuthor = (n: { from: string; userId?: string }) => {
         const author = n?.userId ? noteAuthorsByUserId?.[n.userId] : undefined
-        const fromLabel = n.from === "lab" ? "Lab" : n.from === "photographer" ? "Photographer" : n.from === "client" ? "Client" : n.from === "edition_studio" ? "Edition studio" : n.from === "noba" ? "noba*" : n.from
+        const fromLabel = n.from === "lab" ? "Lab" : n.from === "photographer" ? "Photographer" : n.from === "client" ? "Client" : n.from === "agency" ? "Agency" : n.from === "edition_studio" ? "Edition studio" : n.from === "noba" ? "noba*" : n.from
         // Photographer is their own entity; show type "Photographer" instead of entity name (which would repeat their name).
         // noba/producer: show "noba*" as entity label when acting on behalf of noba.
         const entityName =
@@ -844,6 +861,7 @@ export function CollectionTemplate({
     () => new Set()
   )
   const [confirmDropoffDialogOpen, setConfirmDropoffDialogOpen] = React.useState(false)
+  const [confirmDropoffSubmitting, setConfirmDropoffSubmitting] = React.useState<"yes" | "no" | null>(null)
   const [dropoffShippingDialogMode, setDropoffShippingDialogMode] = React.useState<
     "confirm" | "add" | null
   >(null)
@@ -883,10 +901,18 @@ export function CollectionTemplate({
   const [addNewLinkDialogOpen, setAddNewLinkDialogOpen] = React.useState(false)
   const [addNewLinkUrl, setAddNewLinkUrl] = React.useState("")
   const [addNewLinkComments, setAddNewLinkComments] = React.useState("")
+  const [addNewLinkSubmitting, setAddNewLinkSubmitting] = React.useState(false)
   const [addCommentDialogOpen, setAddCommentDialogOpen] = React.useState(false)
   const [addCommentNotes, setAddCommentNotes] = React.useState("")
   const [addCommentContext, setAddCommentContext] = React.useState<{ stepNoteKey: string; from: string; url?: string } | null>(null)
   const [addCommentSubmitting, setAddCommentSubmitting] = React.useState(false)
+  const [editLinkDialogOpen, setEditLinkDialogOpen] = React.useState(false)
+  const [editLinkUrl, setEditLinkUrl] = React.useState("")
+  const [editLinkContext, setEditLinkContext] = React.useState<{ stepId: string; oldUrl: string; title: string } | null>(null)
+  const [editLinkSubmitting, setEditLinkSubmitting] = React.useState(false)
+  const [deleteLinkDialogOpen, setDeleteLinkDialogOpen] = React.useState(false)
+  const [deleteLinkContext, setDeleteLinkContext] = React.useState<{ stepId: string; url: string; title: string } | null>(null)
+  const [deleteLinkSubmitting, setDeleteLinkSubmitting] = React.useState(false)
   const [uploadSubmitting, setUploadSubmitting] = React.useState(false)
   // Link accordion dialog (shared across steps)
   const [linkDialogOpen, setLinkDialogOpen] = React.useState(false)
@@ -921,6 +947,8 @@ export function CollectionTemplate({
     switch (currentUserCollectionRole) {
       case "photographer":
         return "photographer"
+      case "agency":
+        return "agency"
       case "client":
         return "client"
       case "photo_lab":
@@ -941,6 +969,70 @@ export function CollectionTemplate({
       setAddCommentDialogOpen(true)
     }
   }, [getStepNoteConfig])
+
+  /** Step owners and noba producers with edit permission can manage links for that step. */
+  const canManageLinkForStep = React.useCallback(
+    (stepId: string) => {
+      if (currentUserCollectionRole === "noba" && currentUserHasEditPermission) return true
+      const stepOwnerRoles = stepOwners?.[stepId] ?? []
+      return (
+        !!currentUserCollectionRole &&
+        currentUserHasEditPermission &&
+        stepOwnerRoles.includes(currentUserCollectionRole)
+      )
+    },
+    [currentUserCollectionRole, currentUserHasEditPermission, stepOwners]
+  )
+
+  const openEditLinkDialog = React.useCallback(
+    (item: { stepId: string; url: string; title: string }) => {
+      setEditLinkContext({ stepId: item.stepId, oldUrl: item.url, title: item.title })
+      setEditLinkUrl(item.url)
+      setEditLinkDialogOpen(true)
+    },
+    []
+  )
+
+  const openDeleteLinkDialog = React.useCallback(
+    (item: { stepId: string; url: string; title: string }) => {
+      setDeleteLinkContext({ stepId: item.stepId, url: item.url, title: item.title })
+      setDeleteLinkDialogOpen(true)
+    },
+    []
+  )
+
+  type UrlHistoryItem = {
+    title: string
+    comments: UrlHistoryComment[]
+    url: string
+    stepId: string
+  }
+
+  const renderUrlHistory = React.useCallback(
+    (item: UrlHistoryItem, keyPrefix: string, idx: number) => {
+      const canManage = canManageLinkForStep(item.stepId)
+      return (
+        <UrlHistory
+          key={`${keyPrefix}-${idx}-${item.url}`}
+          title={item.title}
+          comments={item.comments}
+          onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
+          onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
+          onEditLink={canManage && onEditStepLink ? () => openEditLinkDialog(item) : undefined}
+          onDeleteLink={canManage && onDeleteStepLink ? () => openDeleteLinkDialog(item) : undefined}
+        />
+      )
+    },
+    [
+      canManageLinkForStep,
+      onAddStepNote,
+      onEditStepLink,
+      onDeleteStepLink,
+      openAddCommentDialog,
+      openEditLinkDialog,
+      openDeleteLinkDialog,
+    ]
+  )
 
   /** Open the shared link accordion dialog with the given title, description, and accordion items. */
   const openLinkDialog = React.useCallback(
@@ -1340,26 +1432,51 @@ export function CollectionTemplate({
       dropoffShippingTracking,
     ]
   )
+  const dropoffShipmentsForDisplay = React.useMemo(
+    () =>
+      getDropoffShipmentsForDisplay({
+        primaryProvider: dropoffShippingCarrier,
+        primaryTracking: dropoffShippingTracking,
+        primaryManagingShipping: dropoffManagingShipping,
+        additionalShipments: dropoffAdditionalShipments,
+      }),
+    [
+      dropoffShippingCarrier,
+      dropoffShippingTracking,
+      dropoffManagingShipping,
+      dropoffAdditionalShipments,
+    ]
+  )
+  const openStepOwnerRoles = React.useMemo(() => {
+    if (!openStep) return [] as CollectionMemberRole[]
+    return stepOwners?.[openStep.id] ?? currentOwners
+  }, [openStep, stepOwners, currentOwners])
+
   const canShowModalActions = React.useMemo(() => {
     if (!openStep) return false
     // Fallback behavior for demos/legacy callers that don't pass current owner context.
     if (!currentUserCollectionRole) return !!openStep.canEdit
     // Use step-specific owners (open step), not collection.currentOwners (active step),
     // so Photo Lab doesn't see Shooting "Confirm pickup" when collection is on low_res_scanning.
-    const stepOwnerRoles = stepOwners?.[openStep.id] ?? currentOwners
-    return currentUserHasEditPermission && stepOwnerRoles.includes(currentUserCollectionRole)
-  }, [openStep, currentOwners, stepOwners, currentUserCollectionRole, currentUserHasEditPermission])
+    return currentUserHasEditPermission && openStepOwnerRoles.includes(currentUserCollectionRole)
+  }, [openStep, openStepOwnerRoles, currentUserCollectionRole, currentUserHasEditPermission])
 
-  // Read-only exception: after removing the dedicated "Photographer review" step,
-  // the photographer must still be able to inspect the client's final selection (and add
-  // comments visible to the lab in the next step) on the Client Selection modal even
-  // though they are not the step owner. The action block (Upload selection) remains
-  // gated by canShowModalActions and is reserved for the client + producer.
-  const canViewClientSelectionUrlsAsPhotographer = React.useMemo(() => {
-    if (!openStep || openStep.id !== "client_selection") return false
-    return currentUserCollectionRole === "photographer"
-  }, [openStep, currentUserCollectionRole])
-  const canViewClientSelectionUrls = canShowModalActions || canViewClientSelectionUrlsAsPhotographer
+  // Agency collaborators without edit permission still see UrlHistory on co-owned steps.
+  // Photographer and agency also get a read-only exception on client_selection (see collections-logic).
+  const canViewStepUrlHistory = React.useMemo(() => {
+    if (!openStep) return false
+    if (canShowModalActions) return true
+    if (openStep.id === "client_selection") {
+      if (currentUserCollectionRole === "photographer") return true
+      if (currentUserCollectionRole === "agency") return true
+    }
+    return (
+      currentUserCollectionRole === "agency" &&
+      openStepOwnerRoles.includes("agency")
+    )
+  }, [openStep, canShowModalActions, currentUserCollectionRole, openStepOwnerRoles])
+
+  const canViewClientSelectionUrls = canViewStepUrlHistory && openStep?.id === "client_selection"
 
   // Workflow guardrail for the photographer:
   // Even though the photographer is owner of edition_request (step 7/8 in UI) and
@@ -1512,7 +1629,7 @@ export function CollectionTemplate({
         showSecondary={false}
       >
         <div
-          className={`px-5 pb-5 flex flex-col gap-6 min-w-0 max-w-full touch-pan-y${openStep && openStep.status !== "active" && openStep.status !== "completed" && (!canShowModalActions || isPhotographerLockedFromAdvancedStep) ? " opacity-50 pointer-events-none" : ""}`}
+          className={`px-5 pb-5 flex flex-col gap-6 min-w-0 max-w-full touch-pan-y${openStep && openStep.status !== "active" && openStep.status !== "completed" && (!canViewStepUrlHistory || isPhotographerLockedFromAdvancedStep) ? " opacity-50 pointer-events-none" : ""}`}
         >
           {openStep && (
             <>
@@ -1533,35 +1650,15 @@ export function CollectionTemplate({
                     role="region"
                     aria-label="Tracking shipments"
                   >
-                    <StepDetails
-                      variant="primary"
-                      mainTitle="Tracking shipping"
-                      subtitle={
-                        dropoffShippingCarrier?.trim() ? (
-                          <>
-                            Provider:{" "}
-                            <span className="text-lime-400">
-                              @{(dropoffShippingCarrier ?? "").replace(/^@/, "").trim()}
-                            </span>
-                          </>
-                        ) : (
-                          "Provider: —"
-                        )
-                      }
-                      additionalInfo={
-                        dropoffShippingTracking?.trim()
-                          ? `Tracking ID: ${dropoffShippingTracking.trim()}`
-                          : "Tracking ID: —"
-                      }
-                      backgroundImage="/assets/bg-tracking.png"
-                      hideActionButton
-                      className="w-[260px] shrink-0 max-[759px]:w-[280px]"
-                    />
-                    {dropoffAdditionalShipments.map((s, idx) => (
+                    {dropoffShipmentsForDisplay.map((s, idx) => (
                       <StepDetails
-                        key={`extra-shipping-${idx}-${s.provider ?? ""}-${s.tracking ?? ""}`}
+                        key={`dropoff-shipping-${idx}-${s.provider ?? ""}-${s.tracking ?? ""}`}
                         variant="primary"
-                        mainTitle={`Tracking shipping ${idx + 2}`}
+                        mainTitle={
+                          dropoffShipmentsForDisplay.length === 1
+                            ? "Tracking shipping"
+                            : `Tracking shipping${idx === 0 ? "" : ` ${idx + 1}`}`
+                        }
                         subtitle={
                           s.provider?.trim() ? (
                             <>
@@ -1661,15 +1758,9 @@ export function CollectionTemplate({
                     backgroundImage="/assets/bg-lowres.png"
                     hideActionButton
                   />
-                  {canShowModalActions && buildUrlHistoryItems(lowResSelectionUrl, stepNotesLowRes, "photo_lab", resolveUploaderDisplay("photo_lab"), lowResUploadedAt, "low_res_scanning", "Low-res scans").map((item, idx) => (
-                    <UrlHistory
-                      key={`lowres-${idx}-${item.url}`}
-                      title={item.title}
-                      comments={item.comments}
-                      onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                      onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                    />
-                  ))}
+                  {canShowModalActions && buildUrlHistoryItems(lowResSelectionUrl, stepNotesLowRes, "photo_lab", resolveUploaderDisplay("photo_lab"), lowResUploadedAt, "low_res_scanning", "Low-res scans").map((item, idx) =>
+                    renderUrlHistory(item, "lowres", idx)
+                  )}
                   {canShowModalActions && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
@@ -1719,18 +1810,10 @@ export function CollectionTemplate({
                     hideActionButton
                     className="w-full"
                   />
-                  {canShowModalActions && [
+                  {canViewStepUrlHistory && [
                     ...buildUrlHistoryItems(lowResSelectionUrl, stepNotesLowRes, "photo_lab", resolveUploaderDisplay("photo_lab"), lowResUploadedAt, "low_res_scanning", "Low-res scans"),
                     ...buildUrlHistoryItems(photographerSelectionUrl, stepNotesPhotographerSelection, "photographer", resolveUploaderDisplay("photographer"), photographerSelectionUploadedAt, "photographer_selection", "Photographer selection"),
-                  ].map((item, idx) => (
-                    <UrlHistory
-                      key={`photographer-selection-${idx}-${item.url}`}
-                      title={item.title}
-                      comments={item.comments}
-                      onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                      onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                    />
-                  ))}
+                  ].map((item, idx) => renderUrlHistory(item, "photographer-selection", idx))}
                   {canShowModalActions && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
@@ -1783,15 +1866,7 @@ export function CollectionTemplate({
                   {canViewClientSelectionUrls && [
                     ...buildUrlHistoryItems(photographerSelectionUrl, stepNotesPhotographerSelection, "photographer", resolveUploaderDisplay("photographer"), photographerSelectionUploadedAt, "photographer_selection", "Photographer selection"),
                     ...buildUrlHistoryItems(clientSelectionUrl, stepNotesClientSelection, "client", resolveUploaderDisplay("client"), clientSelectionUploadedAt, "client_selection", "Client selection"),
-                  ].map((item, idx) => (
-                    <UrlHistory
-                      key={`client-selection-${idx}-${item.url}`}
-                      title={item.title}
-                      comments={item.comments}
-                      onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                      onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                    />
-                  ))}
+                  ].map((item, idx) => renderUrlHistory(item, "client-selection", idx))}
                   {canShowModalActions && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
@@ -1822,18 +1897,10 @@ export function CollectionTemplate({
                     hideActionButton
                     className="w-full"
                   />
-                  {canShowModalActions && [
+                  {canViewStepUrlHistory && [
                     ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "handprint_lab", resolveUploaderDisplay("handprint_lab"), highResUploadedAt, "handprint_high_res", "High-res selection"),
                     ...buildUrlHistoryItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "photographer", resolveUploaderDisplay("photographer"), editionRequestInstructionsUploadedAt, "edition_request", "Edition request"),
-                  ].map((item, idx) => (
-                    <UrlHistory
-                      key={`edition-request-${idx}-${item.url}`}
-                      title={item.title}
-                      comments={item.comments}
-                      onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                      onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                    />
-                  ))}
+                  ].map((item, idx) => renderUrlHistory(item, "edition-request", idx))}
                   {canShowModalActions && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
@@ -1874,15 +1941,7 @@ export function CollectionTemplate({
                           ...buildUrlHistoryItems(editionRequestInstructionsUrl, stepNotesEditionRequest, "photographer", resolveUploaderDisplay("photographer"), editionRequestInstructionsUploadedAt, "edition_request", "Edition request"),
                         ]),
                     ...buildUrlHistoryItems(finalsSelectionUrl, stepNotesFinalEdits, "retouch_studio", resolveUploaderDisplay("retouch_studio"), finalsUploadedAt, "final_edits", "Final edits"),
-                  ].map((item, idx) => (
-                    <UrlHistory
-                      key={`final-edits-${idx}-${item.url}`}
-                      title={item.title}
-                      comments={item.comments}
-                      onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                      onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                    />
-                  ))}
+                  ].map((item, idx) => renderUrlHistory(item, "final-edits", idx))}
                   {canShowModalActions && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
@@ -1919,32 +1978,51 @@ export function CollectionTemplate({
                     hideActionButton
                     className="w-full"
                   />
-                  {canShowModalActions && (() => {
-                    // Material to review: when hasEditionStudio → finals from retouch; when no edition → high-res from handprint
+                  {canViewStepUrlHistory && (() => {
                     const materialUrls = hasEditionStudio ? finalsSelectionUrl : highResSelectionUrl
                     const materialNotes = hasEditionStudio ? stepNotesFinalEdits : stepNotesHighRes
                     const materialUploader = hasEditionStudio ? "retouch_studio" : "handprint_lab"
                     const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
                     const materialUploadedAt = hasEditionStudio ? finalsUploadedAt : highResUploadedAt
-                    const block1 = buildUrlHistoryItems(
-                      materialUrls,
-                      materialNotes,
-                      materialUploader,
-                      resolveUploaderDisplay(materialUploader),
-                      materialUploadedAt,
-                      hasEditionStudio ? "final_edits" : "handprint_high_res",
-                      materialLabel
-                    )
                     const materialUrlsList = allUrls(materialUrls)
+                    const lastCheckUrlsList = allUrls(photographerLastCheckUrl)
+                    const approvedSet = new Set((photographerApprovedMaterialUrls ?? []).filter(Boolean))
+                    const approvedMaterialUrls = materialUrlsList.filter((url) => approvedSet.has(url))
+                    const approvedLastCheckUrls = lastCheckUrlsList.filter((url) => approvedSet.has(url))
+                    const isCompleted = openStep.status === "completed"
+
+                    const block1 =
+                      !isCompleted
+                        ? buildUrlHistoryItems(
+                            materialUrls,
+                            materialNotes,
+                            materialUploader,
+                            resolveUploaderDisplay(materialUploader),
+                            materialUploadedAt,
+                            hasEditionStudio ? "final_edits" : "handprint_high_res",
+                            materialLabel
+                          )
+                        : approvedMaterialUrls.length === 0 && approvedLastCheckUrls.length > 0
+                          ? buildUrlHistoryItems(
+                              materialUrls,
+                              materialNotes,
+                              materialUploader,
+                              resolveUploaderDisplay(materialUploader),
+                              materialUploadedAt,
+                              hasEditionStudio ? "final_edits" : "handprint_high_res",
+                              materialLabel
+                            )
+                          : []
+
                     const validatedNotesForMaterial = (stepNotesPhotographerLastCheck ?? []).filter((n) => {
                       const u = (n as { url?: string }).url?.trim()
                       if (!u) return true
-                      return materialUrlsList.includes(u)
+                      return approvedMaterialUrls.includes(u)
                     })
                     const block2a =
-                      openStep.status === "completed" && materialUrlsList.length > 0
+                      isCompleted && approvedMaterialUrls.length > 0
                         ? buildUrlHistoryItems(
-                            materialUrls,
+                            approvedMaterialUrls,
                             validatedNotesForMaterial,
                             "photographer",
                             resolveUploaderDisplay("photographer"),
@@ -1957,24 +2035,21 @@ export function CollectionTemplate({
                                 : `${materialLabel} (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
                           )
                         : []
-                    const block2b = buildUrlHistoryItems(
-                      photographerLastCheckUrl,
-                      stepNotesPhotographerLastCheck,
-                      "photographer",
-                      resolveUploaderDisplay("photographer"),
-                      photographerLastCheckUploadedAt,
-                      "photographer_last_check",
-                      "Finals"
+                    const block2b =
+                      isCompleted && approvedLastCheckUrls.length > 0
+                        ? buildUrlHistoryItems(
+                            approvedLastCheckUrls,
+                            stepNotesPhotographerLastCheck,
+                            "photographer",
+                            resolveUploaderDisplay("photographer"),
+                            photographerLastCheckUploadedAt,
+                            "photographer_last_check",
+                            "Finals"
+                          )
+                        : []
+                    return [...block1, ...block2a, ...block2b].map((item, idx) =>
+                      renderUrlHistory(item, "photographer-last-check", idx)
                     )
-                    return [...block1, ...block2a, ...block2b].map((item, idx) => (
-                      <UrlHistory
-                        key={`photographer-last-check-${idx}-${item.url}`}
-                        title={item.title}
-                        comments={item.comments}
-                        onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                        onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                      />
-                    ))
                   })()}
                   {canShowModalActions && (
                     <section
@@ -2029,23 +2104,22 @@ export function CollectionTemplate({
                                 const materialUrlsList = allUrls(materialUrls)
                                 const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
                                 if (materialUrlsList.length === 0) {
-                                  try {
-                                    await onValidateFinals?.()
-                                    closeStepModalAndClearUrl()
-                                    toast.success("Finals shared with client.")
-                                  } catch {
-                                    // Error surfaced by page if any
-                                  }
+                                  toast.error("No lab link available to share with the client.")
                                   return
                                 }
                                 const links: ValidateLinksDialogItem[] = materialUrlsList.map((url, idx) => ({
-                                  label: idx === 0 ? materialLabel : `Additional Link ${String(idx).padStart(2, "0")}`,
+                                  label:
+                                    idx === 0
+                                      ? materialLabel
+                                      : `Additional Link ${String(idx).padStart(2, "0")}`,
                                   url,
                                 }))
                                 setValidateLinksDialogConfig({
                                   links,
                                   singleSelect: links.length === 1,
-                                  confirmLabel: hasEditionStudio ? "Share final edits url with client" : "Share high-res with client",
+                                  confirmLabel: hasEditionStudio
+                                    ? "Share final edits url with client"
+                                    : "Share high-res with client",
                                   onConfirm: async (selectedUrls) => {
                                     try {
                                       await onValidateFinals?.(selectedUrls)
@@ -2089,7 +2163,7 @@ export function CollectionTemplate({
                     hideActionButton
                     className="w-full"
                   />
-                  {canShowModalActions && [
+                  {canViewStepUrlHistory && [
                     ...(shootingType === "digital"
                       ? [
                           ...buildUrlHistoryItems(clientSelectionUrl, stepNotesClientSelection, "client", resolveUploaderDisplay("client"), clientSelectionUploadedAt, "client_selection", "Client selection"),
@@ -2101,15 +2175,7 @@ export function CollectionTemplate({
                           ...buildUrlHistoryItems(clientSelectionUrl, stepNotesClientSelection, "client", resolveUploaderDisplay("client"), clientSelectionUploadedAt, "client_selection", "Client selection"),
                           ...buildUrlHistoryItems(highResSelectionUrl, stepNotesHighRes, "handprint_lab", resolveUploaderDisplay("handprint_lab"), highResUploadedAt, "handprint_high_res", "High-res selection"),
                         ]),
-                  ].map((item, idx) => (
-                    <UrlHistory
-                      key={`handprint-highres-${idx}-${item.url}`}
-                      title={item.title}
-                      comments={item.comments}
-                      onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                      onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
-                    />
-                  ))}
+                  ].map((item, idx) => renderUrlHistory(item, "handprint-highres", idx))}
                   {canShowModalActions && (
                     <section
                       className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-10 shadow-xl ring-offset-2 ring-offset-lime-500"
@@ -2181,30 +2247,16 @@ export function CollectionTemplate({
                           "handprint_high_res",
                           "High-res selection"
                         ),
-                      ].map((item, idx) => (
-                        <UrlHistory
-                          key={`client-confirmation-${idx}-${item.url}`}
-                          title={item.title}
-                          comments={item.comments}
-                          onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                          onAddComment={
-                            canShowModalActions && onAddStepNote && item.stepId
-                              ? () => openAddCommentDialog(item.stepId, item.url)
-                              : undefined
-                          }
-                        />
-                      ))
+                      ].map((item, idx) => renderUrlHistory(item, "client-confirmation", idx))
                     }
-                    // Analog or with edition: photographer validates in step 10 (or high-res when no edition)
+                    // Analog or with edition: only URLs explicitly approved by photographer in step 10.
                     const materialUrls = hasEditionStudio ? finalsSelectionUrl : highResSelectionUrl
-                    const materialLabel = hasEditionStudio ? "Final edits" : "High-res selection"
+                    const materialUrlsList = allUrls(materialUrls)
+                    const lastCheckUrlsList = allUrls(photographerLastCheckUrl)
                     const validatedUrls = getClientConfirmationMaterialUrls({
                       photographerApprovedMaterialUrls,
-                      materialUrls: allUrls(materialUrls),
-                      photographerLastCheckCompleted,
-                    })
-                    const showExtraLastCheckLinks = canShowPhotographerLastCheckExtraLinks({
-                      photographerApprovedMaterialUrls,
+                      materialUrls: materialUrlsList,
+                      photographerLastCheckUrls: lastCheckUrlsList,
                       photographerLastCheckCompleted,
                     })
                     const validatedNotesForMaterial = (stepNotesPhotographerLastCheck ?? []).filter((n) => {
@@ -2212,44 +2264,36 @@ export function CollectionTemplate({
                       if (!u) return true
                       return validatedUrls.includes(u)
                     })
-                    return [
-                      ...buildUrlHistoryItems(
-                        validatedUrls,
+                    let materialTitleIndex = 0
+                    let lastCheckTitleIndex = 0
+                    return validatedUrls.map((url, idx) => {
+                      const inMaterial = materialUrlsList.includes(url)
+                      const materialIndex = inMaterial ? materialTitleIndex++ : -1
+                      const lastCheckIndex = !inMaterial ? lastCheckTitleIndex++ : -1
+                      const title = getClientConfirmationLinkTitle({
+                        url,
+                        materialUrls: materialUrlsList,
+                        hasEditionStudio,
+                        materialIndex: materialIndex >= 0 ? materialIndex : 0,
+                        lastCheckIndex: lastCheckIndex >= 0 ? lastCheckIndex : 0,
+                      })
+                      const sourceStepId = inMaterial
+                        ? hasEditionStudio
+                          ? "final_edits"
+                          : "handprint_high_res"
+                        : "photographer_last_check"
+                      const item = buildUrlHistoryItems(
+                        [url],
                         validatedNotesForMaterial,
                         "photographer",
                         resolveUploaderDisplay("photographer"),
-                        undefined,
-                        "photographer_last_check",
-                        undefined,
-                        (_url, idx) =>
-                          idx === 0
-                            ? `${materialLabel} (validated by photographer)`
-                            : `${materialLabel} (validated by photographer) - Additional link ${String(idx).padStart(2, "0")}`
-                      ),
-                      ...(showExtraLastCheckLinks
-                        ? buildUrlHistoryItems(
-                            photographerLastCheckUrl,
-                            stepNotesPhotographerLastCheck,
-                            "photographer",
-                            resolveUploaderDisplay("photographer"),
-                            photographerLastCheckUploadedAt,
-                            "photographer_last_check",
-                            "Finals"
-                          )
-                        : []),
-                    ].map((item, idx) => (
-                      <UrlHistory
-                        key={`client-confirmation-${idx}-${item.url}`}
-                        title={item.title}
-                        comments={item.comments}
-                        onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
-                        onAddComment={
-                          canShowModalActions && onAddStepNote && item.stepId
-                            ? () => openAddCommentDialog(item.stepId, item.url)
-                            : undefined
-                        }
-                      />
-                    ))
+                        inMaterial ? undefined : photographerLastCheckUploadedAt,
+                        sourceStepId,
+                        title
+                      )[0]
+                      if (!item) return null
+                      return renderUrlHistory(item, "client-confirmation", idx)
+                    })
                   })()}
                   {/* Action block: Complete collection — hide once collection is completed */}
                   {canCompleteClientConfirmation({
@@ -2630,7 +2674,13 @@ export function CollectionTemplate({
       </Dialog>
 
       {/* Confirm delivery (Negatives drop-off): Yes/No → close dialog + modal, mark step completed, toast, notify producer */}
-      <Dialog open={confirmDropoffDialogOpen} onOpenChange={setConfirmDropoffDialogOpen}>
+      <Dialog
+        open={confirmDropoffDialogOpen}
+        onOpenChange={(open) => {
+          setConfirmDropoffDialogOpen(open)
+          if (!open) setConfirmDropoffSubmitting(null)
+        }}
+      >
         <DialogContent showCloseButton className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Confirm delivery</DialogTitle>
@@ -2658,7 +2708,12 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="secondary"
+              disabled={confirmDropoffSubmitting !== null}
+              loading={confirmDropoffSubmitting === "no"}
+              loadingText="Confirming…"
               onClick={async () => {
+                if (confirmDropoffSubmitting) return
+                setConfirmDropoffSubmitting("no")
                 try {
                   await onConfirmDropoffDelivery?.("negatives_dropoff", false)
                   closeStepModalAndClearUrl()
@@ -2666,6 +2721,7 @@ export function CollectionTemplate({
                 } catch {
                   /* Error already surfaced by handler */
                 } finally {
+                  setConfirmDropoffSubmitting(null)
                   setConfirmDropoffDialogOpen(false)
                 }
               }}
@@ -2675,7 +2731,12 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
+              disabled={confirmDropoffSubmitting !== null}
+              loading={confirmDropoffSubmitting === "yes"}
+              loadingText="Confirming…"
               onClick={async () => {
+                if (confirmDropoffSubmitting) return
+                setConfirmDropoffSubmitting("yes")
                 try {
                   await onConfirmDropoffDelivery?.("negatives_dropoff", true)
                   closeStepModalAndClearUrl()
@@ -2683,6 +2744,7 @@ export function CollectionTemplate({
                 } catch {
                   /* Error already surfaced by handler */
                 } finally {
+                  setConfirmDropoffSubmitting(null)
                   setConfirmDropoffDialogOpen(false)
                 }
               }}
@@ -3061,6 +3123,122 @@ export function CollectionTemplate({
         </DialogContent>
       </Dialog>
 
+      {/* Edit link: shared dialog for UrlHistory "Edit link" */}
+      <Dialog
+        open={editLinkDialogOpen}
+        onOpenChange={(open) => {
+          setEditLinkDialogOpen(open)
+          if (!open) {
+            setEditLinkUrl("")
+            setEditLinkContext(null)
+            setEditLinkSubmitting(false)
+          }
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit link</DialogTitle>
+            <DialogDescription>
+              Update the URL for {editLinkContext?.title ?? "this link"}. All participants in this step will be notified of the change.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-link-url">Link or URL</Label>
+              <Input
+                id="edit-link-url"
+                type="url"
+                placeholder="Paste here the link"
+                value={editLinkUrl}
+                onChange={(e) => setEditLinkUrl(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+          <DialogFooter showCloseButton={false} className="justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={!editLinkUrl.trim() || editLinkUrl.trim() === editLinkContext?.oldUrl}
+              loading={editLinkSubmitting}
+              loadingText="Saving…"
+              onClick={async () => {
+                const newUrl = editLinkUrl.trim()
+                if (!newUrl || !editLinkContext || editLinkSubmitting) return
+                if (newUrl === editLinkContext.oldUrl) return
+                setEditLinkSubmitting(true)
+                try {
+                  await onEditStepLink?.({
+                    stepId: editLinkContext.stepId,
+                    oldUrl: editLinkContext.oldUrl,
+                    newUrl,
+                  })
+                  setEditLinkDialogOpen(false)
+                  setEditLinkUrl("")
+                  setEditLinkContext(null)
+                  toast.success("Link updated.")
+                } catch {
+                  // Error surfaced by page callback
+                } finally {
+                  setEditLinkSubmitting(false)
+                }
+              }}
+            >
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete link: confirmation for UrlHistory trash button */}
+      <AlertDialog
+        open={deleteLinkDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteLinkDialogOpen(open)
+          if (!open) {
+            setDeleteLinkContext(null)
+            setDeleteLinkSubmitting(false)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete link?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove {deleteLinkContext?.title ?? "this link"} and all associated comments from the collection.
+              Please make sure the team still has the information they need to continue — without a shared link, the workflow may be blocked at the next steps.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLinkSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteLinkSubmitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async (e) => {
+                e.preventDefault()
+                if (!deleteLinkContext || deleteLinkSubmitting) return
+                setDeleteLinkSubmitting(true)
+                try {
+                  await onDeleteStepLink?.({
+                    stepId: deleteLinkContext.stepId,
+                    url: deleteLinkContext.url,
+                  })
+                  setDeleteLinkDialogOpen(false)
+                  setDeleteLinkContext(null)
+                  toast.success("Link deleted.")
+                } catch {
+                  // Error surfaced by page callback
+                } finally {
+                  setDeleteLinkSubmitting(false)
+                }
+              }}
+            >
+              {deleteLinkSubmitting ? "Deleting…" : "Delete link"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Client selection (step 5): Upload selection — URL + comments (same pattern as step 4) */}
       <Dialog
         open={clientUploadSelectionDialogOpen}
@@ -3192,6 +3370,7 @@ export function CollectionTemplate({
           if (!open) {
             setUploadHighResUrl("")
             setUploadHighResNotes("")
+            setUploadSubmitting(false)
           }
         }}
       >
@@ -3231,9 +3410,12 @@ export function CollectionTemplate({
               type="button"
               variant="default"
               disabled={!uploadHighResUrl.trim()}
+              loading={uploadSubmitting}
+              loadingText="Uploading…"
               onClick={async () => {
                 const url = uploadHighResUrl.trim()
-                if (!url) return
+                if (!url || uploadSubmitting) return
+                setUploadSubmitting(true)
                 try {
                   await onUploadHighRes?.({ url, notes: uploadHighResNotes.trim() || undefined })
                   setUploadHighResDialogOpen(false)
@@ -3243,6 +3425,8 @@ export function CollectionTemplate({
                   toast.success("High-res selection uploaded.")
                 } catch {
                   // Error surfaced by page if any
+                } finally {
+                  setUploadSubmitting(false)
                 }
               }}
             >
@@ -3260,6 +3444,7 @@ export function CollectionTemplate({
           if (!open) {
             setUploadHighResAndInstructionsUrl("")
             setUploadHighResAndInstructionsDetails("")
+            setUploadSubmitting(false)
           }
         }}
       >
@@ -3299,9 +3484,12 @@ export function CollectionTemplate({
               type="button"
               variant="default"
               disabled={!uploadHighResAndInstructionsUrl.trim()}
+              loading={uploadSubmitting}
+              loadingText="Uploading…"
               onClick={async () => {
                 const url = uploadHighResAndInstructionsUrl.trim()
-                if (!url) return
+                if (!url || uploadSubmitting) return
+                setUploadSubmitting(true)
                 try {
                   await onUploadHighResAndInstructions?.({
                     url,
@@ -3315,6 +3503,8 @@ export function CollectionTemplate({
                   toast.success("Link and instructions uploaded.")
                 } catch {
                   // Error surfaced by page if any
+                } finally {
+                  setUploadSubmitting(false)
                 }
               }}
             >
@@ -3469,6 +3659,7 @@ export function CollectionTemplate({
           if (!open) {
             setAddNewLinkUrl("")
             setAddNewLinkComments("")
+            setAddNewLinkSubmitting(false)
           }
         }}
       >
@@ -3476,7 +3667,7 @@ export function CollectionTemplate({
           <DialogHeader>
             <DialogTitle>Add new link</DialogTitle>
             <DialogDescription>
-              Add an additional link and/or comments when the final edits don&apos;t include the full selection. Both fields are optional.
+              Share an alternate link with the client instead of the lab selection. A link is required to continue.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
@@ -3507,25 +3698,33 @@ export function CollectionTemplate({
             <Button
               type="button"
               variant="default"
-              disabled={!addNewLinkUrl.trim() && !addNewLinkComments.trim()}
+              disabled={!addNewLinkUrl.trim() || addNewLinkSubmitting}
+              loading={addNewLinkSubmitting}
+              loadingText="Sharing…"
               onClick={async () => {
+                const url = addNewLinkUrl.trim()
+                const comments = addNewLinkComments.trim()
+                if (!url || addNewLinkSubmitting) return
+                setAddNewLinkSubmitting(true)
                 try {
                   await onAddPhotographerLastCheckLink?.({
-                    url: addNewLinkUrl.trim() || undefined,
-                    comments: addNewLinkComments.trim() || undefined,
+                    url,
+                    comments: comments || undefined,
                     from: getStepNoteFromForCurrentUser(),
                   })
                   setAddNewLinkDialogOpen(false)
                   setAddNewLinkUrl("")
                   setAddNewLinkComments("")
                   closeStepModalAndClearUrl()
-                  toast.success(addNewLinkUrl.trim() ? "Link and comment saved." : "Comment saved.")
+                  toast.success("New link shared with client.")
                 } catch {
                   // Error surfaced by page if any
+                } finally {
+                  setAddNewLinkSubmitting(false)
                 }
               }}
             >
-              Save
+              Share with client
             </Button>
           </DialogFooter>
         </DialogContent>

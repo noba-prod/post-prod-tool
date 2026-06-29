@@ -49,6 +49,8 @@ export type CollectionEventType =
   | "client_confirmation_confirmed"
   // Comment events
   | "comment_added"
+  | "link_edited"
+  | "link_deleted"
   // Structural workflow reconfiguration (plan §17). Fired by
   // CollectionsService.applyStructuralWorkflowChange when a producer toggles
   // structural CollectionConfig keys (type of shoot, agency, edition, etc.).
@@ -172,5 +174,16 @@ export interface INotificationsService {
     stepNoteKey: string,
     commentUserId: string,
     commentText: string
+  ): Promise<void>
+
+  /**
+   * Handle a step link being edited or deleted.
+   * Notifies all relevant parties for the step except the actor.
+   */
+  handleLinkChanged(
+    collectionId: string,
+    stepNoteKey: string,
+    actorUserId: string,
+    action: "edited" | "deleted"
   ): Promise<void>
 }
