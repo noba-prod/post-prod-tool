@@ -47,6 +47,7 @@ export type DropoffShipmentsForDisplayInput = {
   primaryProvider?: string
   primaryTracking?: string
   primaryManagingShipping?: string
+  primaryRolls?: number
   additionalShipments?: DropoffAdditionalShipment[]
 }
 
@@ -63,6 +64,7 @@ export function getDropoffShipmentsForDisplay(
     managingShipping: input.primaryManagingShipping,
     provider: input.primaryProvider,
     tracking: input.primaryTracking,
+    rolls: input.primaryRolls,
   }
 
   const primaryKey = dropoffShipmentIdentityKey(primary)

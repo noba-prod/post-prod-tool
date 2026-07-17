@@ -152,6 +152,7 @@ function formatRelativeTime(iso: string): string {
 import { Titles } from "../titles"
 import { StageStatusTag, TimeStampTag, DateIndicatorTag } from "../tag"
 import { StepDetails } from "../step-details"
+import { NumberInput } from "../number-input"
 import { UrlHistory, type UrlHistoryComment } from "../url-history"
 import { LinkAccordion, type LinkAccordionItem } from "../link-accordion"
 import { ParticipantsCard } from "../participants-card"
@@ -298,6 +299,8 @@ export interface CollectionTemplateProps {
   /** Step 2 (Negatives drop-off) only: drop-off shipping for modal (Tracking shipping card + Delivery blocks) */
   dropoffShippingCarrier?: string
   dropoffShippingTracking?: string
+  /** Number of film rolls shipped to the lab in the primary (pickup) shipment. */
+  dropoffRollsCount?: number
   /** Who manages primary drop-off shipping (from collection creation). */
   dropoffManagingShipping?: string
   dropoffShippingOriginAddress?: string
@@ -494,6 +497,7 @@ export function CollectionTemplate({
   shootingCountry,
   dropoffShippingCarrier,
   dropoffShippingTracking,
+  dropoffRollsCount,
   dropoffManagingShipping,
   dropoffShippingOriginAddress,
   dropoffShippingDate,
@@ -869,6 +873,7 @@ export function CollectionTemplate({
   const [addShipManaging, setAddShipManaging] = React.useState("")
   const [addShipProvider, setAddShipProvider] = React.useState("")
   const [addShipTracking, setAddShipTracking] = React.useState("")
+  const [addShipRolls, setAddShipRolls] = React.useState(1)
   const [addShipSaving, setAddShipSaving] = React.useState(false)
   const [uploadLowResDialogOpen, setUploadLowResDialogOpen] = React.useState(false)
   const [uploadLowResUrl, setUploadLowResUrl] = React.useState("")
@@ -1414,6 +1419,9 @@ export function CollectionTemplate({
         setAddShipManaging(managing)
         setAddShipProvider(dropoffShippingCarrier?.trim() ?? "")
         setAddShipTracking(dropoffShippingTracking?.trim() ?? "")
+        setAddShipRolls(
+          typeof dropoffRollsCount === "number" && dropoffRollsCount > 0 ? dropoffRollsCount : 1
+        )
       } else {
         const managing =
           dropoffManagingShippingOptions?.find((o) => o.value === "noba")?.value ??
@@ -1422,6 +1430,7 @@ export function CollectionTemplate({
         setAddShipManaging(managing)
         setAddShipProvider("")
         setAddShipTracking("")
+        setAddShipRolls(1)
       }
       setDropoffShippingDialogMode(mode)
     },
@@ -1430,6 +1439,7 @@ export function CollectionTemplate({
       dropoffManagingShippingOptions,
       dropoffShippingCarrier,
       dropoffShippingTracking,
+      dropoffRollsCount,
     ]
   )
   const dropoffShipmentsForDisplay = React.useMemo(
@@ -1438,12 +1448,14 @@ export function CollectionTemplate({
         primaryProvider: dropoffShippingCarrier,
         primaryTracking: dropoffShippingTracking,
         primaryManagingShipping: dropoffManagingShipping,
+        primaryRolls: dropoffRollsCount,
         additionalShipments: dropoffAdditionalShipments,
       }),
     [
       dropoffShippingCarrier,
       dropoffShippingTracking,
       dropoffManagingShipping,
+      dropoffRollsCount,
       dropoffAdditionalShipments,
     ]
   )
@@ -1673,6 +1685,9 @@ export function CollectionTemplate({
                         }
                         additionalInfo={
                           s.tracking?.trim() ? `Tracking ID: ${s.tracking.trim()}` : "Tracking ID: —"
+                        }
+                        extraInfo={
+                          typeof s.rolls === "number" && s.rolls > 0 ? `Rolls: ${s.rolls}` : undefined
                         }
                         backgroundImage="/assets/bg-tracking.png"
                         hideActionButton
@@ -2586,7 +2601,7 @@ export function CollectionTemplate({
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
-            <RowVariants variant="3">
+            <RowVariants variant="2">
               <OptionPicker
                 label="Responsible for shipping"
                 options={dropoffManagingShippingOptions ?? []}
@@ -2611,6 +2626,17 @@ export function CollectionTemplate({
                     placeholder="Paste here the tracking number"
                     value={addShipTracking}
                     onChange={(e) => setAddShipTracking(e.target.value)}
+                  />
+                </FieldContent>
+              </Field>
+              <Field className="w-full">
+                <FieldLabel>Number of rolls</FieldLabel>
+                <FieldContent>
+                  <NumberInput
+                    value={addShipRolls}
+                    onValueChange={setAddShipRolls}
+                    min={1}
+                    aria-label="Number of rolls"
                   />
                 </FieldContent>
               </Field>
@@ -2646,6 +2672,7 @@ export function CollectionTemplate({
                   managingShipping: addShipManaging.trim(),
                   provider: addShipProvider.trim(),
                   tracking: addShipTracking.trim(),
+                  rolls: addShipRolls,
                 }
                 setAddShipSaving(true)
                 try {

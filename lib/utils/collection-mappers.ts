@@ -125,10 +125,18 @@ export function parseDropoffAdditionalShipments(raw: unknown): DropoffAdditional
         : typeof o.dropoff_shipping_tracking === "string"
           ? o.dropoff_shipping_tracking.trim()
           : ""
+    const rollsRaw = o.rolls ?? o.dropoff_rolls_count
+    const rolls =
+      typeof rollsRaw === "number" && Number.isFinite(rollsRaw)
+        ? Math.max(0, Math.trunc(rollsRaw))
+        : typeof rollsRaw === "string" && rollsRaw.trim() !== "" && Number.isFinite(Number(rollsRaw))
+          ? Math.max(0, Math.trunc(Number(rollsRaw)))
+          : undefined
     const row: DropoffAdditionalShipment = {}
     if (managingShipping) row.managingShipping = managingShipping
     if (provider) row.provider = provider
     if (tracking) row.tracking = tracking
+    if (rolls !== undefined) row.rolls = rolls
     if (Object.keys(row).length > 0) out.push(row)
   }
   return dedupeDropoffAdditionalShipments(out)
@@ -283,6 +291,8 @@ function dbRowToConfig(row: DbCollection, members: CollectionMember[]): Collecti
     dropoff_managing_shipping: row.dropoff_managing_shipping ?? undefined,
     dropoff_shipping_carrier: row.dropoff_shipping_carrier ?? undefined,
     dropoff_shipping_tracking: row.dropoff_shipping_tracking ?? undefined,
+    dropoffRollsCount:
+      typeof row.dropoff_rolls_count === "number" ? row.dropoff_rolls_count : undefined,
     dropoffAdditionalShipments: (() => {
       const list = parseDropoffAdditionalShipments(
         (row as { dropoff_additional_shipments?: unknown }).dropoff_additional_shipments
@@ -709,6 +719,7 @@ export function mapDomainToDbInsert(c: DomainCollection): CollectionInsert {
     dropoff_managing_shipping: conf.dropoff_managing_shipping ?? null,
     dropoff_shipping_carrier: conf.dropoff_shipping_carrier ?? null,
     dropoff_shipping_tracking: conf.dropoff_shipping_tracking ?? null,
+    dropoff_rolls_count: conf.dropoffRollsCount ?? null,
     dropoff_additional_shipments: conf.dropoffAdditionalShipments ?? [],
     lowres_deadline_date: isoToDbDate(conf.lowResScanDeadlineDate),
     lowres_deadline_time: conf.lowResScanDeadlineTime ?? null,
@@ -871,6 +882,7 @@ export function mapDomainPatchToDbUpdate(
     if (conf.dropoff_managing_shipping !== undefined) u.dropoff_managing_shipping = conf.dropoff_managing_shipping ?? null
     if (conf.dropoff_shipping_carrier !== undefined) u.dropoff_shipping_carrier = conf.dropoff_shipping_carrier ?? null
     if (conf.dropoff_shipping_tracking !== undefined) u.dropoff_shipping_tracking = conf.dropoff_shipping_tracking ?? null
+    if (conf.dropoffRollsCount !== undefined) u.dropoff_rolls_count = conf.dropoffRollsCount ?? null
     if (conf.dropoffAdditionalShipments !== undefined) {
       u.dropoff_additional_shipments = conf.dropoffAdditionalShipments ?? []
     }

@@ -24,6 +24,7 @@ import {
   VIEW_STEP_IDS,
   COLLECTION_TYPE_FILTER_OPTIONS,
   getCollectionShootingType,
+  deriveActiveStepHealth,
   type CollectionShootingType,
 } from "@/lib/domain/collections"
 import type { Collection, ListCollectionsPageOptions } from "@/lib/domain/collections"
@@ -259,18 +260,17 @@ function getActiveStepHealth(c: Collection): "on-track" | "on-time" | "delayed" 
   const statuses = c.stepStatuses
   if (!statuses || typeof statuses !== "object") return "on-track"
 
-  for (const stepId of VIEW_STEP_IDS) {
-    const entry = statuses[stepId]
-    if (!entry) continue
-    const stage = entry.stage
-    const health = entry.health
-    if (stage === "in-progress" && health) {
-      if (health === "on-time") return "on-time"
-      if (health === "delayed") return "delayed"
-      if (health === "at-risk") return "at-risk"
-      return "on-track"
-    }
+  // Active (in-progress) step: recompute health live. The value persisted in
+  // step_statuses is a snapshot from the last event and goes stale as deadlines
+  // pass, so we derive it against the current time (same logic as the detail view).
+  const liveHealth = deriveActiveStepHealth(c.config, statuses)
+  if (liveHealth) {
+    if (liveHealth === "on-time") return "on-time"
+    if (liveHealth === "delayed") return "delayed"
+    if (liveHealth === "at-risk") return "at-risk"
+    return "on-track"
   }
+
   // Completed: last step's health
   for (let i = VIEW_STEP_IDS.length - 1; i >= 0; i--) {
     const entry = statuses[VIEW_STEP_IDS[i]]

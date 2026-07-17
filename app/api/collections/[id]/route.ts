@@ -43,6 +43,8 @@ interface PatchBody {
   dropoff_managing_shipping?: string
   dropoff_shipping_carrier?: string
   dropoff_shipping_tracking?: string
+  /** Number of film rolls shipped to the lab in the primary (pickup) shipment. */
+  dropoff_rolls_count?: number | null
   /** Edit an existing step link (replaces URL + updates associated notes). */
   step_link_edit?: { step_id: string; old_url: string; new_url: string }
   /** Delete a step link and its associated comments. */
@@ -134,6 +136,8 @@ function sanitizeDropoffAdditionalShipmentsInput(
     if (typeof m === "string" && m.trim()) row.managingShipping = m.trim()
     if (typeof p === "string" && p.trim()) row.provider = p.trim()
     if (typeof t === "string" && t.trim()) row.tracking = t.trim()
+    const r = o.rolls
+    if (typeof r === "number" && Number.isFinite(r) && r > 0) row.rolls = Math.trunc(r)
     if (Object.keys(row).length > 0) out.push(row)
   }
   return dedupeDropoffAdditionalShipments(out)
@@ -364,6 +368,11 @@ export async function PATCH(
         )
       }
       dbUpdate.dropoff_shipping_tracking = v
+    }
+    if (body.dropoff_rolls_count !== undefined) {
+      const n = body.dropoff_rolls_count
+      dbUpdate.dropoff_rolls_count =
+        typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.trunc(n) : null
     }
 
     // --- Step link edit/delete ---
