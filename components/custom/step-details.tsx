@@ -17,6 +17,8 @@ export interface StepDetailsProps {
   subtitle?: string | React.ReactNode
   /** Additional information line (primary/secondary/notes/additionalRequest). Can be ReactNode for styled content (e.g. @entity in lime). */
   additionalInfo?: string | React.ReactNode
+  /** Optional extra line rendered below additionalInfo with the same muted style (primary/secondary). */
+  extraInfo?: string | React.ReactNode
   /** Entity name for notes variant ("Notes from {entityName}"), missingPhotos subtitle ("... to {entityName}"), and additionalRequest title ("{entityName} is requesting additional photos"). */
   entityName?: string
   /** Background image URL for primary variant only. Default: /assets/bg-finals.png (documentation). Can vary per usage. */
@@ -121,6 +123,7 @@ export function StepDetails({
   mainTitle,
   subtitle,
   additionalInfo,
+  extraInfo,
   entityName,
   backgroundImage = "/assets/bg-finals.png",
   onAction,
@@ -157,6 +160,14 @@ export function StepDetails({
   const hasSubtitle =
     resolvedSubtitle != null &&
     (typeof resolvedSubtitle !== "string" || resolvedSubtitle !== "")
+  const hasAdditional =
+    additionalInfo != null &&
+    (typeof additionalInfo !== "string" || additionalInfo !== "") &&
+    !isMissingPhotos
+  const hasExtra =
+    extraInfo != null &&
+    (typeof extraInfo !== "string" || extraInfo !== "") &&
+    !isMissingPhotos
 
   // ---------------------------------------------------------------------------
   // Notes variant (compressed / displayed toggle)
@@ -292,7 +303,7 @@ export function StepDetails({
       >
         {resolvedTitle}
       </span>
-      {(hasSubtitle || (additionalInfo != null && (typeof additionalInfo !== "string" || additionalInfo !== "") && !isMissingPhotos)) && (
+      {(hasSubtitle || hasAdditional || hasExtra) && (
         <div className="flex flex-col gap-1 min-w-0">
           {hasSubtitle && (
             <span
@@ -306,7 +317,7 @@ export function StepDetails({
               {resolvedSubtitle}
             </span>
           )}
-          {additionalInfo != null && (typeof additionalInfo !== "string" || additionalInfo !== "") && !isMissingPhotos && (
+          {hasAdditional && (
             <span
               className={cn(
                 "text-sm font-normal block",
@@ -315,6 +326,17 @@ export function StepDetails({
               )}
             >
               {additionalInfo}
+            </span>
+          )}
+          {hasExtra && (
+            <span
+              className={cn(
+                "text-sm font-normal block",
+                isPrimary && "text-white/60",
+                !isPrimary && "text-muted-foreground"
+              )}
+            >
+              {extraInfo}
             </span>
           )}
         </div>

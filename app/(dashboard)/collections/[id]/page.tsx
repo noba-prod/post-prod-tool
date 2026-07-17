@@ -511,6 +511,8 @@ export default function CollectionViewPage({
           dropoff_managing_shipping: managing,
           dropoff_shipping_carrier: provider,
           dropoff_shipping_tracking: tracking,
+          dropoff_rolls_count:
+            typeof row.rolls === "number" && row.rolls > 0 ? row.rolls : null,
           // Pickup confirm defines the primary shipment; supplemental rows only
           // belong after shooting is completed via "Add new shipping".
           dropoff_additional_shipments: [],
@@ -1193,6 +1195,7 @@ export default function CollectionViewPage({
       dropoffManagingShipping={collection.config.dropoff_managing_shipping}
       dropoffShippingCarrier={collection.config.dropoff_shipping_carrier}
       dropoffShippingTracking={collection.config.dropoff_shipping_tracking}
+      dropoffRollsCount={collection.config.dropoffRollsCount}
       dropoffShippingOriginAddress={collection.config.dropoff_shipping_origin_address}
       dropoffShippingDate={collection.config.dropoff_shipping_date}
       dropoffShippingTime={collection.config.dropoff_shipping_time}

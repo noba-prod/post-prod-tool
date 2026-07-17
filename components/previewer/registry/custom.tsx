@@ -40,6 +40,7 @@ import {
   EntityBasicInformationFormDemo,
   CollectionStepperDemo,
   PublishCollectionDialogDemo,
+  NumberInputDemo,
 } from "@/components/custom/demos"
 import { PhoneInput } from "@/components/custom/phone-input"
 import { DatePicker } from "@/components/custom/date-picker"
@@ -516,6 +517,13 @@ Gap: 16px | Padding: 40px`,
         </div>
       </div>
     ),
+  },
+  {
+    id: "number-input",
+    name: "number-input",
+    title: "Number Input",
+    description: "Number stepper (Figma node 13991-12864) composing Button (icon variant, circular) + Input (centered). Decrease/increase buttons disable at min/max bounds. The `min` prop is configurable per scenario (default 1, so at value 1 the decrease button is disabled to prevent going to 0). Supports max, step, and disabled states.",
+    demo: <NumberInputDemo />,
   },
   {
     id: "date-picker",

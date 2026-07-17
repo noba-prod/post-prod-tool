@@ -220,10 +220,12 @@ export interface Collection {
   dropoff_managing_shipping: string | null
   dropoff_shipping_carrier: string | null
   dropoff_shipping_tracking: string | null
+  dropoff_rolls_count: number | null
   dropoff_additional_shipments: Array<{
     managingShipping?: string
     provider?: string
     tracking?: string
+    rolls?: number
   }> | null
   // Low-Res Workflow
   lowres_deadline_date: string | null
@@ -333,10 +335,12 @@ export interface CollectionInsert {
   dropoff_managing_shipping?: string | null
   dropoff_shipping_carrier?: string | null
   dropoff_shipping_tracking?: string | null
+  dropoff_rolls_count?: number | null
   dropoff_additional_shipments?: Array<{
     managingShipping?: string
     provider?: string
     tracking?: string
+    rolls?: number
   }> | null
   lowres_deadline_date?: string | null
   lowres_deadline_time?: string | null
@@ -431,10 +435,12 @@ export interface CollectionUpdate {
   dropoff_managing_shipping?: string | null
   dropoff_shipping_carrier?: string | null
   dropoff_shipping_tracking?: string | null
+  dropoff_rolls_count?: number | null
   dropoff_additional_shipments?: Array<{
     managingShipping?: string
     provider?: string
     tracking?: string
+    rolls?: number
   }> | null
   lowres_deadline_date?: string | null
   lowres_deadline_time?: string | null

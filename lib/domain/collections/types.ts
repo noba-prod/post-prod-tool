@@ -79,6 +79,8 @@ export interface DropoffAdditionalShipment {
   managingShipping?: string
   provider?: string
   tracking?: string
+  /** Number of film rolls included in this shipment. */
+  rolls?: number
 }
 
 export interface CollectionConfig {
@@ -137,6 +139,8 @@ export interface CollectionConfig {
   dropoff_managing_shipping?: string
   dropoff_shipping_carrier?: string
   dropoff_shipping_tracking?: string
+  /** Number of film rolls shipped to the lab in the primary (pickup) shipment. */
+  dropoffRollsCount?: number
   /**
    * Analog (HP/HR): extra shipments added by producer after confirming pickup — informational only for the lab.
    * Primary shipment remains in dropoff_shipping_carrier / dropoff_shipping_tracking.
