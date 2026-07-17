@@ -157,6 +157,7 @@ export {
   computeStepHealth,
   computeStepStatuses,
   deriveCompletedStepIds,
+  deriveActiveStepHealth,
   buildEventCreatedAtMap,
   getDeadlineForStep,
 } from "./step-health"

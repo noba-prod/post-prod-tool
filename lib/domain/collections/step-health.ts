@@ -172,6 +172,32 @@ export function computeStepHealth(
   return "on-track"
 }
 
+/**
+ * Derive the *live* health of the currently active (in-progress) step.
+ *
+ * The health persisted in `step_statuses` is only a snapshot taken when the last
+ * event fired; it is never refreshed as time passes, so an in-progress step whose
+ * deadline elapsed still reads "on-track"/"at-risk". This recomputes that single
+ * step's health against `now` using the same rules as the collection detail view,
+ * covering every step variant via `getDeadlineForStep`.
+ *
+ * Returns null when there is no in-progress step (done/upcoming health is stable).
+ */
+export function deriveActiveStepHealth(
+  config: CollectionConfig,
+  stepStatuses: Record<string, { stage: string; health: string | null }> | null | undefined,
+  now: Date = new Date()
+): StepHealth {
+  if (!stepStatuses || typeof stepStatuses !== "object") return null
+  for (const [stepId, entry] of Object.entries(stepStatuses)) {
+    if (entry?.stage === "in-progress") {
+      const { date, time } = getDeadlineForStep(config, stepId as ViewStepId)
+      return computeStepHealth("in-progress", date, time, now)
+    }
+  }
+  return null
+}
+
 // =============================================================================
 // FULL STEP STATUSES COMPUTATION
 // =============================================================================
