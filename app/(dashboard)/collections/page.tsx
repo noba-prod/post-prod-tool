@@ -59,9 +59,8 @@ async function fetchVisibleClientNames(ids: string[]): Promise<Record<string, st
 
 async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[]> {
   const supabase = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase
-    .from("players") as any)
+  const { data, error } = await supabase
+    .from("players")
     .select("id, name")
     .eq("type", "client")
     .order("name")
@@ -69,14 +68,16 @@ async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[
     console.error("[CollectionsPage] Failed to fetch clients:", error)
     return []
   }
-  return (data ?? []).map((player: Pick<Player, "id" | "name">) => ({ id: player.id, name: player.name }))
+  return ((data ?? []) as unknown as Pick<Player, "id" | "name">[]).map((player) => ({
+    id: player.id,
+    name: player.name,
+  }))
 }
 
 async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: string }[]> {
   const supabase = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase
-    .from("players") as any)
+  const { data, error } = await supabase
+    .from("players")
     .select("id, name")
     .in("type", ["photography_agency", "self_photographer"])
     .order("name")
@@ -84,31 +85,29 @@ async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: str
     console.error("[CollectionsPage] Failed to fetch photographers:", error)
     return []
   }
-  return (data ?? []).map((player: Pick<Player, "id" | "name">) => ({ id: player.id, name: player.name }))
+  return ((data ?? []) as unknown as Pick<Player, "id" | "name">[]).map((player) => ({
+    id: player.id,
+    name: player.name,
+  }))
 }
 
-async function fetchProfileNamesByUserIds(ids: string[]): Promise<Record<string, string>> {
-  if (ids.length === 0) return {}
-  const supabase = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase
-    .from("profiles") as any)
-    .select("id, first_name, last_name")
-    .in("id", ids)
-
-  if (error) {
-    console.error("[CollectionsPage] Failed to fetch photographer profile names:", error)
-    return {}
+async function fetchVisiblePhotographerNames(): Promise<{
+  entityNamesById: Record<string, string>
+  userNamesById: Record<string, string>
+}> {
+  const response = await fetch("/api/collections/photographer-names", { cache: "no-store" })
+  if (!response.ok) {
+    console.error("[CollectionsPage] Failed to fetch visible photographer names")
+    return { entityNamesById: {}, userNamesById: {} }
   }
-
-  const namesById: Record<string, string> = {}
-  for (const row of (data ?? []) as Array<{ id: string; first_name: string | null; last_name: string | null }>) {
-    const firstName = row.first_name?.trim() ?? ""
-    const lastName = row.last_name?.trim() ?? ""
-    const fullName = `${firstName} ${lastName}`.trim()
-    if (fullName) namesById[row.id] = fullName
+  const data = (await response.json()) as {
+    entityNamesById?: Record<string, string>
+    userNamesById?: Record<string, string>
   }
-  return namesById
+  return {
+    entityNamesById: data.entityNamesById ?? {},
+    userNamesById: data.userNamesById ?? {},
+  }
 }
 
 // ============================================================================
@@ -305,7 +304,8 @@ export default function CollectionsPage() {
   const router = useRouter()
   const pathname = usePathname()
   const authAdapter = useAuthAdapter()
-  const { isNobaProducerUser, isNobaUser } = useUserContext()
+  const { entity, isNobaProducerUser, isNobaUser } = useUserContext()
+  const isClientUser = entity?.type === "client"
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingCollections, setLoadingCollections] = useState(false)
@@ -472,28 +472,22 @@ export default function CollectionsPage() {
     load()
   }, [collections])
 
-  // Resolve photographer display names from user profiles as fallback for collections where
-  // photographer participant has userIds but no entityId (e.g. photographer collaborating with agency).
+  // Resolve only photographers attached to collections visible to the current user. The endpoint
+  // validates collection visibility with RLS before reading names with the server-side client.
   useEffect(() => {
     if (collections.length === 0) {
       setPhotographerNamesByUserId({})
       return
     }
-    const photographerUserIds = [
-      ...new Set(
-        collections.flatMap((c) =>
-          (c.participants.find((p) => p.role === "photographer")?.userIds ?? []).filter(Boolean)
-        )
-      ),
-    ]
-    if (photographerUserIds.length === 0) {
-      setPhotographerNamesByUserId({})
-      return
-    }
     const load = async () => {
       if (isSupabaseConfigured()) {
-        const namesById = await fetchProfileNamesByUserIds(photographerUserIds)
-        setPhotographerNamesByUserId(namesById)
+        const { entityNamesById, userNamesById } = await fetchVisiblePhotographerNames()
+        setPhotographerNamesByUserId(userNamesById)
+        setPhotographerOptions((current) => {
+          const merged = new Map(current.map((option) => [option.id, option.name]))
+          for (const [id, name] of Object.entries(entityNamesById)) merged.set(id, name)
+          return Array.from(merged, ([id, name]) => ({ id, name }))
+        })
       } else {
         setPhotographerNamesByUserId({})
       }
@@ -837,6 +831,7 @@ export default function CollectionsPage() {
             collectionFilterState={filters}
             collectionStatusOptions={collectionStatusOptionsForBar}
             collectionTypeOptions={collectionTypeOptionsForBar}
+            hideClientFilter={isClientUser}
             clientOptions={clientOptionsForBar}
             photographerOptions={photographerOptionsForBar}
             jobReferenceOptions={jobReferenceOptionsForBar}
