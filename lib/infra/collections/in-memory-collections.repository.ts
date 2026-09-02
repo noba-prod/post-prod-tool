@@ -12,6 +12,7 @@ import type {
   ListCollectionsPageOptions,
   ListCollectionsPageResult,
 } from "@/lib/domain/collections"
+import { getCollectionShootingType } from "@/lib/domain/collections"
 import { generateUuidV4 } from "@/lib/utils/uuid"
 
 function generateId(): string {
@@ -139,6 +140,14 @@ export class InMemoryCollectionsRepository implements ICollectionsRepository {
             (p.userIds ?? []).includes(options.photographerUserId!)
         )
       )
+    }
+    if (options.collectionType) {
+      items = items.filter(
+        (c) => getCollectionShootingType(c.config) === options.collectionType
+      )
+    }
+    if (options.excludeDrafts) {
+      items = items.filter((c) => c.status !== "draft")
     }
     const sortOrder = options.sortOrder ?? "desc"
     items.sort((a, b) => {

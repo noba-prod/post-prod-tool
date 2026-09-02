@@ -22,6 +22,40 @@ import {
   mapDomainPatchToDbUpdate,
   mapParticipantsToDbMembers,
 } from "@/lib/utils/collection-mappers"
+import type { CollectionShootingType } from "@/lib/domain/collections"
+
+/** Card/list columns only — skip large JSONB note/URL payloads. */
+const LIST_PAGE_COLUMNS = [
+  "id",
+  "name",
+  "reference",
+  "status",
+  "substatus",
+  "client_id",
+  "photographer_id",
+  "photo_lab_id",
+  "retouch_studio_id",
+  "handprint_lab_id",
+  "shooting_start_date",
+  "shooting_start_time",
+  "shooting_end_date",
+  "shooting_end_time",
+  "shooting_city",
+  "shooting_country",
+  "project_deadline",
+  "project_deadline_time",
+  "updated_at",
+  "published_at",
+  "step_statuses",
+  "completion_percentage",
+  "low_res_to_high_res_hand_print",
+  "handprint_variant",
+  "photographer_collaborates_with_agency",
+  "low_res_to_high_res_digital",
+  "photographer_request_edition",
+  "handprint_different_from_original_lab",
+  "noba_user_ids",
+].join(", ")
 
 export class SupabaseCollectionsRepository implements ICollectionsRepository {
   constructor(private readonly supabaseClient?: SupabaseClient<Database>) {}
@@ -202,7 +236,7 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     }
 
     let query = (supabase.from("collections") as ReturnType<typeof supabase.from>)
-      .select("*")
+      .select(LIST_PAGE_COLUMNS)
       .order("updated_at", { ascending: sortOrder === "asc" })
 
     if (filters.clientEntityId) {
@@ -216,6 +250,12 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     }
     if (filters.status) {
       query = query.eq("status", filters.status)
+    }
+    if (filters.excludeDrafts) {
+      query = query.neq("status", "draft")
+    }
+    if (filters.collectionType) {
+      query = applyShootingTypeFilter(query, filters.collectionType)
     }
     if (idsToFilter) {
       query = query.in("id", idsToFilter)
@@ -269,4 +309,21 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     if (error) return []
     return (data ?? []) as CollectionMember[]
   }
+}
+
+function applyShootingTypeFilter<
+  T extends {
+    eq: (column: string, value: unknown) => T
+    or: (filters: string) => T
+  },
+>(query: T, type: CollectionShootingType): T {
+  if (type === "digital") {
+    return query.eq("low_res_to_high_res_hand_print", false)
+  }
+  if (type === "handprint_hr") {
+    return query.eq("low_res_to_high_res_hand_print", true).eq("handprint_variant", "hr")
+  }
+  return query
+    .eq("low_res_to_high_res_hand_print", true)
+    .or("handprint_variant.eq.hp,handprint_variant.is.null")
 }

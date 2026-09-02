@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useEffect, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar, COLLECTION_STATUSES } from "@/components/custom/filter-bar"
@@ -15,20 +15,26 @@ import { Button } from "@/components/ui/button"
 import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import { useUserContext } from "@/lib/contexts/user-context"
-import { CollectionCard, type CollectionCardProps } from "@/components/custom/collection-card"
+import type { CollectionCardProps } from "@/components/custom/collection-card"
 import type { Collection as TableCollection } from "@/components/custom/tables"
 import { createCollectionsService } from "@/lib/services"
-import { createClient } from "@/lib/supabase/client"
 import {
   deriveStageStatusFromShootingStart,
   VIEW_STEP_IDS,
   COLLECTION_TYPE_FILTER_OPTIONS,
-  getCollectionShootingType,
   deriveActiveStepHealth,
   type CollectionShootingType,
+  type CollectionStatus,
 } from "@/lib/domain/collections"
 import type { Collection, ListCollectionsPageOptions } from "@/lib/domain/collections"
-import type { Player } from "@/lib/supabase/database.types"
+
+type FilterCatalogRow = {
+  clientId: string | null
+  status: string
+  reference: string | null
+  photographerId: string | null
+  shootingType: CollectionShootingType
+}
 
 // ============================================================================
 // SUPABASE HELPERS
@@ -43,71 +49,36 @@ function isSupabaseConfigured(): boolean {
   )
 }
 
-async function fetchVisibleClientNames(ids: string[]): Promise<Record<string, string>> {
-  if (ids.length === 0) return {}
-  const response = await fetch(
-    `/api/collections/client-names?ids=${encodeURIComponent(ids.join(","))}`,
-    { cache: "no-store" }
-  )
-  if (!response.ok) {
-    console.error("[CollectionsPage] Failed to fetch visible client names")
-    return {}
-  }
-  const data = (await response.json()) as { namesById?: Record<string, string> }
-  return data.namesById ?? {}
-}
-
-async function fetchClientsFromSupabase(): Promise<{ id: string; name: string }[]> {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from("players")
-    .select("id, name")
-    .eq("type", "client")
-    .order("name")
-  if (error) {
-    console.error("[CollectionsPage] Failed to fetch clients:", error)
-    return []
-  }
-  return ((data ?? []) as unknown as Pick<Player, "id" | "name">[]).map((player) => ({
-    id: player.id,
-    name: player.name,
-  }))
-}
-
-async function fetchPhotographersFromSupabase(): Promise<{ id: string; name: string }[]> {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from("players")
-    .select("id, name")
-    .in("type", ["photography_agency", "self_photographer"])
-    .order("name")
-  if (error) {
-    console.error("[CollectionsPage] Failed to fetch photographers:", error)
-    return []
-  }
-  return ((data ?? []) as unknown as Pick<Player, "id" | "name">[]).map((player) => ({
-    id: player.id,
-    name: player.name,
-  }))
-}
-
-async function fetchVisiblePhotographerNames(): Promise<{
-  entityNamesById: Record<string, string>
-  userNamesById: Record<string, string>
+async function fetchFilterCatalog(): Promise<{
+  rows: FilterCatalogRow[]
+  clientNamesById: Record<string, string>
+  photographerNamesById: Record<string, string>
 }> {
+  const response = await fetch("/api/collections/filter-catalog", { cache: "no-store" })
+  if (!response.ok) {
+    console.error("[CollectionsPage] Failed to fetch filter catalog")
+    return { rows: [], clientNamesById: {}, photographerNamesById: {} }
+  }
+  const data = (await response.json()) as {
+    rows?: FilterCatalogRow[]
+    clientNamesById?: Record<string, string>
+    photographerNamesById?: Record<string, string>
+  }
+  return {
+    rows: data.rows ?? [],
+    clientNamesById: data.clientNamesById ?? {},
+    photographerNamesById: data.photographerNamesById ?? {},
+  }
+}
+
+async function fetchVisiblePhotographerUserNames(): Promise<Record<string, string>> {
   const response = await fetch("/api/collections/photographer-names", { cache: "no-store" })
   if (!response.ok) {
     console.error("[CollectionsPage] Failed to fetch visible photographer names")
-    return { entityNamesById: {}, userNamesById: {} }
+    return {}
   }
-  const data = (await response.json()) as {
-    entityNamesById?: Record<string, string>
-    userNamesById?: Record<string, string>
-  }
-  return {
-    entityNamesById: data.entityNamesById ?? {},
-    userNamesById: data.userNamesById ?? {},
-  }
+  const data = (await response.json()) as { userNamesById?: Record<string, string> }
+  return data.userNamesById ?? {}
 }
 
 // ============================================================================
@@ -128,33 +99,6 @@ type PhotographerFilterSelection =
   | { kind: "user"; id: string }
   | { kind: "name"; nameKey: string }
 
-function normalizePhotographerNameKey(name: string): string {
-  return name.trim().toLowerCase()
-}
-
-function resolvePhotographerParticipantName(
-  participant: Collection["participants"][number],
-  entityNamesById: Map<string, string>,
-  photographerNamesByUserId: Record<string, string>
-): string | null {
-  const entityId = participant.entityId?.trim()
-  if (entityId) {
-    const entityName =
-      entityNamesById.get(entityId) ??
-      (participant.userIds ?? [])
-        .map((userId) => photographerNamesByUserId[userId]?.trim())
-        .find((name): name is string => Boolean(name))
-    if (entityName) return entityName
-  }
-
-  for (const userId of participant.userIds ?? []) {
-    const userName = photographerNamesByUserId[userId]?.trim()
-    if (userName) return userName
-  }
-
-  return null
-}
-
 function parsePhotographerFilter(value: string | null): PhotographerFilterSelection | null {
   if (!value) return null
   if (value.startsWith("name:")) {
@@ -169,49 +113,28 @@ function parsePhotographerFilter(value: string | null): PhotographerFilterSelect
     const id = value.slice("user:".length).trim()
     return id ? { kind: "user", id } : null
   }
-  // Backward compatibility with legacy values saved as plain entity id.
   return { kind: "entity", id: value }
-}
-
-function collectionMatchesPhotographerFilter(
-  collection: Collection,
-  filter: PhotographerFilterSelection,
-  entityNamesById: Map<string, string>,
-  photographerNamesByUserId: Record<string, string>
-): boolean {
-  const photographerParticipant = collection.participants.find((p) => p.role === "photographer")
-  if (!photographerParticipant) return false
-
-  if (filter.kind === "name") {
-    const displayName = resolvePhotographerParticipantName(
-      photographerParticipant,
-      entityNamesById,
-      photographerNamesByUserId
-    )
-    return displayName
-      ? normalizePhotographerNameKey(displayName) === filter.nameKey
-      : false
-  }
-
-  return collection.participants.some(
-    (p) =>
-      p.role === "photographer" &&
-      (filter.kind === "entity"
-        ? p.entityId === filter.id
-        : (p.userIds ?? []).includes(filter.id))
-  )
 }
 
 function buildListPageOptions(
   filters: Filters,
-  offset: number
+  offset: number,
+  excludeDrafts: boolean
 ): ListCollectionsPageOptions {
   const options: ListCollectionsPageOptions = {
     limit: LAZY_LOAD_PAGE_SIZE,
     offset,
     sortOrder: filters.sortOrder,
+    excludeDrafts,
   }
   if (filters.client) options.clientEntityId = filters.client
+  if (filters.jobReference) options.jobReference = filters.jobReference
+  if (filters.collectionType) options.collectionType = filters.collectionType
+  if (filters.status) {
+    options.status = (
+      filters.status === "in-progress" ? "in_progress" : filters.status
+    ) as CollectionStatus
+  }
   const photographerFilter = parsePhotographerFilter(filters.photographer)
   if (photographerFilter?.kind === "entity") {
     options.photographerEntityId = photographerFilter.id
@@ -219,6 +142,24 @@ function buildListPageOptions(
     options.photographerUserId = photographerFilter.id
   }
   return options
+}
+
+function catalogRowMatches(
+  row: FilterCatalogRow,
+  filters: Filters,
+  upTo: "client" | "status" | "jobReference" | "collectionType"
+): boolean {
+  if (filters.client && row.clientId !== filters.client) return false
+  if (upTo === "client") return true
+  if (filters.status) {
+    const domain = filters.status === "in-progress" ? "in_progress" : filters.status
+    if (row.status !== domain) return false
+  }
+  if (upTo === "status") return true
+  if (filters.jobReference && row.reference !== filters.jobReference) return false
+  if (upTo === "jobReference") return true
+  if (filters.collectionType && row.shootingType !== filters.collectionType) return false
+  return true
 }
 
 // ============================================================================
@@ -302,7 +243,6 @@ function collectionDates(c: Collection): { start: string; end: string } {
 
 export default function CollectionsPage() {
   const router = useRouter()
-  const pathname = usePathname()
   const authAdapter = useAuthAdapter()
   const { entity, isNobaProducerUser, isNobaUser } = useUserContext()
   const isClientUser = entity?.type === "client"
@@ -313,9 +253,10 @@ export default function CollectionsPage() {
   const [hasMoreCollections, setHasMoreCollections] = useState(false)
   const [gridAnimateFromIndex, setGridAnimateFromIndex] = useState(0)
   const collectionsRef = React.useRef<Collection[]>([])
+  const fetchGenerationRef = React.useRef(0)
   const [collections, setCollections] = useState<Collection[]>([])
   const [clientNamesByEntityId, setClientNamesByEntityId] = useState<Record<string, string>>({})
-  const [clientOptions, setClientOptions] = useState<{ id: string; name: string }[]>([])
+  const [catalogRows, setCatalogRows] = useState<FilterCatalogRow[]>([])
   const [photographerOptions, setPhotographerOptions] = useState<{ id: string; name: string }[]>([])
   const [photographerNamesByUserId, setPhotographerNamesByUserId] = useState<Record<string, string>>({})
 
@@ -351,14 +292,17 @@ export default function CollectionsPage() {
   }, [collections])
 
   const buildPageOptions = React.useCallback(
-    (offset: number) => buildListPageOptions(filters, offset),
-    [filters]
+    (offset: number) => buildListPageOptions(filters, offset, !isNobaUser),
+    [filters, isNobaUser]
   )
 
   const fetchCollectionsPage = React.useCallback(
     async (mode: "reset" | "append") => {
       if (!session) return
       const isReset = mode === "reset"
+      const generation = isReset
+        ? ++fetchGenerationRef.current
+        : fetchGenerationRef.current
       if (isReset) {
         setLoadingCollections(true)
       } else {
@@ -370,6 +314,7 @@ export default function CollectionsPage() {
       try {
         const service = createCollectionsService()
         const { items, hasMore } = await service.listCollectionsPage(buildPageOptions(offset))
+        if (generation !== fetchGenerationRef.current) return
 
         if (isReset) {
           setCollections(items)
@@ -384,8 +329,10 @@ export default function CollectionsPage() {
         }
         setHasMoreCollections(hasMore)
       } finally {
-        setLoadingCollections(false)
-        setLoadingMoreCollections(false)
+        if (generation === fetchGenerationRef.current) {
+          setLoadingCollections(false)
+          setLoadingMoreCollections(false)
+        }
       }
     },
     [session, buildPageOptions]
@@ -396,26 +343,6 @@ export default function CollectionsPage() {
     if (!session) return
     void fetchCollectionsPage("reset")
   }, [session, filters, fetchCollectionsPage])
-
-  // Refetch first page when navigating to this page
-  useEffect(() => {
-    if (pathname !== "/collections" || !session) return
-    void fetchCollectionsPage("reset")
-  }, [pathname, session, fetchCollectionsPage])
-
-  // Refetch first page when window/tab gains focus or becomes visible
-  useEffect(() => {
-    const refetch = () => void fetchCollectionsPage("reset")
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") refetch()
-    }
-    window.addEventListener("focus", refetch)
-    document.addEventListener("visibilitychange", onVisibility)
-    return () => {
-      window.removeEventListener("focus", refetch)
-      document.removeEventListener("visibilitychange", onVisibility)
-    }
-  }, [fetchCollectionsPage])
 
   const loadMoreCollections = React.useCallback(() => {
     if (loadingCollections || loadingMoreCollections || !hasMoreCollections) return
@@ -430,171 +357,95 @@ export default function CollectionsPage() {
   const infiniteScrollRef = useInfiniteScroll({
     onLoadMore: loadMoreCollections,
     hasMore: hasMoreCollections,
-    isLoading: loadingMoreCollections,
+    isLoading: loadingCollections || loadingMoreCollections,
   })
 
-  // Load client and photographer options for filters (registered entities)
   useEffect(() => {
     if (!session) return
     const load = async () => {
-      if (isSupabaseConfigured()) {
-        const clients = await fetchClientsFromSupabase()
-        const photographers = await fetchPhotographersFromSupabase()
-        setClientOptions(clients)
-        setPhotographerOptions(photographers)
-      } else {
-        setClientOptions([])
-        setPhotographerOptions([])
-      }
-    }
-    load()
-  }, [session])
-
-  // Resolve client display names for collections (works for all roles via server-side endpoint)
-  useEffect(() => {
-    if (collections.length === 0) {
-      setClientNamesByEntityId({})
-      return
-    }
-    const ids = [...new Set(collections.map((c) => c.config.clientEntityId).filter(Boolean))]
-    if (ids.length === 0) {
-      setClientNamesByEntityId({})
-      return
-    }
-    const load = async () => {
-      if (isSupabaseConfigured()) {
-        const map = await fetchVisibleClientNames(ids)
-        setClientNamesByEntityId(map)
-      } else {
+      if (!isSupabaseConfigured()) {
+        setCatalogRows([])
         setClientNamesByEntityId({})
-      }
-    }
-    load()
-  }, [collections])
-
-  // Resolve only photographers attached to collections visible to the current user. The endpoint
-  // validates collection visibility with RLS before reading names with the server-side client.
-  useEffect(() => {
-    if (collections.length === 0) {
-      setPhotographerNamesByUserId({})
-      return
-    }
-    const load = async () => {
-      if (isSupabaseConfigured()) {
-        const { entityNamesById, userNamesById } = await fetchVisiblePhotographerNames()
-        setPhotographerNamesByUserId(userNamesById)
-        setPhotographerOptions((current) => {
-          const merged = new Map(current.map((option) => [option.id, option.name]))
-          for (const [id, name] of Object.entries(entityNamesById)) merged.set(id, name)
-          return Array.from(merged, ([id, name]) => ({ id, name }))
-        })
-      } else {
+        setPhotographerOptions([])
         setPhotographerNamesByUserId({})
+        return
       }
+      const [catalog, userNamesById] = await Promise.all([
+        fetchFilterCatalog(),
+        fetchVisiblePhotographerUserNames(),
+      ])
+      setCatalogRows(catalog.rows)
+      setClientNamesByEntityId(catalog.clientNamesById)
+      setPhotographerOptions(
+        Object.entries(catalog.photographerNamesById)
+          .map(([id, name]) => ({ id, name }))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+      )
+      setPhotographerNamesByUserId(userNamesById)
     }
-    load()
-  }, [collections])
-
-  const collectionsBase = React.useMemo(() => {
-    if (!isNobaUser) {
-      return collections.filter((c) => c.status !== "draft")
-    }
-    return collections
-  }, [collections, isNobaUser])
-
-  const scopeAfterClient = React.useMemo(() => {
-    if (!filters.client) return collectionsBase
-    return collectionsBase.filter((c) => c.config.clientEntityId === filters.client)
-  }, [collectionsBase, filters.client])
+    void load()
+  }, [session])
 
   const collectionStatusOptionsForBar = React.useMemo(() => {
     const seen = new Set<string>()
-    for (const c of scopeAfterClient) {
-      seen.add(domainStatusToFilterValue(c.status))
+    for (const row of catalogRows) {
+      if (!catalogRowMatches(row, filters, "client")) continue
+      seen.add(domainStatusToFilterValue(row.status as Collection["status"]))
     }
     return COLLECTION_STATUSES.filter((s) => seen.has(s.value))
-  }, [scopeAfterClient])
-
-  const scopeAfterStatus = React.useMemo(() => {
-    let result = scopeAfterClient
-    if (filters.status) {
-      const domain =
-        filters.status === "in-progress" ? "in_progress" : filters.status
-      result = result.filter((c) => c.status === domain)
-    }
-    return result
-  }, [scopeAfterClient, filters.status])
+  }, [catalogRows, filters])
 
   const jobReferenceOptionsForBar = React.useMemo(() => {
     const refs = new Set<string>()
-    for (const c of scopeAfterStatus) {
-      const r = c.config.reference?.trim()
-      if (r) refs.add(r)
+    for (const row of catalogRows) {
+      if (!catalogRowMatches(row, filters, "status")) continue
+      if (row.reference) refs.add(row.reference)
     }
     return Array.from(refs).sort().map((value) => ({ value }))
-  }, [scopeAfterStatus])
-
-  const scopeAfterJobRef = React.useMemo(() => {
-    let result = scopeAfterStatus
-    if (filters.jobReference) {
-      result = result.filter(
-        (c) => (c.config.reference?.trim() ?? "") === filters.jobReference
-      )
-    }
-    return result
-  }, [scopeAfterStatus, filters.jobReference])
+  }, [catalogRows, filters])
 
   const collectionTypeOptionsForBar = React.useMemo(() => {
     const seen = new Set<CollectionShootingType>()
-    for (const c of scopeAfterJobRef) {
-      seen.add(getCollectionShootingType(c.config))
+    for (const row of catalogRows) {
+      if (!catalogRowMatches(row, filters, "jobReference")) continue
+      seen.add(row.shootingType)
     }
     return COLLECTION_TYPE_FILTER_OPTIONS.filter((option) => seen.has(option.value))
-  }, [scopeAfterJobRef])
-
-  const scopeAfterCollectionType = React.useMemo(() => {
-    if (!filters.collectionType) return scopeAfterJobRef
-    return scopeAfterJobRef.filter((c) =>
-      getCollectionShootingType(c.config) === filters.collectionType
-    )
-  }, [scopeAfterJobRef, filters.collectionType])
+  }, [catalogRows, filters])
 
   const photographerOptionsForBar = React.useMemo(() => {
-    const entityNamesById = new Map(photographerOptions.map((p) => [p.id, p.name]))
-    const optionsByNameKey = new Map<string, string>()
-
-    for (const c of scopeAfterCollectionType) {
-      const photographerParticipant = c.participants.find((p) => p.role === "photographer")
-      if (!photographerParticipant) continue
-
-      const displayName = resolvePhotographerParticipantName(
-        photographerParticipant,
-        entityNamesById,
-        photographerNamesByUserId
-      )
-      if (!displayName) continue
-
-      const nameKey = normalizePhotographerNameKey(displayName)
-      if (!optionsByNameKey.has(nameKey)) {
-        optionsByNameKey.set(nameKey, displayName.trim())
-      }
+    const namesById = new Map(photographerOptions.map((p) => [p.id, p.name]))
+    const options: { id: string; name: string }[] = []
+    const seen = new Set<string>()
+    for (const row of catalogRows) {
+      if (!catalogRowMatches(row, filters, "collectionType")) continue
+      const id = row.photographerId
+      if (!id || seen.has(id)) continue
+      const name = namesById.get(id)
+      if (!name) continue
+      seen.add(id)
+      options.push({ id, name })
     }
-
-    return Array.from(optionsByNameKey.entries())
-      .map(([nameKey, name]) => ({ id: `name:${nameKey}`, name }))
-      .sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-      )
-  }, [photographerNamesByUserId, photographerOptions, scopeAfterCollectionType])
+    return options.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+    )
+  }, [catalogRows, filters, photographerOptions])
 
   const clientOptionsForBar = React.useMemo(() => {
-    const ids = new Set(
-      collectionsBase
-        .map((c) => c.config.clientEntityId)
-        .filter((id): id is string => Boolean(id))
+    const seen = new Set<string>()
+    const options: { id: string; name: string }[] = []
+    for (const row of catalogRows) {
+      const id = row.clientId
+      if (!id || seen.has(id)) continue
+      const name = clientNamesByEntityId[id]
+      if (!name) continue
+      seen.add(id)
+      options.push({ id, name })
+    }
+    return options.sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
     )
-    return clientOptions.filter((c) => ids.has(c.id))
-  }, [clientOptions, collectionsBase])
+  }, [catalogRows, clientNamesByEntityId])
 
   // Handle filter changes (cascade: client → status → job reference → photographer)
   const handleFilterChange = React.useCallback((filterId: string, value: string) => {
@@ -637,65 +488,15 @@ export default function CollectionsPage() {
     setFilters(prev => ({ ...prev, sortOrder: order }))
   }
 
-  // Handle logout
-  const handleLogout = async () => {
-    await authAdapter.logout()
-    router.push("/auth/login")
-  }
-
   const filteredCollections = React.useMemo(() => {
-    let result = [...collections]
-    // Non-Noba users never see drafts; canceled collections stay visible as canceled.
-    if (!isNobaUser) {
-      result = result.filter((c) => c.status !== "draft")
-    }
-    if (filters.client) {
-      result = result.filter((c) => c.config.clientEntityId === filters.client)
-    }
-    if (filters.status) {
-      const domainStatus = filters.status === "in-progress" ? "in_progress" : filters.status
-      result = result.filter((c) => c.status === domainStatus)
-    }
-    const photographerFilter = parsePhotographerFilter(filters.photographer)
-    if (photographerFilter) {
-      const entityNamesById = new Map(photographerOptions.map((p) => [p.id, p.name]))
-      result = result.filter((c) =>
-        collectionMatchesPhotographerFilter(
-          c,
-          photographerFilter,
-          entityNamesById,
-          photographerNamesByUserId
-        )
-      )
-    }
-    if (filters.jobReference) {
-      result = result.filter(
-        (c) => (c.config.reference?.trim() ?? "") === filters.jobReference
-      )
-    }
-    if (filters.collectionType) {
-      result = result.filter(
-        (c) => getCollectionShootingType(c.config) === filters.collectionType
-      )
-    }
+    const result = [...collections]
     result.sort((a, b) => {
       const tA = new Date(a.updatedAt).getTime()
       const tB = new Date(b.updatedAt).getTime()
       return filters.sortOrder === "desc" ? tB - tA : tA - tB
     })
     return result
-  }, [
-    collections,
-    isNobaUser,
-    filters.client,
-    filters.status,
-    filters.photographer,
-    filters.jobReference,
-    filters.collectionType,
-    filters.sortOrder,
-    photographerOptions,
-    photographerNamesByUserId,
-  ])
+  }, [collections, filters.sortOrder])
 
   /** Navigate to collection: draft → setup flow, published → view flow */
   const handleCollectionClick = React.useCallback(
@@ -794,7 +595,15 @@ export default function CollectionsPage() {
   }, [filteredCollections, clientNamesByEntityId])
 
   const hasItems = filteredCollections.length > 0
-  const isEmpty = collections.length === 0
+  const hasActiveFilters = Boolean(
+    filters.client ||
+      filters.status ||
+      filters.jobReference ||
+      filters.photographer ||
+      filters.collectionType
+  )
+  const isEmpty = collections.length === 0 && !hasActiveFilters
+  const showInitialSkeleton = loadingCollections && collections.length === 0
 
   if (loading) {
     return (
@@ -838,14 +647,14 @@ export default function CollectionsPage() {
           />
         </LayoutSection>
         <LayoutSection>
-          {loadingCollections ? (
+          {showInitialSkeleton ? (
             activeView === "Gallery" ? (
               <CollectionsGridSkeleton />
             ) : (
               <TableSkeleton variant="collections" />
             )
           ) : (
-            <>
+            <div className={loadingCollections ? "pointer-events-none opacity-60" : undefined}>
               {activeView === "Gallery" ? (
                 <>
                   <Grid
@@ -865,7 +674,6 @@ export default function CollectionsPage() {
                     collectionsData={tableItems}
                     animateRowsFromIndex={gridAnimateFromIndex}
                     onCollectionRowClick={(id, status) => {
-                      // UI status: draft | upcoming | in-progress | completed | canceled
                       const isDraft = status === "draft"
                       if (isDraft) router.push(`/collections/create/${id}`)
                       else router.push(`/collections/${id}`)
@@ -879,7 +687,7 @@ export default function CollectionsPage() {
                   />
                 </>
               )}
-              {!hasItems && (
+              {!hasItems && !loadingCollections && (
                 <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
                   {isEmpty ? (
                     <>
@@ -915,7 +723,7 @@ export default function CollectionsPage() {
                   )}
                 </div>
               )}
-            </>
+            </div>
           )}
         </LayoutSection>
       </Layout>

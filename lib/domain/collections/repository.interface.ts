@@ -5,6 +5,7 @@
  * Source of truth: noba-poc/docs/context/collections-logic.md
  */
 
+import type { CollectionShootingType } from "./collection-shooting-type"
 import type { Collection, CollectionStatus, CollectionSubstatus } from "./types"
 
 export interface ListCollectionsFilters {
@@ -14,6 +15,9 @@ export interface ListCollectionsFilters {
   jobReference?: string
   photographerEntityId?: string
   photographerUserId?: string
+  collectionType?: CollectionShootingType
+  /** When true, drafts are omitted (external/collaborator gallery). */
+  excludeDrafts?: boolean
   sortOrder?: "asc" | "desc"
 }
 

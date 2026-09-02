@@ -24,3 +24,13 @@ export function collectionMatchesShootingTypeFilter(
 ): boolean {
   return getCollectionShootingType(config) === filterValue
 }
+
+export function shootingTypeFromDbFlags(
+  hasHandprint: boolean | null | undefined,
+  handprintVariant: string | null | undefined
+): CollectionShootingType {
+  return getCollectionShootingType({
+    hasHandprint: Boolean(hasHandprint),
+    handprintVariant: handprintVariant === "hr" ? "hr" : hasHandprint ? "hp" : undefined,
+  })
+}

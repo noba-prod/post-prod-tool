@@ -139,6 +139,7 @@ export {
   COLLECTION_TYPE_FILTER_OPTIONS,
   collectionMatchesShootingTypeFilter,
   getCollectionShootingType,
+  shootingTypeFromDbFlags,
 } from "./collection-shooting-type"
 export type { CollectionShootingType } from "./collection-shooting-type"
 

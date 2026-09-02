@@ -17,29 +17,56 @@ export function useInfiniteScroll({
   isLoading,
   rootMargin = "200px",
 }: UseInfiniteScrollOptions) {
-  const sentinelRef = useRef<HTMLDivElement>(null)
   const onLoadMoreRef = useRef(onLoadMore)
+  const observerRef = useRef<IntersectionObserver | null>(null)
+  const nodeRef = useRef<HTMLDivElement | null>(null)
+  const hasMoreRef = useRef(hasMore)
+  const isLoadingRef = useRef(isLoading)
 
   useEffect(() => {
     onLoadMoreRef.current = onLoadMore
   }, [onLoadMore])
 
   useEffect(() => {
-    const el = sentinelRef.current
-    if (!el || !hasMore || isLoading) return
+    hasMoreRef.current = hasMore
+    isLoadingRef.current = isLoading
+  }, [hasMore, isLoading])
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          onLoadMoreRef.current()
-        }
-      },
-      { rootMargin }
-    )
+  const connectObserver = useCallback(
+    (node: HTMLDivElement | null) => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
+      nodeRef.current = node
+      if (!node || !hasMoreRef.current || isLoadingRef.current) return
 
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasMore, isLoading, rootMargin])
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]?.isIntersecting) {
+            onLoadMoreRef.current()
+          }
+        },
+        { rootMargin }
+      )
+      observer.observe(node)
+      observerRef.current = observer
+    },
+    [rootMargin]
+  )
+
+  const sentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      connectObserver(node)
+    },
+    [connectObserver]
+  )
+
+  useEffect(() => {
+    connectObserver(nodeRef.current)
+    return () => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
+    }
+  }, [connectObserver, hasMore, isLoading])
 
   return sentinelRef
 }

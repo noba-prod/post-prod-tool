@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { Spinner } from "@/components/ui/spinner"
 
 interface LazyLoadSentinelProps {
-  sentinelRef: React.RefObject<HTMLDivElement | null>
+  sentinelRef: React.Ref<HTMLDivElement | null>
   isLoading: boolean
   hasMore: boolean
   className?: string

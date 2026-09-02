@@ -299,8 +299,29 @@ export class CollectionsService {
     options: ListCollectionsPageOptions
   ): Promise<ListCollectionsPageResult> {
     const page = await this.repository.listPage(options)
-    const items = await this.syncCollectionStatuses(page.items)
-    return { items, hasMore: page.hasMore }
+    return { items: this.withDisplayStatus(page.items), hasMore: page.hasMore }
+  }
+
+  /** Derive canonical status for gallery badges without writing to the database. */
+  private withDisplayStatus(list: Collection[]): Collection[] {
+    const now = new Date()
+    return list.map((c) => {
+      const hasAnyStepDone = c.stepStatuses
+        ? Object.values(c.stepStatuses).some((e) => (e as { stage?: string }).stage === "done")
+        : false
+      const canonical = deriveCanonicalCollectionStatus(
+        c.config,
+        c.publishedAt,
+        c.status,
+        now,
+        {
+          substatus: c.substatus,
+          completionPercentage: c.completionPercentage,
+          hasAnyStepDone,
+        }
+      )
+      return canonical === c.status ? c : { ...c, status: canonical }
+    })
   }
 
   private async syncCollectionStatuses(list: Collection[]): Promise<Collection[]> {
