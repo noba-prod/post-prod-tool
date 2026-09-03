@@ -32,7 +32,7 @@ type FilterCatalogRow = {
   clientId: string | null
   status: string
   reference: string | null
-  photographerId: string | null
+  photographerIds: string[]
   shootingType: CollectionShootingType
 }
 
@@ -419,12 +419,13 @@ export default function CollectionsPage() {
     const seen = new Set<string>()
     for (const row of catalogRows) {
       if (!catalogRowMatches(row, filters, "collectionType")) continue
-      const id = row.photographerId
-      if (!id || seen.has(id)) continue
-      const name = namesById.get(id)
-      if (!name) continue
-      seen.add(id)
-      options.push({ id, name })
+      for (const id of row.photographerIds ?? []) {
+        if (!id || seen.has(id)) continue
+        const name = namesById.get(id)
+        if (!name) continue
+        seen.add(id)
+        options.push({ id, name })
+      }
     }
     return options.sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" })

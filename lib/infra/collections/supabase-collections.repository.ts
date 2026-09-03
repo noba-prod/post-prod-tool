@@ -23,6 +23,7 @@ import {
   mapParticipantsToDbMembers,
 } from "@/lib/utils/collection-mappers"
 import type { CollectionShootingType } from "@/lib/domain/collections"
+import { fetchCollectionIdsForPhotographerEntity } from "@/lib/infra/collections/photographer-co-owner"
 
 /** Card/list columns only — skip large JSONB note/URL payloads. */
 const LIST_PAGE_COLUMNS = [
@@ -228,11 +229,24 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
         .from("collection_members") as ReturnType<typeof supabase.from>)
         .select("collection_id")
         .eq("user_id", filters.photographerUserId)
+        .in("role", ["photographer", "agency"])
       const ids = (memberRows ?? []).map((r: { collection_id: string }) => r.collection_id)
       if (ids.length === 0) return { items: [], hasMore: false }
       idsToFilter = idsToFilter
         ? idsToFilter.filter((id) => ids.includes(id))
         : ids
+    }
+
+    if (filters.photographerEntityId) {
+      const photographerCollectionIds = await fetchCollectionIdsForPhotographerEntity(
+        supabase,
+        filters.photographerEntityId
+      )
+      if (photographerCollectionIds.length === 0) return { items: [], hasMore: false }
+      idsToFilter = idsToFilter
+        ? idsToFilter.filter((id) => photographerCollectionIds.includes(id))
+        : photographerCollectionIds
+      if (idsToFilter.length === 0) return { items: [], hasMore: false }
     }
 
     let query = (supabase.from("collections") as ReturnType<typeof supabase.from>)
@@ -244,9 +258,6 @@ export class SupabaseCollectionsRepository implements ICollectionsRepository {
     }
     if (filters.jobReference) {
       query = query.eq("reference", filters.jobReference)
-    }
-    if (filters.photographerEntityId) {
-      query = query.eq("photographer_id", filters.photographerEntityId)
     }
     if (filters.status) {
       query = query.eq("status", filters.status)

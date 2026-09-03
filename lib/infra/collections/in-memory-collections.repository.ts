@@ -14,6 +14,10 @@ import type {
 } from "@/lib/domain/collections"
 import { getCollectionShootingType } from "@/lib/domain/collections"
 import { generateUuidV4 } from "@/lib/utils/uuid"
+import {
+  collectionHasPhotographerCoOwnerEntity,
+  collectionHasPhotographerCoOwnerUser,
+} from "@/lib/infra/collections/photographer-co-owner"
 
 function generateId(): string {
   return generateUuidV4()
@@ -127,18 +131,12 @@ export class InMemoryCollectionsRepository implements ICollectionsRepository {
     }
     if (options.photographerEntityId) {
       items = items.filter((c) =>
-        c.participants.some(
-          (p) => p.role === "photographer" && p.entityId === options.photographerEntityId
-        )
+        collectionHasPhotographerCoOwnerEntity(c, options.photographerEntityId!)
       )
     }
     if (options.photographerUserId) {
       items = items.filter((c) =>
-        c.participants.some(
-          (p) =>
-            p.role === "photographer" &&
-            (p.userIds ?? []).includes(options.photographerUserId!)
-        )
+        collectionHasPhotographerCoOwnerUser(c, options.photographerUserId!)
       )
     }
     if (options.collectionType) {

@@ -3,6 +3,7 @@ import { isNobaInternalAdmin } from "@/lib/auth/noba-internal-admin"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { detachPlayerFromCollections } from "@/lib/services/players/detach-player-from-collections"
+import { fetchCollectionIdsForPhotographerMembers } from "@/lib/infra/collections/photographer-co-owner"
 import { mapPlayerToEntity, mapProfilesToUsers } from "@/lib/utils/supabase-mappers"
 import { parsePhoneNumber } from "@/lib/utils/form-mappers"
 import type { Profile, Player } from "@/lib/supabase/database.types"
@@ -130,14 +131,56 @@ export async function GET(
   const adminUsers = teamMembersBase.filter((user) => user.role === "admin")
   const adminUser = adminUsers.length > 0 ? adminUsers[0] : null
 
-  // Collections where this entity is invited (client or participant: photographer, lab, edition studio, handprint lab)
-  const { data: collectionsRows } = await adminClient
+  // Collections where this entity is invited (client or participant: photographer, lab, edition studio, handprint lab).
+  // Photographer/agency members also count: when a shoot has a collaborating agency,
+  // photographer_id is the agency, and the person is only a photographer member.
+  const collectionSelect =
+    "id, name, status, client_id, reference, shooting_start_date, shooting_end_date, shooting_city, shooting_country, updated_at"
+  type PlayerCollectionRow = {
+    id: string
+    name: string
+    status: string
+    client_id: string
+    reference: string | null
+    shooting_start_date: string | null
+    shooting_end_date: string | null
+    shooting_city: string | null
+    shooting_country: string | null
+    updated_at: string | null
+  }
+  const { data: fkCollectionRows } = await adminClient
     .from("collections")
-    .select("id, name, status, client_id, reference, shooting_start_date, shooting_end_date, shooting_city, shooting_country")
+    .select(collectionSelect)
     .or(
       `client_id.eq.${playerId},photographer_id.eq.${playerId},photo_lab_id.eq.${playerId},retouch_studio_id.eq.${playerId},handprint_lab_id.eq.${playerId}`
     )
     .order("updated_at", { ascending: false })
+
+  const collectionsById = new Map<string, PlayerCollectionRow>()
+  for (const row of (fkCollectionRows ?? []) as PlayerCollectionRow[]) {
+    collectionsById.set(row.id, row)
+  }
+
+  const memberCollectionIds = await fetchCollectionIdsForPhotographerMembers(
+    adminClient,
+    playerId
+  )
+  const missingCollectionIds = memberCollectionIds.filter((id) => !collectionsById.has(id))
+  if (missingCollectionIds.length > 0) {
+    const { data: memberCollectionRows } = await adminClient
+      .from("collections")
+      .select(collectionSelect)
+      .in("id", missingCollectionIds)
+    for (const row of (memberCollectionRows ?? []) as PlayerCollectionRow[]) {
+      collectionsById.set(row.id, row)
+    }
+  }
+
+  const collectionsRows = [...collectionsById.values()].sort((a, b) => {
+    const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0
+    const timeB = b.updated_at ? new Date(b.updated_at).getTime() : 0
+    return timeB - timeA
+  })
 
   const collectionsList: Array<{
     id: string

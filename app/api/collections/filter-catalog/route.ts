@@ -5,6 +5,7 @@ import { shootingTypeFromDbFlags } from "@/lib/domain/collections"
 import type { CollectionShootingType } from "@/lib/domain/collections"
 
 type CatalogDbRow = {
+  id: string
   client_id: string | null
   status: string
   reference: string | null
@@ -17,12 +18,14 @@ export type FilterCatalogRow = {
   clientId: string | null
   status: string
   reference: string | null
-  photographerId: string | null
+  photographerIds: string[]
   shootingType: CollectionShootingType
 }
 
 type PlayerNameRow = { id: string; name: string }
 type ProfileRow = { is_internal: boolean | null }
+type PhotographerMemberRow = { collection_id: string; user_id: string }
+type ProfilePlayerRow = { id: string; player_id: string | null }
 
 export async function GET() {
   try {
@@ -47,7 +50,7 @@ export async function GET() {
     let collectionsQuery = supabase
       .from("collections")
       .select(
-        "client_id, status, reference, photographer_id, low_res_to_high_res_hand_print, handprint_variant"
+        "id, client_id, status, reference, photographer_id, low_res_to_high_res_hand_print, handprint_variant"
       )
 
     if (!isInternal) {
@@ -64,11 +67,68 @@ export async function GET() {
     }
 
     const dbRows = (visibleCollections ?? []) as unknown as CatalogDbRow[]
+    const collectionIds = dbRows.map((row) => row.id)
+    const photographerIdsByCollection = new Map<string, Set<string>>()
+
+    for (const row of dbRows) {
+      const ids = new Set<string>()
+      if (row.photographer_id) ids.add(row.photographer_id)
+      photographerIdsByCollection.set(row.id, ids)
+    }
+
+    const admin = createAdminClient()
+
+    if (collectionIds.length > 0) {
+      const { data: members, error: membersError } = await admin
+        .from("collection_members")
+        .select("collection_id, user_id")
+        .in("collection_id", collectionIds)
+        .in("role", ["photographer", "agency"])
+
+      if (membersError) {
+        return NextResponse.json(
+          { error: "Failed to load photographer members" },
+          { status: 500 }
+        )
+      }
+
+      const memberRows = (members ?? []) as unknown as PhotographerMemberRow[]
+      const userIds = [...new Set(memberRows.map((member) => member.user_id))]
+
+      const playerIdByUserId = new Map<string, string>()
+      if (userIds.length > 0) {
+        const { data: profiles, error: profilesError } = await admin
+          .from("profiles")
+          .select("id, player_id")
+          .in("id", userIds)
+
+        if (profilesError) {
+          return NextResponse.json(
+            { error: "Failed to load photographer profiles" },
+            { status: 500 }
+          )
+        }
+
+        for (const profileRow of (profiles ?? []) as unknown as ProfilePlayerRow[]) {
+          if (profileRow.player_id) {
+            playerIdByUserId.set(profileRow.id, profileRow.player_id)
+          }
+        }
+      }
+
+      for (const member of memberRows) {
+        const playerId = playerIdByUserId.get(member.user_id)
+        if (!playerId) continue
+        const ids = photographerIdsByCollection.get(member.collection_id)
+        if (ids) ids.add(playerId)
+      }
+    }
+
     const rows: FilterCatalogRow[] = dbRows.map((row) => ({
       clientId: row.client_id,
       status: row.status,
       reference: row.reference?.trim() ? row.reference.trim() : null,
-      photographerId: row.photographer_id,
+      photographerIds: [...(photographerIdsByCollection.get(row.id) ?? [])],
       shootingType: shootingTypeFromDbFlags(
         row.low_res_to_high_res_hand_print,
         row.handprint_variant
@@ -77,10 +137,9 @@ export async function GET() {
 
     const clientIds = [...new Set(rows.map((row) => row.clientId).filter((id): id is string => Boolean(id)))]
     const photographerIds = [
-      ...new Set(rows.map((row) => row.photographerId).filter((id): id is string => Boolean(id))),
+      ...new Set(rows.flatMap((row) => row.photographerIds)),
     ]
 
-    const admin = createAdminClient()
     const clientNamesById: Record<string, string> = {}
     const photographerNamesById: Record<string, string> = {}
 

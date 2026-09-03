@@ -15,6 +15,10 @@ import type {
 } from "@/lib/domain/collections"
 import { getCollectionShootingType } from "@/lib/domain/collections"
 import { generateUuidV4 } from "@/lib/utils/uuid"
+import {
+  collectionHasPhotographerCoOwnerEntity,
+  collectionHasPhotographerCoOwnerUser,
+} from "@/lib/infra/collections/photographer-co-owner"
 
 const STORAGE_KEY = "noba_collections_v1"
 
@@ -159,18 +163,12 @@ export class LocalStorageCollectionsRepository implements ICollectionsRepository
     }
     if (options.photographerEntityId) {
       items = items.filter((c) =>
-        c.participants.some(
-          (p) => p.role === "photographer" && p.entityId === options.photographerEntityId
-        )
+        collectionHasPhotographerCoOwnerEntity(c, options.photographerEntityId!)
       )
     }
     if (options.photographerUserId) {
       items = items.filter((c) =>
-        c.participants.some(
-          (p) =>
-            p.role === "photographer" &&
-            (p.userIds ?? []).includes(options.photographerUserId!)
-        )
+        collectionHasPhotographerCoOwnerUser(c, options.photographerUserId!)
       )
     }
     if (options.collectionType) {
