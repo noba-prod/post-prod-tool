@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { PhoneInput } from "./phone-input"
 import { Textarea } from "@/components/ui/textarea"
 import { ProfilePictureUpload } from "./profile-picture-upload"
+import { useEmailAlreadyExists } from "@/hooks/use-email-already-exists"
 
 // Import domain types
 import { entityTypeToLabel, roleToLabel } from "@/lib/types"
@@ -91,6 +92,7 @@ export function SelfPhotographerCreationForm({
   const [nameExistsError, setNameExistsError] = React.useState<string | null>(null)
   const [isCheckingName, setIsCheckingName] = React.useState(false)
   const latestNameRequestRef = React.useRef(0)
+  const emailAlreadyExists = useEmailAlreadyExists(formData.email, { enabled: open })
 
   // Reset form when modal closes
   React.useEffect(() => {
@@ -162,9 +164,10 @@ export function SelfPhotographerCreationForm({
       formData.email.trim() !== "" &&
       formData.phoneNumber.trim() !== "" &&
       !nameExistsError &&
-      !isCheckingName
+      !isCheckingName &&
+      !emailAlreadyExists
     )
-  }, [formData, nameExistsError, isCheckingName])
+  }, [formData, nameExistsError, isCheckingName, emailAlreadyExists])
 
   // Handlers
   const handleSubmit = () => {
@@ -249,7 +252,7 @@ export function SelfPhotographerCreationForm({
             {/* Row 2: Email | Phone Number */}
             <RowVariants variant="2">
               {/* Email */}
-              <Field>
+              <Field data-invalid={emailAlreadyExists ? "true" : undefined}>
                 <FieldLabel htmlFor="sp-email">
                   Email
                 </FieldLabel>
@@ -266,7 +269,11 @@ export function SelfPhotographerCreationForm({
                     }
                     placeholder="Write email address"
                     required
+                    aria-invalid={emailAlreadyExists}
                   />
+                  <FieldError>
+                    {emailAlreadyExists ? "A user with this email already exists" : null}
+                  </FieldError>
                 </FieldContent>
               </Field>
 

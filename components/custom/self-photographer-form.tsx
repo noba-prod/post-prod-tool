@@ -3,12 +3,13 @@
 import * as React from "react"
 import { Layout, LayoutSection } from "./layout"
 import { RowVariants } from "./row-variants"
-import { Field, FieldGroup, FieldLabel, FieldContent } from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel, FieldContent, FieldError } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { PhoneInput } from "./phone-input"
 import { Textarea } from "@/components/ui/textarea"
 import { ProfilePictureUpload } from "./profile-picture-upload"
 import { cn } from "@/lib/utils"
+import { useEmailAlreadyExists } from "@/hooks/use-email-already-exists"
 
 // Import domain types
 import { entityTypeToLabel, roleToLabel } from "@/lib/types"
@@ -27,6 +28,8 @@ interface SelfPhotographerFormProps {
   onValidationChange?: (isValid: boolean) => void
   /** Whether all inputs should be disabled (for view-only mode) */
   disabled?: boolean
+  /** When editing, skip uniqueness check for this user's current email */
+  excludeUserId?: string
   /** Existing profile picture URL (when editing, for preview) */
   existingProfilePictureUrl?: string | null
   /** Additional class name */
@@ -59,6 +62,7 @@ export function SelfPhotographerForm({
   onDataChange,
   onValidationChange,
   disabled = false,
+  excludeUserId,
   existingProfilePictureUrl,
   className,
 }: SelfPhotographerFormProps) {
@@ -97,14 +101,20 @@ export function SelfPhotographerForm({
     onValidationChangeRef.current = onValidationChange
   }, [onDataChange, onValidationChange])
 
+  const emailAlreadyExists = useEmailAlreadyExists(formData.email, {
+    enabled: !disabled,
+    excludeUserId,
+  })
+
   // Validation
   const isFormValid = React.useMemo(() => {
     return (
       formData.firstName.trim() !== "" &&
       formData.email.trim() !== "" &&
-      formData.phoneNumber.trim() !== ""
+      formData.phoneNumber.trim() !== "" &&
+      !emailAlreadyExists
     )
-  }, [formData])
+  }, [formData, emailAlreadyExists])
 
   // Notify parent of validation changes
   const prevIsFormValidRef = React.useRef<boolean | undefined>(undefined)
@@ -181,7 +191,7 @@ export function SelfPhotographerForm({
           {/* Row 2: Email | Phone Number */}
           <RowVariants variant="2">
             {/* Email */}
-            <Field>
+            <Field data-invalid={emailAlreadyExists ? "true" : undefined}>
               <FieldLabel htmlFor="sp-email" disabled={disabled}>
                 Email
               </FieldLabel>
@@ -197,7 +207,11 @@ export function SelfPhotographerForm({
                   required
                   disabled={disabled}
                   readOnly={disabled}
+                  aria-invalid={emailAlreadyExists}
                 />
+                <FieldError>
+                  {emailAlreadyExists ? "A user with this email already exists" : null}
+                </FieldError>
               </FieldContent>
             </Field>
 

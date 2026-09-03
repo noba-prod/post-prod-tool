@@ -515,6 +515,7 @@ export default function PlayerDetailPage() {
           initialData={basicFormInitialData}
           existingProfilePictureUrl={entity.adminUser?.profilePictureUrl ?? entity.entity.profilePictureUrl}
           disabled={!canEdit}
+          excludeUserId={entity.adminUser.id}
           onDataChange={handleSelfPhotographerFormDataChange}
           onValidationChange={handleBasicValidationChange}
         />

@@ -3,6 +3,10 @@ import { isNobaInternalAdmin } from "@/lib/auth/noba-internal-admin"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { detachPlayerFromCollections } from "@/lib/services/players/detach-player-from-collections"
+import {
+  deleteAuthUsersByIds,
+  listUserIdsForPlayer,
+} from "@/lib/services/players/delete-player-auth-users"
 import { fetchCollectionIdsForPhotographerMembers } from "@/lib/infra/collections/photographer-co-owner"
 import { mapPlayerToEntity, mapProfilesToUsers } from "@/lib/utils/supabase-mappers"
 import { parsePhoneNumber } from "@/lib/utils/form-mappers"
@@ -480,6 +484,15 @@ export async function DELETE(
     )
   }
 
+  let memberUserIds: string[] = []
+  try {
+    memberUserIds = await listUserIdsForPlayer(adminClient, playerId)
+  } catch (listError) {
+    const message =
+      listError instanceof Error ? listError.message : "Failed to list entity users"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+
   if (playerType !== "client") {
     try {
       await detachPlayerFromCollections(adminClient, playerId)
@@ -500,6 +513,23 @@ export async function DELETE(
       )
     }
     return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  }
+
+  try {
+    await deleteAuthUsersByIds(adminClient, memberUserIds)
+  } catch (authDeleteError) {
+    const message =
+      authDeleteError instanceof Error
+        ? authDeleteError.message
+        : "Failed to delete login accounts"
+    console.error("[DELETE /api/players] entity removed but auth users remain:", message)
+    return NextResponse.json(
+      {
+        error:
+          "Entity deleted but some login accounts could not be removed. The same email may still be blocked until those accounts are deleted in Auth.",
+      },
+      { status: 500 }
+    )
   }
 
   return new NextResponse(null, { status: 204 })
