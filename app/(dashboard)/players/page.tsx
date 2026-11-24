@@ -214,7 +214,11 @@ export default function PlayersPage() {
 
   const handleFilterChange = (filterId: string, value: string) => {
     if (filterId === "type") {
-      setFilters(prev => ({ ...prev, type: prev.type === value ? null : value }))
+      setFilters((prev) => ({
+        ...prev,
+        // Empty string = clear from the Filter by X / Clear all actions.
+        type: value === "" ? null : prev.type === value ? null : value,
+      }))
     }
   }
 

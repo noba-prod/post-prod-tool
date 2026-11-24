@@ -135,9 +135,10 @@ export default function TeamPage() {
   // Handle filter changes
   const handleFilterChange = (filterId: string, value: string) => {
     if (filterId === "role") {
-      setFilters(prev => ({
+      setFilters((prev) => ({
         ...prev,
-        role: prev.role === value ? null : value,
+        // Empty string = clear from the Filter by X / Clear all actions.
+        role: value === "" ? null : prev.role === value ? null : value,
       }))
     }
   }

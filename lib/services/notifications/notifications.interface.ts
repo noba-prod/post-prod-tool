@@ -167,18 +167,19 @@ export interface INotificationsService {
 
   /**
    * Handle a new comment being added to a step.
-   * Notifies all relevant parties for the step except the commenter.
+   * Notifies everyone who can see the comment thread except the commenter.
    */
   handleCommentAdded(
     collectionId: string,
     stepNoteKey: string,
     commentUserId: string,
-    commentText: string
+    commentText: string,
+    options?: CommentNotificationOptions
   ): Promise<void>
 
   /**
    * Handle a step link being edited or deleted.
-   * Notifies all relevant parties for the step except the actor.
+   * Notifies everyone who can see the link's thread except the actor.
    */
   handleLinkChanged(
     collectionId: string,
@@ -186,4 +187,18 @@ export interface INotificationsService {
     actorUserId: string,
     action: "edited" | "deleted"
   ): Promise<void>
+
+  /**
+   * Sends pending email deliveries now instead of waiting for the next cron run.
+   */
+  flushPendingDeliveries(): Promise<void>
+}
+
+export interface CommentNotificationOptions {
+  /** Stage panel where the comment was written (e.g. `client_confirmation`). */
+  contextStepId?: string | null
+  /** Link the comment is attached to. */
+  noteUrl?: string | null
+  /** Persisted note timestamp; together with author + thread it identifies the comment for idempotency. */
+  noteAt?: string | null
 }

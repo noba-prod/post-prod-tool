@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { CollectionStatusTag } from "./tag"
 
@@ -110,9 +111,40 @@ interface CollectionCardProps {
   progress?: number
   /** Estado de salud del paso activo — solo para in-progress en variante vertical */
   stepHealthStatus?: StepHealthStatus
-  /** Callback al hacer click */
+  /** Callback al hacer click (solo cuando no hay `href`) */
   onClick?: () => void
+  /**
+   * Destination URL. When set, the card renders a real link so native browser interactions
+   * (Cmd/Ctrl + click, middle click, context menu "Open in new tab") work.
+   */
+  href?: string
+  /** Called right before a same-tab navigation through `href` (e.g. to persist list scroll). */
+  onNavigate?: () => void
+  /** Secondary actions (e.g. "More options" menu), rendered top-right above the link layer. */
+  actions?: React.ReactNode
   className?: string
+}
+
+function CardLinkLayer({
+  href,
+  label,
+  onNavigate,
+}: {
+  href: string
+  label: string
+  onNavigate?: () => void
+}) {
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+        onNavigate?.()
+      }}
+      className="absolute inset-0 z-[1] rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
+    />
+  )
 }
 
 export function CollectionCard({
@@ -129,14 +161,24 @@ export function CollectionCard({
   progress,
   stepHealthStatus,
   onClick,
+  href,
+  onNavigate,
+  actions,
   className,
 }: CollectionCardProps) {
   const thumbnail = thumbnailUrl || thumbnailMap[status]
+  const rootOnClick = href ? undefined : onClick
+  const linkLayer = href ? (
+    <CardLinkLayer href={href} label={collectionName} onNavigate={onNavigate} />
+  ) : null
+  const actionsSlot = actions ? (
+    <div className="absolute top-3 right-3 z-[2]">{actions}</div>
+  ) : null
 
   if (format === "landscape") {
     return (
       <div
-        onClick={onClick}
+        onClick={rootOnClick}
         className={cn(
           "relative w-[292px] h-[112px] rounded-xl overflow-hidden cursor-pointer group",
           className
@@ -170,6 +212,7 @@ export function CollectionCard({
             </span>
           </div>
         </div>
+        {linkLayer}
       </div>
     )
   }
@@ -177,7 +220,7 @@ export function CollectionCard({
   // Default format (vertical)
   return (
     <div
-      onClick={onClick}
+      onClick={rootOnClick}
       className={cn(
         "relative w-[262px] h-[192px] rounded-xl overflow-hidden cursor-pointer group",
         className
@@ -194,7 +237,7 @@ export function CollectionCard({
       {/* Content Overlay */}
       <div className="absolute inset-0 bg-[rgba(9,9,11,0.4)] p-3 flex flex-col justify-between rounded-xl">
         {/* Top: Status Badge + Progress Tag (solo in-progress) */}
-        <div className="flex items-center gap-2 self-start flex-wrap">
+        <div className={cn("flex items-center gap-2 self-start flex-wrap", actions && "pr-10")}>
           <CollectionStatusTag type="overlay" status={status} />
           {status === "in-progress" &&
             progress !== undefined &&
@@ -235,6 +278,8 @@ export function CollectionCard({
           </div>
         </div>
       </div>
+      {linkLayer}
+      {actionsSlot}
     </div>
   )
 }

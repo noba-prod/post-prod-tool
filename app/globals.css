@@ -247,9 +247,12 @@
   background-color: var(--destructive-foreground) !important;
   border-color: var(--destructive) !important;
   border-width: 1px !important;
+  color: var(--destructive) !important;
 }
 
-[data-sonner-toast][data-type="error"] > * {
+[data-sonner-toast][data-type="error"] [data-title],
+[data-sonner-toast][data-type="error"] [data-description],
+[data-sonner-toast][data-type="error"] [data-icon] {
   color: var(--destructive) !important;
 }
 
@@ -257,9 +260,15 @@
 [data-sonner-toast][data-type="success"] {
   background-color: var(--success-tertiary) !important;
   border-color: var(--success-primary) !important;
+  color: var(--success-primary) !important;
 }
 
-[data-sonner-toast][data-type="success"] > * {
+/* Title + description must share the same accessible color. Sonner sets
+   [data-description] to a light grey in dark theme, which fails contrast on
+   the mint success background. */
+[data-sonner-toast][data-type="success"] [data-title],
+[data-sonner-toast][data-type="success"] [data-description],
+[data-sonner-toast][data-type="success"] [data-icon] {
   color: var(--success-primary) !important;
 }
 
@@ -267,9 +276,12 @@
 [data-sonner-toast][data-type="info"] {
   background-color: var(--popover) !important;
   border-color: var(--border) !important;
+  color: var(--popover-foreground) !important;
 }
 
-[data-sonner-toast][data-type="info"] > * {
+[data-sonner-toast][data-type="info"] [data-title],
+[data-sonner-toast][data-type="info"] [data-description],
+[data-sonner-toast][data-type="info"] [data-icon] {
   color: var(--popover-foreground) !important;
 }
 
@@ -277,9 +289,12 @@
 [data-sonner-toast][data-type="warning"] {
   background-color: var(--warning-tertiary) !important;
   border-color: var(--warning-primary) !important;
+  color: var(--warning-primary) !important;
 }
 
-[data-sonner-toast][data-type="warning"] > * {
+[data-sonner-toast][data-type="warning"] [data-title],
+[data-sonner-toast][data-type="warning"] [data-description],
+[data-sonner-toast][data-type="warning"] [data-icon] {
   color: var(--warning-primary) !important;
 }
 

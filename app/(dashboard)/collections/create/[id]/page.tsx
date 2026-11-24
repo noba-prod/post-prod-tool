@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { getCollectionsListHref } from "@/lib/ui/collections-list-navigation"
 import { toast } from "sonner"
 import { CreationTemplate } from "@/components/custom/templates/creation-template"
 import { ParticipantsStepContent } from "@/components/custom/participants-step-content"
@@ -748,7 +749,7 @@ export default function CollectionCreatePage({
           toast.error("Finish required setup before publishing.")
         } else if (data.code === "NOT_FOUND") {
           toast.error("Draft not found.")
-          router.push("/collections")
+          router.push(getCollectionsListHref())
         } else {
           toast.error(data.error || "Failed to publish collection")
         }
@@ -781,7 +782,7 @@ export default function CollectionCreatePage({
       }
 
       setPublishDialogOpen(false)
-      router.push("/collections")
+      router.push(getCollectionsListHref())
     } catch (error) {
       setIsPublishing(false)
       toast.error("Failed to publish collection")
@@ -801,7 +802,7 @@ export default function CollectionCreatePage({
       await service.deleteCollection(id)
       toast.success("Collection deleted.")
       setIsDeleteConfirmOpen(false)
-      router.push("/collections")
+      router.push(getCollectionsListHref())
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to delete collection"
       toast.error(message)
@@ -826,7 +827,7 @@ export default function CollectionCreatePage({
       await service.cancelCollection(id)
       toast.success("Collection canceled.")
       setCancelCollectionDialogOpen(false)
-      router.push("/collections")
+      router.push(getCollectionsListHref())
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to cancel collection"
       toast.error(message)
@@ -1258,7 +1259,7 @@ export default function CollectionCreatePage({
           </p>
           <button
             type="button"
-            onClick={() => router.push("/collections")}
+            onClick={() => router.push(getCollectionsListHref())}
             className="text-sm font-medium text-primary hover:underline"
           >
             Back to Collections

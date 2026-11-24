@@ -30,6 +30,8 @@ interface CollectionStepSummaryProps {
   switchToVerticalWhenTitleTruncates?: boolean
   /** Shows an unread activity red dot for active or completed steps (linked to notifications). */
   showAttentionDot?: boolean
+  /** User-selected step (its detail panel is open). Drives the ring; independent from `status`. */
+  selected?: boolean
   className?: string
 }
 
@@ -48,6 +50,7 @@ export function CollectionStepSummary({
   deadlineTime = "End of day (5:00pm)",
   switchToVerticalWhenTitleTruncates,
   showAttentionDot = false,
+  selected = false,
   className,
 }: CollectionStepSummaryProps) {
   const isLocked = status === "locked"
@@ -70,10 +73,11 @@ export function CollectionStepSummary({
         cardBg,
         cardBorder,
         cardPadding,
-        isActive && "outline outline-2 outline-zinc-900 outline-offset-[2px]",
+        selected && "outline outline-2 outline-zinc-900 outline-offset-[2px]",
         className
       )}
       data-status={status}
+      data-selected={selected || undefined}
     >
       {/* Below 760px: column — row1 title + dot; row2 tags. From 760px: single row as before. */}
       <div className="flex flex-1 min-w-0 flex-col gap-3 overflow-hidden min-[760px]:flex-row min-[760px]:items-center min-[760px]:gap-6">

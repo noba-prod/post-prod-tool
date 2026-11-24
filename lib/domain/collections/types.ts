@@ -294,6 +294,8 @@ export interface StepNoteEntry {
   userId?: string
   /** URL this note is associated with (from the step's URL array). Links comment to a specific link block. */
   url?: string
+  /** Stage panel open when the comment was written. Used only to target the notification. */
+  contextStepId?: string
 }
 
 /** Alias for backward compatibility; workflow and UI use same shape. */

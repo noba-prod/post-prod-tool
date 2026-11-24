@@ -111,6 +111,16 @@ export function CollectionStepperDemo() {
             onStepClick={() => {}}
             showExpandButton
           />
+          <CollectionStepper
+            status="completed"
+            title="Shooting (selected)"
+            stageStatus="done"
+            timeStampStatus="on-track"
+            deadlineDate="Dec 4, 2025"
+            selected
+            onStepClick={() => {}}
+            showExpandButton
+          />
         </div>
       </div>
     </div>

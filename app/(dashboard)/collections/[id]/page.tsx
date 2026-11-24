@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter, usePathname } from "next/navigation"
+import { getCollectionsListHref } from "@/lib/ui/collections-list-navigation"
 import { CollectionTemplate } from "@/components/custom/templates/collection-template"
 import type { CollectionTemplateStep } from "@/components/custom/templates/collection-template"
 import { createCollectionsService } from "@/lib/services"
@@ -912,11 +913,16 @@ export default function CollectionViewPage({
   // Add step note (UrlHistory "Add comment" — appends to step notes column)
   // =============================================================================
   const handleAddStepNote = React.useCallback(
-    async (payload: { stepNoteKey: string; from: string; text: string; url?: string }) => {
+    async (payload: { stepNoteKey: string; from: string; text: string; url?: string; contextStepId?: string }) => {
       if (!id) return
       try {
         await patchCollection({
-          [payload.stepNoteKey]: { from: payload.from, text: payload.text, ...(payload.url ? { url: payload.url } : {}) },
+          [payload.stepNoteKey]: {
+            from: payload.from,
+            text: payload.text,
+            ...(payload.url ? { url: payload.url } : {}),
+            ...(payload.contextStepId ? { contextStepId: payload.contextStepId } : {}),
+          },
         })
         await refetchCollection()
       } catch (err) {
@@ -1135,7 +1141,7 @@ export default function CollectionViewPage({
           </p>
           <button
             type="button"
-            onClick={() => router.push("/collections")}
+            onClick={() => router.push(getCollectionsListHref())}
             className="text-sm font-medium text-primary hover:underline"
           >
             Back to Collections

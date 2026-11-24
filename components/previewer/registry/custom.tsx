@@ -863,7 +863,7 @@ Gap: 16px | Padding: 40px`,
     id: "collection-stepper",
     name: "collection-stepper",
     title: "Collection Stepper",
-    description: "Master component for a collection phase: Vertical Progress Indicator + Step Summary + optional expand button. Three variants: locked, active, completed. Completed now supports unread-activity indicator via `showAttentionDot` (6x6 red dot, floating overlay at 8px from left edge) without affecting layout. CollectionStepSummary uses Titles (form) + StageStatusTag, TimeStampTag, DateIndicatorTag; active variant has Ring (2px outside stroke, zinc-900) per Figma 13526-38751.",
+    description: "Master component for a collection phase: Vertical Progress Indicator + Step Summary + optional expand button. Three variants: locked, active, completed. Completed now supports unread-activity indicator via `showAttentionDot` (6x6 red dot, floating overlay at 8px from left edge) without affecting layout. CollectionStepSummary uses Titles (form) + StageStatusTag, TimeStampTag, DateIndicatorTag; the Ring (2px outside stroke, zinc-900, Figma 13526-38751) marks the user-selected step via `selected` (detail panel open), independent of the active/current step shown by the progress indicator.",
     demo: (
       <div className="w-full min-w-0 [&>*]:max-w-none [&>*]:w-full">
         <CollectionStepperDemo />

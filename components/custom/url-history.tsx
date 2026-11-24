@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
-import { SquareArrowOutUpRight, CirclePlus, Trash2 } from "lucide-react"
+import { SquareArrowOutUpRight, CirclePlus, Copy, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { StepDetails } from "./step-details"
 
@@ -28,6 +28,8 @@ export interface UrlHistoryProps {
   comments?: UrlHistoryComment[]
   /** Callback for "Open link" button. Button hidden when undefined. */
   onOpenLink?: () => void
+  /** Callback for "Copy link" button (copies the external URL). Button hidden when undefined. */
+  onCopyLink?: () => void
   /** Callback for "Add comment" button. Button hidden when undefined. */
   onAddComment?: () => void
   /** Callback for "Edit link" button. Button hidden when undefined. */
@@ -135,7 +137,7 @@ function CommentNode({
  *     Nested replies are indented 50 px and connected to the parent via
  *     straight 1 px L-shaped connector lines (border color) that originate
  *     at the parent's avatar center (30 px from card edge).
- *  3. Action buttons — "Open link" (primary) + "Add comment" (outline).
+ *  3. Action buttons — "Open link" (primary) + "Copy link" / "Add comment" (secondary).
  *
  * Supports unlimited nesting depth; connector lines repeat per level.
  */
@@ -143,12 +145,13 @@ export function UrlHistory({
   title,
   comments = [],
   onOpenLink,
+  onCopyLink,
   onAddComment,
   onEditLink,
   onDeleteLink,
   className,
 }: UrlHistoryProps) {
-  const showActions = onOpenLink || onAddComment || onEditLink || onDeleteLink
+  const showActions = onOpenLink || onCopyLink || onAddComment || onEditLink || onDeleteLink
 
   return (
     <div
@@ -172,17 +175,36 @@ export function UrlHistory({
 
       {/* ── Section 2: Action buttons ── */}
       {showActions && (
-        <div className="flex items-center gap-3 border-t border-border p-4">
+        <div className="flex flex-wrap items-center gap-3 border-t border-border p-4">
           {onOpenLink && (
             <Button variant="default" size="default" onClick={onOpenLink}>
               <SquareArrowOutUpRight data-icon="inline-start" className="size-4" />
               Open link
             </Button>
           )}
+          {onCopyLink && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="default"
+              onClick={onCopyLink}
+              aria-label="Copy link"
+              className="max-sm:w-9 max-sm:px-0"
+            >
+              <Copy data-icon="inline-start" className="size-4" />
+              <span className="sr-only sm:not-sr-only">Copy link</span>
+            </Button>
+          )}
           {onAddComment && (
-            <Button variant="secondary" size="default" onClick={onAddComment}>
+            <Button
+              variant="secondary"
+              size="default"
+              onClick={onAddComment}
+              aria-label="Add comment"
+              className="max-sm:w-9 max-sm:px-0"
+            >
               <CirclePlus data-icon="inline-start" className="size-4" />
-              Add comment
+              <span className="sr-only sm:not-sr-only">Add comment</span>
             </Button>
           )}
           {(onEditLink || onDeleteLink) && (

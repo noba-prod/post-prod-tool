@@ -18,6 +18,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet"
 import { roleToLabel } from "@/lib/types"
+import { getCollectionsListHref } from "@/lib/ui/collections-list-navigation"
 
 const mobileMenuRowClass =
   "flex items-center h-10 w-full px-3 text-sm font-medium text-foreground rounded-xl hover:bg-muted transition-colors text-left"
@@ -142,13 +143,13 @@ export function NavBar({
   }
 
   const handleLogoClick = () => {
-    router.push("/collections")
+    router.push(getCollectionsListHref())
     setIsMobileMenuOpen(false)
   }
 
   const handleTabClick = (tab: string) => {
     const routeMap: Record<string, string> = {
-      "Collections": "/collections",
+      "Collections": getCollectionsListHref(),
       "Players": "/players",
       "Team": "/team",
     }
@@ -194,7 +195,7 @@ export function NavBar({
             {tabs.map((tab) => {
               const handleTabClick = () => {
                 const routeMap: Record<string, string> = {
-                  "Collections": "/collections",
+                  "Collections": getCollectionsListHref(),
                   "Players": "/players",
                   "Team": "/team",
                 }

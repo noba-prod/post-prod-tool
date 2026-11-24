@@ -10,8 +10,19 @@ import type { Database } from "@/lib/supabase/database.types"
 import type {
   INotificationsService,
   CollectionEventType,
+  CommentNotificationOptions,
   UserNotification,
 } from "./notifications.interface"
+import {
+  isCommentNoteKey,
+  memberRoleToParticipantRole,
+  resolveCommentAudience,
+  COMMENT_THREAD_HOME_STEP,
+  type CommentAudienceMember,
+  type CommentNoteKey,
+  type CommentWorkflowConfig,
+} from "./comment-recipients"
+import { STEP_IDS, type StepId } from "@/lib/domain/collections"
 import type { RecipientType } from "./notification-templates"
 import {
   resolveRecipients,
@@ -330,41 +341,6 @@ const STEP_NAME_BY_SLUG: Record<string, string> = {
   final_edits: "Final edits",
   photographer_last_check: "Photographer last check",
   client_confirmation: "Client confirmation",
-}
-
-/** Comment threads can be visible in different steps depending on recipient role. */
-const COMMENT_STEP_SLUG_BY_NOTE_AND_RECIPIENT: Record<string, Partial<Record<RecipientType, string>>> = {
-  step_note_low_res: {
-    photo_lab: "low_res_scanning",
-    photographer: "photographer_selection",
-  },
-  step_note_photographer_selection: {
-    photographer: "photographer_selection",
-    client: "client_selection",
-  },
-  step_note_client_selection: {
-    client: "client_selection",
-    photographer: "handprint_high_res",
-  },
-  step_note_high_res: {
-    handprint_lab: "handprint_high_res",
-    photographer: "edition_request",
-  },
-  step_note_edition_request: {
-    photographer: "edition_request",
-    retouch_studio: "final_edits",
-  },
-  step_note_final_edits: {
-    retouch_studio: "final_edits",
-    photographer: "photographer_last_check",
-  },
-  step_note_photographer_last_check: {
-    photographer: "photographer_last_check",
-    retouch_studio: "final_edits",
-  },
-  step_note_client_confirmation: {
-    client: "client_confirmation",
-  },
 }
 
 /**
@@ -1556,17 +1532,19 @@ export class NotificationsService implements INotificationsService {
 
   /**
    * Handle a new comment being added to a step.
-   * Resolves all relevant recipients for the step, excludes the commenter,
-   * and creates both email and in-app notifications.
+   * Notifies everyone who can see the comment thread (stage owners, read-only viewers, producer),
+   * excluding the commenter. Independent from the workflow state: works for in-progress and
+   * completed collections/stages and never changes status, progress or deadlines.
    */
   async handleCommentAdded(
     collectionId: string,
     stepNoteKey: string,
     commentUserId: string,
-    commentText: string
+    commentText: string,
+    options: CommentNotificationOptions = {}
   ): Promise<void> {
     const config = STEP_NOTE_COMMENT_CONFIG[stepNoteKey]
-    if (!config) {
+    if (!config || !isCommentNoteKey(stepNoteKey)) {
       console.warn("[NotificationsService] Unknown step note key for comment notification:", stepNoteKey)
       return
     }
@@ -1577,66 +1555,64 @@ export class NotificationsService implements INotificationsService {
       return
     }
 
-    const { data: commenterProfile } = await this.supabase
-      .from("profiles")
-      .select("first_name, last_name, email")
-      .eq("id", commentUserId)
-      .single()
-    const commenter = commenterProfile as {
-      first_name: string | null
-      last_name: string | null
-      email: string | null
-    } | null
+    const commenter = await this.getActorProfile(commentUserId)
     const commenterHandle = NotificationsService.buildCommenterHandle(commenter)
+    const trimmedText = commentText.trim()
 
-    // Record the event
+    // Same comment (thread + author + persisted timestamp) is recorded once, even if the handler is retried.
+    const idempotencyKey = options.noteAt
+      ? `comment:${collectionId}:${stepNoteKey}:${commentUserId}:${options.noteAt}`
+      : null
+    if (idempotencyKey) {
+      const { data: existing } = await this.supabase
+        .from("collection_events")
+        .select("id")
+        .eq("idempotency_key", idempotencyKey)
+        .limit(1)
+      if (existing && existing.length > 0) return
+    }
+
     const commentEventInsert = await this.supabase
       .from("collection_events")
       .insert({
         collection_id: collectionId,
         event_type: "comment_added",
         triggered_by_user_id: commentUserId,
-        metadata: { stepNoteKey, stepName: config.stepName, commentText },
+        metadata: {
+          stepNoteKey,
+          stepName: config.stepName,
+          commentText: trimmedText,
+          contextStepId: options.contextStepId ?? null,
+          url: options.noteUrl ?? null,
+        },
+        idempotency_key: idempotencyKey,
         notifications_processed: true,
       } as never)
       .select("id")
       .single()
+    if (commentEventInsert.error) {
+      if ((commentEventInsert.error as { code?: string }).code === "23505") return
+      console.error("[NotificationsService] Failed to record comment event:", commentEventInsert.error)
+    }
     const commentEventId = (commentEventInsert.data as { id: string } | null)?.id ?? null
 
-    const recipientsByUserId = new Map<string, {
-      userId: string
-      email: string
-      firstName: string | null
-      lastName: string | null
-      recipientType?: RecipientType
-    }>()
-    for (const recipientType of config.recipients) {
-      const typedRecipients = await resolveRecipients(this.supabase, collectionId, [recipientType])
-      for (const recipient of typedRecipients) {
-        if (!recipientsByUserId.has(recipient.userId)) {
-          recipientsByUserId.set(recipient.userId, { ...recipient, recipientType })
-        }
-      }
-    }
+    const audience = await this.resolveCommentThreadAudience(collectionId, stepNoteKey, commentUserId, {
+      contextStepId: options.contextStepId,
+      noteUrl: options.noteUrl,
+    })
+    if (!audience || audience.recipients.length === 0) return
 
-    const recipients = Array.from(recipientsByUserId.values()).filter((r) => r.userId !== commentUserId)
-    if (recipients.length === 0) return
-
+    const contextStepName = audience.stepNameFor(audience.contextStepId)
+    const preview = NotificationsService.truncateCommentPreview(trimmedText)
     const title = formatNotificationTitle("New comment", context.name, context.reference)
-    const body = `You have a new comment on ${config.stepName}`
+    const emailSubject = `💬 New comment on ${contextStepName} - ${context.name} by ${context.clientName || "—"} - ${context.photographerName || "—"}`
+    const emailDescription = preview
+      ? `@${commenterHandle} commented on ${contextStepName}: “${preview}”`
+      : `You have a new comment on ${contextStepName}`
 
-    const emailSubject = `💬 New comment on ${config.stepName} - ${context.name} by ${context.clientName || "—"} - ${context.photographerName || "—"}`
-    const workflowOptions = await this.getCollectionWorkflowStepOptions(collectionId)
-
-    for (const recipient of recipients) {
-      const navigation = NotificationsService.getCommentStepNavigation(
-        stepNoteKey,
-        recipient.recipientType,
-        collectionId,
-        config.stepSlug,
-        config.stepName,
-        workflowOptions
-      )
+    for (const recipient of audience.recipients) {
+      const dedupe = (channel: "email" | "in_app") =>
+        commentEventId ? `comment:${commentEventId}:user:${recipient.userId}:channel:${channel}` : null
       try {
         await this.createNotification({
           collection_id: collectionId,
@@ -1647,7 +1623,7 @@ export class NotificationsService implements INotificationsService {
           title: emailSubject,
           body: JSON.stringify({
             emailTitle: "You receive 1 new comment",
-            emailDescription: body,
+            emailDescription,
             collectionName: context.name,
             clientName: context.clientName,
             photographerName: context.photographerName,
@@ -1655,29 +1631,16 @@ export class NotificationsService implements INotificationsService {
             shootingEndDate: context.shootingEndDate,
             shootingCity: context.shootingCity,
             shootingCountry: context.shootingCountry,
-            stepStatus: "In progress",
-            stepName: navigation.stepName,
+            stepStatus: audience.stepStatusLabel,
+            stepName: contextStepName,
           }),
           cta_text: "Check comment",
-          cta_url: navigation.ctaUrl,
-          dedupe_key: commentEventId
-            ? `comment:${commentEventId}:user:${recipient.userId}:channel:email`
-            : null,
+          cta_url: recipient.ctaUrl,
+          dedupe_key: dedupe("email"),
         })
       } catch (err) {
         console.error("[NotificationsService] Failed creating comment email notification:", err)
       }
-    }
-
-    for (const recipient of recipients) {
-      const navigation = NotificationsService.getCommentStepNavigation(
-        stepNoteKey,
-        recipient.recipientType,
-        collectionId,
-        config.stepSlug,
-        config.stepName,
-        workflowOptions
-      )
       try {
         await this.createNotification({
           collection_id: collectionId,
@@ -1686,13 +1649,11 @@ export class NotificationsService implements INotificationsService {
           channel: "in_app",
           status: "sent",
           title: `${title} from @${commenterHandle}`,
-          body: `${commentText.trim() || body}\n${context.name} · ${navigation.stepName}`,
+          body: `${preview || `You have a new comment on ${contextStepName}`}\n${context.name} · ${recipient.stepName}`,
           cta_text: "Check comment",
-          cta_url: navigation.ctaUrl,
+          cta_url: recipient.ctaUrl,
           sent_at: new Date().toISOString(),
-          dedupe_key: commentEventId
-            ? `comment:${commentEventId}:user:${recipient.userId}:channel:in_app`
-            : null,
+          dedupe_key: dedupe("in_app"),
         })
       } catch (err) {
         console.error("[NotificationsService] Failed creating comment in-app notification:", err)
@@ -1702,7 +1663,7 @@ export class NotificationsService implements INotificationsService {
 
   /**
    * Handle a step link being edited or deleted.
-   * Notifies all relevant parties for the step except the user who made the change.
+   * Notifies everyone who can see the link's thread except the user who made the change.
    */
   async handleLinkChanged(
     collectionId: string,
@@ -1711,7 +1672,7 @@ export class NotificationsService implements INotificationsService {
     action: "edited" | "deleted"
   ): Promise<void> {
     const config = STEP_NOTE_COMMENT_CONFIG[stepNoteKey]
-    if (!config) {
+    if (!config || !isCommentNoteKey(stepNoteKey)) {
       console.warn("[NotificationsService] Unknown step note key for link change notification:", stepNoteKey)
       return
     }
@@ -1722,16 +1683,7 @@ export class NotificationsService implements INotificationsService {
       return
     }
 
-    const { data: actorProfile } = await this.supabase
-      .from("profiles")
-      .select("first_name, last_name, email")
-      .eq("id", actorUserId)
-      .single()
-    const actor = actorProfile as {
-      first_name: string | null
-      last_name: string | null
-      email: string | null
-    } | null
+    const actor = await this.getActorProfile(actorUserId)
     const actorHandle = NotificationsService.buildCommenterHandle(actor)
 
     const linkEventInsert = await this.supabase
@@ -1747,44 +1699,21 @@ export class NotificationsService implements INotificationsService {
       .single()
     const linkEventId = (linkEventInsert.data as { id: string } | null)?.id ?? null
 
-    const recipientsByUserId = new Map<string, {
-      userId: string
-      email: string
-      firstName: string | null
-      lastName: string | null
-      recipientType?: RecipientType
-    }>()
-    for (const recipientType of config.recipients) {
-      const typedRecipients = await resolveRecipients(this.supabase, collectionId, [recipientType])
-      for (const recipient of typedRecipients) {
-        if (!recipientsByUserId.has(recipient.userId)) {
-          recipientsByUserId.set(recipient.userId, { ...recipient, recipientType })
-        }
-      }
-    }
+    const audience = await this.resolveCommentThreadAudience(collectionId, stepNoteKey, actorUserId, {})
+    if (!audience || audience.recipients.length === 0) return
 
-    const recipients = Array.from(recipientsByUserId.values()).filter((r) => r.userId !== actorUserId)
-    if (recipients.length === 0) return
-
+    const stepName = audience.stepNameFor(audience.contextStepId)
     const changeLabel = action === "edited" ? "Link updated" : "Link removed"
     const title = formatNotificationTitle(changeLabel, context.name, context.reference)
     const body =
       action === "edited"
-        ? `There have been changes in the ${config.stepName} block`
-        : `A link was removed from ${config.stepName}. Please review that the team still has the information needed to continue.`
+        ? `There have been changes in the ${stepName} block`
+        : `A link was removed from ${stepName}. Please review that the team still has the information needed to continue.`
+    const emailSubject = `🔗 ${changeLabel} on ${stepName} - ${context.name} by ${context.clientName || "—"} - ${context.photographerName || "—"}`
 
-    const emailSubject = `🔗 ${changeLabel} on ${config.stepName} - ${context.name} by ${context.clientName || "—"} - ${context.photographerName || "—"}`
-    const workflowOptions = await this.getCollectionWorkflowStepOptions(collectionId)
-
-    for (const recipient of recipients) {
-      const navigation = NotificationsService.getCommentStepNavigation(
-        stepNoteKey,
-        recipient.recipientType,
-        collectionId,
-        config.stepSlug,
-        config.stepName,
-        workflowOptions
-      )
+    for (const recipient of audience.recipients) {
+      const dedupe = (channel: "email" | "in_app") =>
+        linkEventId ? `link-change:${linkEventId}:user:${recipient.userId}:channel:${channel}` : null
       try {
         await this.createNotification({
           collection_id: collectionId,
@@ -1803,29 +1732,16 @@ export class NotificationsService implements INotificationsService {
             shootingEndDate: context.shootingEndDate,
             shootingCity: context.shootingCity,
             shootingCountry: context.shootingCountry,
-            stepStatus: "In progress",
-            stepName: navigation.stepName,
+            stepStatus: audience.stepStatusLabel,
+            stepName: recipient.stepName,
           }),
           cta_text: "View collection",
-          cta_url: navigation.ctaUrl,
-          dedupe_key: linkEventId
-            ? `link-change:${linkEventId}:user:${recipient.userId}:channel:email`
-            : null,
+          cta_url: recipient.ctaUrl,
+          dedupe_key: dedupe("email"),
         })
       } catch (err) {
         console.error("[NotificationsService] Failed creating link change email notification:", err)
       }
-    }
-
-    for (const recipient of recipients) {
-      const navigation = NotificationsService.getCommentStepNavigation(
-        stepNoteKey,
-        recipient.recipientType,
-        collectionId,
-        config.stepSlug,
-        config.stepName,
-        workflowOptions
-      )
       try {
         await this.createNotification({
           collection_id: collectionId,
@@ -1834,19 +1750,163 @@ export class NotificationsService implements INotificationsService {
           channel: "in_app",
           status: "sent",
           title: `${title} by @${actorHandle}`,
-          body: `${body}\n${context.name} · ${navigation.stepName}`,
+          body: `${body}\n${context.name} · ${recipient.stepName}`,
           cta_text: "View collection",
-          cta_url: navigation.ctaUrl,
+          cta_url: recipient.ctaUrl,
           sent_at: new Date().toISOString(),
-          dedupe_key: linkEventId
-            ? `link-change:${linkEventId}:user:${recipient.userId}:channel:in_app`
-            : null,
+          dedupe_key: dedupe("in_app"),
         })
       } catch (err) {
         console.error("[NotificationsService] Failed creating link change in-app notification:", err)
       }
     }
   }
+
+  /**
+   * Sends pending email deliveries now (comment / link emails are created as `pending`).
+   * Safe to call concurrently with the cron: rows are claimed before sending.
+   */
+  async flushPendingDeliveries(): Promise<void> {
+    const runId = `flush-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    await this.processPendingNotificationDeliveries(runId, new Date().toISOString())
+  }
+
+  private async getActorProfile(userId: string): Promise<{
+    first_name: string | null
+    last_name: string | null
+    email: string | null
+  } | null> {
+    const { data } = await this.supabase
+      .from("profiles")
+      .select("first_name, last_name, email")
+      .eq("id", userId)
+      .single()
+    return (data as { first_name: string | null; last_name: string | null; email: string | null } | null) ?? null
+  }
+
+  private static truncateCommentPreview(text: string, max = 280): string {
+    const singleLine = text.replace(/\s+/g, " ").trim()
+    return singleLine.length > max ? `${singleLine.slice(0, max - 1).trimEnd()}…` : singleLine
+  }
+
+  /**
+   * Recipients of a step-note thread with their deep link and step labels.
+   * Only collection members are considered (non-invited noba* admins are not notified).
+   */
+  private async resolveCommentThreadAudience(
+    collectionId: string,
+    stepNoteKey: CommentNoteKey,
+    authorUserId: string,
+    options: { contextStepId?: string | null; noteUrl?: string | null }
+  ): Promise<{
+    recipients: Array<{ userId: string; ctaUrl: string; stepName: string }>
+    contextStepId: StepId
+    stepStatusLabel: string
+    stepNameFor: (stepId: StepId) => string
+  } | null> {
+    const { data: rawCollection, error } = await this.supabase
+      .from("collections")
+      .select(
+        "status, step_statuses, low_res_to_high_res_hand_print, photographer_request_edition, handprint_different_from_original_lab, photographer_collaborates_with_agency, photographer_approved_material_urls"
+      )
+      .eq("id", collectionId)
+      .single()
+    if (error || !rawCollection) {
+      console.error("[NotificationsService] Failed to load collection for comment audience:", { collectionId, error })
+      return null
+    }
+    const row = rawCollection as {
+      status: string
+      step_statuses: Record<string, { stage: string } | undefined> | null
+      low_res_to_high_res_hand_print: boolean | null
+      photographer_request_edition: boolean | null
+      handprint_different_from_original_lab: boolean | null
+      photographer_collaborates_with_agency: boolean | null
+      photographer_approved_material_urls: unknown
+    }
+    const workflowConfig: CommentWorkflowConfig = {
+      hasHandprint: !!row.low_res_to_high_res_hand_print,
+      hasEditionStudio: !!row.photographer_request_edition,
+      handprintIsDifferentLab: !!row.handprint_different_from_original_lab,
+      hasAgency: !!row.photographer_collaborates_with_agency,
+    }
+    const approvedUrls = Array.isArray(row.photographer_approved_material_urls)
+      ? row.photographer_approved_material_urls.filter((u): u is string => typeof u === "string")
+      : []
+
+    const { data: memberRows, error: membersError } = await this.supabase
+      .from("collection_members")
+      .select("user_id, role, can_edit")
+      .eq("collection_id", collectionId)
+    if (membersError) {
+      console.error("[NotificationsService] Failed to load members for comment audience:", membersError)
+      return null
+    }
+    const members: CommentAudienceMember[] = []
+    for (const m of (memberRows ?? []) as Array<{ user_id: string; role: string; can_edit: boolean | null }>) {
+      const role = memberRoleToParticipantRole(m.role)
+      if (role) members.push({ userId: m.user_id, role, hasEditPermission: m.can_edit ?? true })
+    }
+
+    const requestedContext = options.contextStepId
+      ? (normalizeStepIdFromQuery(options.contextStepId) as StepId | null)
+      : null
+    const contextStepId =
+      requestedContext && (STEP_IDS as readonly string[]).includes(requestedContext)
+        ? requestedContext
+        : COMMENT_THREAD_HOME_STEP[stepNoteKey]
+
+    const audience = resolveCommentAudience({
+      noteKey: stepNoteKey,
+      config: workflowConfig,
+      members,
+      authorUserId,
+      contextStepId,
+      context: { noteUrl: options.noteUrl, clientVisibleUrls: approvedUrls },
+    })
+    if (audience.length === 0) {
+      return { recipients: [], contextStepId, stepStatusLabel: "", stepNameFor: () => "" }
+    }
+
+    const userIds = audience.map((r) => r.userId)
+    const { data: profiles } = await this.supabase
+      .from("profiles")
+      .select("id, email")
+      .in("id", userIds)
+    const withEmail = new Set(
+      ((profiles ?? []) as Array<{ id: string; email: string | null }>)
+        .filter((p) => !!p.email)
+        .map((p) => p.id)
+    )
+
+    const isDigitalWithRetouch = !workflowConfig.hasHandprint && workflowConfig.hasEditionStudio
+    const stepNameFor = (stepId: StepId): string =>
+      stepId === "handprint_high_res" && isDigitalWithRetouch
+        ? "Low-res to high-res and retouch request"
+        : STEP_NAME_BY_SLUG[stepId] ?? stepId
+
+    const stage = row.step_statuses?.[contextStepId]?.stage
+    const stepStatusLabel =
+      row.status === "completed" || stage === "done"
+        ? "Completed"
+        : stage === "in-progress"
+          ? "In progress"
+          : "Upcoming"
+
+    return {
+      recipients: audience
+        .filter((r) => withEmail.has(r.userId))
+        .map((r) => ({
+          userId: r.userId,
+          ctaUrl: `/collections/${collectionId}?step=${r.panel}`,
+          stepName: stepNameFor(r.panel),
+        })),
+      contextStepId,
+      stepStatusLabel,
+      stepNameFor,
+    }
+  }
+
 
   // ============================================================================
   // Private Methods
@@ -2061,26 +2121,6 @@ export class NotificationsService implements INotificationsService {
       }
     } catch {
       return { ctaUrl: rawUrl, upcomingStepName: fallbackStepName }
-    }
-  }
-
-  private static getCommentStepNavigation(
-    stepNoteKey: string,
-    recipientType: RecipientType | undefined,
-    collectionId: string,
-    fallbackStepSlug: string,
-    fallbackStepName: string,
-    workflowOptions?: CollectionWorkflowStepOptions | null
-  ): { ctaUrl: string; stepName: string } {
-    const mappedStepSlugRaw =
-      (recipientType && COMMENT_STEP_SLUG_BY_NOTE_AND_RECIPIENT[stepNoteKey]?.[recipientType]) ||
-      fallbackStepSlug
-    const mappedStepSlug = NotificationsService.getNearestNavigableStepSlug(mappedStepSlugRaw, workflowOptions)
-    const ctaUrl = buildCtaUrl(`/collections/{collectionId}?step=${mappedStepSlug}`, collectionId)
-      || `/collections/${collectionId}?step=${mappedStepSlug}`
-    return {
-      ctaUrl,
-      stepName: STEP_NAME_BY_SLUG[mappedStepSlug] ?? fallbackStepName,
     }
   }
 

@@ -5,7 +5,7 @@
  * Notes fields use append-to-conversation logic (JSONB arrays).
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { after, NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createCollectionsServiceForServer } from "@/lib/services/collections/server"
@@ -29,14 +29,14 @@ interface PatchBody {
   /** Step 10: URLs from material (finals/high-res) that photographer approved to share with client. Replaces column. */
   photographer_approved_material_urls?: string[]
   // Step note appends (single entry → appended to conversation). url links comment to a specific link.
-  step_note_low_res?: { from: string; text: string; url?: string }
-  step_note_photographer_selection?: { from: string; text: string; url?: string }
-  step_note_client_selection?: { from: string; text: string; url?: string }
-  step_note_high_res?: { from: string; text: string; url?: string }
-  step_note_edition_request?: { from: string; text: string; url?: string }
-  step_note_final_edits?: { from: string; text: string; url?: string }
-  step_note_photographer_last_check?: { from: string; text: string; url?: string }
-  step_note_client_confirmation?: { from: string; text: string; url?: string }
+  step_note_low_res?: { from: string; text: string; url?: string; contextStepId?: string }
+  step_note_photographer_selection?: { from: string; text: string; url?: string; contextStepId?: string }
+  step_note_client_selection?: { from: string; text: string; url?: string; contextStepId?: string }
+  step_note_high_res?: { from: string; text: string; url?: string; contextStepId?: string }
+  step_note_edition_request?: { from: string; text: string; url?: string; contextStepId?: string }
+  step_note_final_edits?: { from: string; text: string; url?: string; contextStepId?: string }
+  step_note_photographer_last_check?: { from: string; text: string; url?: string; contextStepId?: string }
+  step_note_client_confirmation?: { from: string; text: string; url?: string; contextStepId?: string }
   /** Replace supplemental drop-off shipments (Analog). Producer-only use case; full array replace. */
   dropoff_additional_shipments?: DropoffAdditionalShipment[]
   /** Primary drop-off shipment (Analog). Updated when producer confirms pickup. */
@@ -279,7 +279,13 @@ export async function PATCH(
     }
 
     // --- Step note appends (single entry → appended to conversation array) ---
-    const appendedNoteKeys: string[] = []
+    const appendedNotes: Array<{
+      key: string
+      text: string
+      url?: string
+      at: string
+      contextStepId?: string
+    }> = []
 
     const noteFields: Array<{
       bodyKey: keyof PatchBody
@@ -297,7 +303,7 @@ export async function PATCH(
     ]
 
     for (const { bodyKey, rawKey, patchKey } of noteFields) {
-      const noteInput = body[bodyKey] as { from: string; text: string; url?: string } | undefined
+      const noteInput = body[bodyKey] as { from: string; text: string; url?: string; contextStepId?: string } | undefined
       if (noteInput && noteInput.text?.trim()) {
         const entry: StepNoteEntry = {
           from: noteInput.from,
@@ -305,6 +311,7 @@ export async function PATCH(
           at: now,
           userId: user.id,
           ...(noteInput.url?.trim() ? { url: noteInput.url.trim() } : {}),
+          ...(noteInput.contextStepId?.trim() ? { contextStepId: noteInput.contextStepId.trim() } : {}),
         }
         const existing = parseStoredNotes(raw[rawKey])
         if (isDuplicateNote(existing, entry)) continue
@@ -322,7 +329,13 @@ export async function PATCH(
         const dbKey = dbKeyByPatchKey[patchKey]
         if (dbKey) {
           dbUpdate[dbKey] = toColumnCompatibleNotesValue(raw[rawKey], next)
-          appendedNoteKeys.push(bodyKey)
+          appendedNotes.push({
+            key: bodyKey,
+            text: entry.text,
+            url: entry.url,
+            at: entry.at,
+            contextStepId: entry.contextStepId,
+          })
         }
       }
     }
@@ -516,37 +529,30 @@ export async function PATCH(
       return NextResponse.json({ error: "Collection not found after update" }, { status: 404 })
     }
 
-    // Fire comment notifications for each step note that was appended (non-blocking)
-    if (appendedNoteKeys.length > 0) {
-      const notifService = new NotificationsService(admin)
-      for (const noteKey of appendedNoteKeys) {
-        const noteInput = body[noteKey as keyof PatchBody] as { from: string; text: string } | undefined
-        // When a step upload submits URL + comment in the same CTA, the main step event
-        // already creates the user-facing notification. Skip duplicate "New comment".
-        const shouldSkipCommentNotification = hasStepUrlInSameRequest(body, noteKey)
-        if (noteInput && !shouldSkipCommentNotification) {
-          notifService
-            .handleCommentAdded(id, noteKey, user.id, noteInput.text.trim())
-            .catch((err) =>
-              console.error("[PATCH /api/collections/[id]] Comment notification error:", err)
-            )
+    // Comment and link notifications run after the response so a slow email send
+    // never blocks the UI, and the work is not dropped when the handler returns.
+    const notesToNotify = appendedNotes.filter((note) => !hasStepUrlInSameRequest(body, note.key))
+    const linkChange = linkMutationNotification
+    if (notesToNotify.length > 0 || linkChange) {
+      const actorId = user.id
+      after(async () => {
+        const notifService = new NotificationsService(admin)
+        try {
+          for (const note of notesToNotify) {
+            await notifService.handleCommentAdded(id, note.key, actorId, note.text, {
+              contextStepId: note.contextStepId,
+              noteUrl: note.url,
+              noteAt: note.at,
+            })
+          }
+          if (linkChange) {
+            await notifService.handleLinkChanged(id, linkChange.stepNoteKey, actorId, linkChange.action)
+          }
+          await notifService.flushPendingDeliveries()
+        } catch (err) {
+          console.error("[PATCH /api/collections/[id]] Notification error:", err)
         }
-      }
-    }
-
-    // Notify participants when a step link is edited or deleted (non-blocking)
-    if (linkMutationNotification) {
-      const notifService = new NotificationsService(admin)
-      notifService
-        .handleLinkChanged(
-          id,
-          linkMutationNotification.stepNoteKey,
-          user.id,
-          linkMutationNotification.action
-        )
-        .catch((err) =>
-          console.error("[PATCH /api/collections/[id]] Link change notification error:", err)
-        )
+      })
     }
 
     return NextResponse.json({ success: true, collection: updated })

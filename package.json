@@ -11,6 +11,8 @@
     "test:chronology": "npx tsx lib/domain/collections/__tests__/chronology-constraints-check.ts",
     "test:structural-change": "npx tsx lib/domain/collections/__tests__/structural-workflow-change-check.ts",
     "test:handprint-lab-notifications": "npx tsx lib/services/notifications/__tests__/handprint-lab-notifications-check.ts",
+    "test:comment-recipients": "npx tsx lib/services/notifications/__tests__/comment-recipients-check.ts",
+    "test:list-filters": "npx tsx lib/domain/collections/__tests__/list-filters-check.ts",
     "clear-cache": "rm -rf .next node_modules/.cache"
   },
   "dependencies": {

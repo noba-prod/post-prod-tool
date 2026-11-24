@@ -3,6 +3,7 @@
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { cn, ensureAbsoluteUrl } from "@/lib/utils"
+import { copyLinkWithToast } from "@/lib/utils/clipboard"
 import { normalizeStepIdFromQuery } from "@/lib/notifications/navigation"
 import { NavBar } from "../nav-bar"
 import { CollectionHeading } from "../collection-heading"
@@ -352,7 +353,7 @@ export interface CollectionTemplateProps {
   /** Called when photographer requests additional photos (missing photos flow). Posts event + note, triggers revert. */
   onRequestAdditionalPhotos?: (notes: string) => void | Promise<void>
   /** Called when user adds a comment via UrlHistory "Add comment" button. Appends to the step's notes column. url links the comment to a specific link block. */
-  onAddStepNote?: (payload: { stepNoteKey: string; from: string; text: string; url?: string }) => void | Promise<void>
+  onAddStepNote?: (payload: { stepNoteKey: string; from: string; text: string; url?: string; contextStepId?: string }) => void | Promise<void>
   /** Called when step owner edits an existing link block. */
   onEditStepLink?: (payload: { stepId: string; oldUrl: string; newUrl: string }) => void | Promise<void>
   /** Called when step owner deletes an existing link block and its comments. */
@@ -1022,6 +1023,7 @@ export function CollectionTemplate({
           title={item.title}
           comments={item.comments}
           onOpenLink={() => window.open(ensureAbsoluteUrl(item.url), "_blank", "noopener,noreferrer")}
+          onCopyLink={() => void copyLinkWithToast(ensureAbsoluteUrl(item.url))}
           onAddComment={onAddStepNote && item.stepId ? () => openAddCommentDialog(item.stepId, item.url) : undefined}
           onEditLink={canManage && onEditStepLink ? () => openEditLinkDialog(item) : undefined}
           onDeleteLink={canManage && onDeleteStepLink ? () => openDeleteLinkDialog(item) : undefined}
@@ -1595,6 +1597,7 @@ export function CollectionTemplate({
                     ? undefined
                     : () => setOpenStepId(step.id)
                 }
+                selected={openStepId === step.id}
                 showExpandButton
                 isFirst={index === 0}
                 isLast={index === visibleSteps.length - 1}
@@ -3132,7 +3135,7 @@ export function CollectionTemplate({
                 if (!text || !addCommentContext || addCommentSubmitting) return
                 setAddCommentSubmitting(true)
                 try {
-                  await onAddStepNote?.({ stepNoteKey: addCommentContext.stepNoteKey, from: getStepNoteFromForCurrentUser(), text, url: addCommentContext.url })
+                  await onAddStepNote?.({ stepNoteKey: addCommentContext.stepNoteKey, from: getStepNoteFromForCurrentUser(), text, url: addCommentContext.url, contextStepId: openStep?.id })
                   setAddCommentDialogOpen(false)
                   setAddCommentNotes("")
                   setAddCommentContext(null)

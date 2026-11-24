@@ -93,6 +93,12 @@ interface TablesProps {
   onCollectionRowClick?: (id: string, status: CollectionStatus) => void
   /** Callback al abrir configuración */
   onSettings?: (id: string) => void
+  /** Collections table: destination URL per row; the name becomes a real link (Cmd/Ctrl + click, new tab). */
+  getCollectionHref?: (id: string, status: CollectionStatus) => string
+  /** Collections table: called before a same-tab navigation from a row (e.g. to persist list scroll). */
+  onCollectionNavigate?: () => void
+  /** Collections table: trailing actions cell (e.g. "More options" menu). Replaces the Settings button. */
+  renderCollectionActions?: (collection: Collection) => React.ReactNode
   /** Callback al cambiar permiso de edición */
   onEditPermissionChange?: (id: string, value: boolean) => void
   /** Callback al editar un usuario (team member) */
@@ -428,12 +434,18 @@ function CollectionsTable({
   data = sampleCollections,
   onSettings,
   onRowClick,
+  getHref,
+  onNavigate,
+  renderActions,
   animateRowsFromIndex = 0,
 }: {
   data?: Collection[]
   onSettings?: (id: string) => void
   /** Callback when row is clicked (id, status). If provided, row becomes clickable. */
   onRowClick?: (id: string, status: CollectionStatus) => void
+  getHref?: (id: string, status: CollectionStatus) => string
+  onNavigate?: () => void
+  renderActions?: (collection: Collection) => React.ReactNode
   animateRowsFromIndex?: number
 }) {
   const [sortColumn, setSortColumn] = React.useState<CollectionSortColumn | null>(null)
@@ -522,21 +534,46 @@ function CollectionsTable({
                 index >= animateRowsFromIndex &&
                   "animate-in fade-in slide-in-from-bottom-1 duration-500 ease-in"
               )}
-              onClick={onRowClick ? () => onRowClick(collection.id, collection.status) : undefined}
+              onClick={
+                onRowClick
+                  ? () => {
+                      onNavigate?.()
+                      onRowClick(collection.id, collection.status)
+                    }
+                  : undefined
+              }
               role={onRowClick ? "button" : undefined}
               tabIndex={onRowClick ? 0 : undefined}
               onKeyDown={
                 onRowClick
                   ? (e) => {
+                      if (e.target !== e.currentTarget) return
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault()
+                        onNavigate?.()
                         onRowClick(collection.id, collection.status)
                       }
                     }
                   : undefined
                 }
             >
-              <TableCell className="font-medium">{collection.name}</TableCell>
+              <TableCell className="font-medium">
+                {getHref ? (
+                  <Link
+                    href={getHref(collection.id, collection.status)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+                      onNavigate?.()
+                    }}
+                    className="hover:underline focus:outline-none focus:underline"
+                  >
+                    {collection.name}
+                  </Link>
+                ) : (
+                  collection.name
+                )}
+              </TableCell>
               <TableCell>
                 <CollectionStatusTag status={collection.status} />
               </TableCell>
@@ -546,17 +583,21 @@ function CollectionsTable({
               <TableCell>{collection.location}</TableCell>
               <TableCell>{collection.participants}</TableCell>
               <TableCell className="text-center">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onSettings?.(collection.id)
-                  }}
-                  className="h-10 w-10"
-                >
-                  <Settings className="size-4" />
-                </Button>
+                {renderActions ? (
+                  renderActions(collection)
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSettings?.(collection.id)
+                    }}
+                    className="h-10 w-10"
+                  >
+                    <Settings className="size-4" />
+                  </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}
@@ -638,6 +679,9 @@ export function Tables({
   onEntityRowClick,
   onCollectionRowClick,
   onSettings,
+  getCollectionHref,
+  onCollectionNavigate,
+  renderCollectionActions,
   onEditPermissionChange,
   onEditUser,
   onEditAdminUser,
@@ -677,6 +721,9 @@ export function Tables({
             data={collectionsData}
             onSettings={onSettings}
             onRowClick={onCollectionRowClick}
+            getHref={getCollectionHref}
+            onNavigate={onCollectionNavigate}
+            renderActions={renderCollectionActions}
             animateRowsFromIndex={animateRowsFromIndex}
           />
         </div>

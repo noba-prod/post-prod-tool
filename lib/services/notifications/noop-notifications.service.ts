@@ -7,6 +7,7 @@
 import type {
   INotificationsService,
   CollectionEventType,
+  CommentNotificationOptions,
   UserNotification,
 } from "./notifications.interface"
 
@@ -72,8 +73,13 @@ export class NoopNotificationsService implements INotificationsService {
     _collectionId: string,
     _stepNoteKey: string,
     _commentUserId: string,
-    _commentText: string
+    _commentText: string,
+    _options?: CommentNotificationOptions
   ): Promise<void> {
+    // No-op
+  }
+
+  async flushPendingDeliveries(): Promise<void> {
     // No-op
   }
 

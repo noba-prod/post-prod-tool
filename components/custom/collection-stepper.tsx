@@ -41,6 +41,8 @@ interface CollectionStepperProps {
   isLast?: boolean
   /** Shows unread activity marker for completed variant. */
   showAttentionDot?: boolean
+  /** User-selected step (detail panel open). Shows the summary ring; the current stage is shown by the indicator. */
+  selected?: boolean
   className?: string
 }
 
@@ -64,6 +66,7 @@ export function CollectionStepper({
   isFirst = false,
   isLast = false,
   showAttentionDot = false,
+  selected = false,
   className,
 }: CollectionStepperProps) {
   const openDisabled = inactive || suppressInteraction
@@ -76,8 +79,8 @@ export function CollectionStepper({
   return (
     <div
       className={cn(
-        "flex items-stretch gap-3 min-[760px]:gap-8",
-        clickable && "cursor-pointer",
+        "flex items-stretch gap-3 min-[760px]:gap-8 rounded-xl outline-none",
+        clickable && "cursor-pointer focus-visible:ring-[3px] focus-visible:ring-ring/50",
         inactive && "opacity-50 pointer-events-none",
         suppressInteraction &&
           !inactive &&
@@ -85,9 +88,23 @@ export function CollectionStepper({
         className
       )}
       onClick={clickable ? () => onStepClick?.() : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.target !== e.currentTarget) return
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                onStepClick?.()
+              }
+            }
+          : undefined
+      }
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
+      aria-pressed={clickable ? selected : undefined}
+      aria-current={uiStatus === "active" ? "step" : undefined}
       data-status={uiStatus}
+      data-selected={selected || undefined}
       data-inactive={inactive || undefined}
     >
       <VerticalProgressIndicator
@@ -109,6 +126,7 @@ export function CollectionStepper({
               deadlineDate={deadlineDate}
               deadlineTime={deadlineTime}
               showAttentionDot={showAttentionDot}
+              selected={selected && !openDisabled}
               className="flex-1 min-w-0"
             />
           </div>

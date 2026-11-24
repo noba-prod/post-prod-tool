@@ -28,6 +28,7 @@ import { parsePhoneNumber, mapEntityToFormData, mapFormToEntityDraft, mapFormToU
 import type { EntityBasicInformationFormData } from "@/lib/utils/form-mappers"
 import { entityRequiresLocation, isStandardEntityType, type StandardEntityType } from "@/lib/types"
 import { updatePlayerFromDraft } from "@/app/actions/entity-creation"
+import { COLLECTIONS_LIST_PATH, getCollectionsListHref } from "@/lib/ui/collections-list-navigation"
 
 const CREATE_FLOW_ORIGIN_KEY = "create-flow-origin"
 
@@ -189,8 +190,18 @@ function CreationTemplateContent({
   const userContext = useUserContext()
   const navConfig = useNavigationConfig(userContext.entity?.type ?? null)
 
+  // Read after mount (sessionStorage) so server and first client render agree.
+  const [collectionsListHref, setCollectionsListHref] = React.useState(COLLECTIONS_LIST_PATH)
+  React.useEffect(() => {
+    setCollectionsListHref(getCollectionsListHref())
+  }, [])
+
   // First breadcrumb: "where user came from" (point of origin) when ?from= is present
   const effectiveBreadcrumbs = React.useMemo(() => {
+    const withListFilters = (items: typeof breadcrumbs) =>
+      items.map((item) =>
+        item.href === COLLECTIONS_LIST_PATH ? { ...item, href: collectionsListHref } : item
+      )
     const fromParam = searchParams.get("from")
     if (fromParam && breadcrumbs.length > 0) {
       try {
@@ -199,19 +210,19 @@ function CreationTemplateContent({
         if (decoded.startsWith("/collections/create/")) {
           const origin = getCollectionCreateOrigin(decoded)
           if (origin) {
-            return [{ label: origin.label, href: origin.href }, ...breadcrumbs.slice(1)]
+            return withListFilters([{ label: origin.label, href: origin.href }, ...breadcrumbs.slice(1)])
           }
         }
         const section = getBreadcrumbFromSection(decoded)
         if (section) {
-          return [{ label: section.label, href: section.href }, ...breadcrumbs.slice(1)]
+          return withListFilters([{ label: section.label, href: section.href }, ...breadcrumbs.slice(1)])
         }
       } catch {
         // ignore invalid from param
       }
     }
-    return breadcrumbs
-  }, [searchParams, breadcrumbs])
+    return withListFilters(breadcrumbs)
+  }, [searchParams, breadcrumbs, collectionsListHref])
 
   // State for profile edit modal
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false)

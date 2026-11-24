@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { MainTemplate } from "@/components/custom/templates/main-template"
 import { Layout, LayoutSection } from "@/components/custom/layout"
 import { FilterBar, COLLECTION_STATUSES } from "@/components/custom/filter-bar"
@@ -16,6 +16,13 @@ import { useAuthAdapter } from "@/lib/auth"
 import type { Session } from "@/lib/auth/adapter"
 import { useUserContext } from "@/lib/contexts/user-context"
 import type { CollectionCardProps } from "@/components/custom/collection-card"
+import { CollectionActionsMenu } from "@/components/custom/collection-actions-menu"
+import {
+  consumeCollectionsListScroll,
+  rememberCollectionsListQuery,
+  saveCollectionsListScroll,
+  type CollectionsListScrollSnapshot,
+} from "@/lib/ui/collections-list-navigation"
 import type { Collection as TableCollection } from "@/components/custom/tables"
 import { createCollectionsService } from "@/lib/services"
 import {
@@ -23,6 +30,11 @@ import {
   VIEW_STEP_IDS,
   COLLECTION_TYPE_FILTER_OPTIONS,
   deriveActiveStepHealth,
+  applyCollectionListFilterChange,
+  parseCollectionListSearchParams,
+  serializeCollectionListState,
+  type CollectionListFilters,
+  type CollectionListState,
   type CollectionShootingType,
   type CollectionStatus,
 } from "@/lib/domain/collections"
@@ -85,13 +97,14 @@ async function fetchVisiblePhotographerUserNames(): Promise<Record<string, strin
 // FILTER TYPES
 // ============================================================================
 
-interface Filters {
-  client: string | null
-  status: string | null
-  jobReference: string | null
-  photographer: string | null
-  collectionType: CollectionShootingType | null
-  sortOrder: "asc" | "desc"
+type Filters = CollectionListFilters
+
+/** Upper bound for the first page when restoring a list the user had scrolled through. */
+const MAX_RESTORED_PAGE_SIZE = 100
+
+/** Draft → setup flow, published → view flow. */
+function getCollectionHref(id: string, status: string): string {
+  return status === "draft" ? `/collections/create/${id}` : `/collections/${id}`
 }
 
 type PhotographerFilterSelection =
@@ -119,10 +132,11 @@ function parsePhotographerFilter(value: string | null): PhotographerFilterSelect
 function buildListPageOptions(
   filters: Filters,
   offset: number,
-  excludeDrafts: boolean
+  excludeDrafts: boolean,
+  limit: number = LAZY_LOAD_PAGE_SIZE
 ): ListCollectionsPageOptions {
   const options: ListCollectionsPageOptions = {
-    limit: LAZY_LOAD_PAGE_SIZE,
+    limit,
     offset,
     sortOrder: filters.sortOrder,
     excludeDrafts,
@@ -242,9 +256,19 @@ function collectionDates(c: Collection): { start: string; end: string } {
 // ============================================================================
 
 export default function CollectionsPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <CollectionsPageContent />
+    </React.Suspense>
+  )
+}
+
+function CollectionsPageContent() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const authAdapter = useAuthAdapter()
-  const { entity, isNobaProducerUser, isNobaUser } = useUserContext()
+  const { entity, isNobaProducerUser, isNobaUser, isNobaInternalAdmin } = useUserContext()
   const isClientUser = entity?.type === "client"
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
@@ -260,18 +284,29 @@ export default function CollectionsPage() {
   const [photographerOptions, setPhotographerOptions] = useState<{ id: string; name: string }[]>([])
   const [photographerNamesByUserId, setPhotographerNamesByUserId] = useState<Record<string, string>>({})
 
-  // View state (Gallery or List)
-  const [activeView, setActiveView] = useState<string>("Gallery")
+  // Filters, sort and view live in the URL so back navigation and shared links restore the same list.
+  const listQuery = serializeCollectionListState(parseCollectionListSearchParams(searchParams))
+  const { filters, view: activeView } = React.useMemo(
+    () => parseCollectionListSearchParams(new URLSearchParams(listQuery)),
+    [listQuery]
+  )
 
-  // Filters state
-  const [filters, setFilters] = useState<Filters>({
-    client: null,
-    status: null,
-    jobReference: null,
-    photographer: null,
-    collectionType: null,
-    sortOrder: "desc",
-  })
+  React.useEffect(() => {
+    rememberCollectionsListQuery(listQuery)
+  }, [listQuery])
+
+  const updateListState = React.useCallback(
+    (next: CollectionListState) => {
+      const query = serializeCollectionListState(next)
+      rememberCollectionsListQuery(query)
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    },
+    [router, pathname]
+  )
+
+  /** `undefined` until the first reset fetch decides whether there is a scroll snapshot to restore. */
+  const scrollRestoreRef = React.useRef<CollectionsListScrollSnapshot | null | undefined>(undefined)
+  const [pendingScrollY, setPendingScrollY] = useState<number | null>(null)
 
   // Auth check
   useEffect(() => {
@@ -292,7 +327,7 @@ export default function CollectionsPage() {
   }, [collections])
 
   const buildPageOptions = React.useCallback(
-    (offset: number) => buildListPageOptions(filters, offset, !isNobaUser),
+    (offset: number, limit?: number) => buildListPageOptions(filters, offset, !isNobaUser, limit),
     [filters, isNobaUser]
   )
 
@@ -311,14 +346,27 @@ export default function CollectionsPage() {
 
       const offset = isReset ? 0 : collectionsRef.current.length
 
+      let limit = LAZY_LOAD_PAGE_SIZE
+      if (isReset && scrollRestoreRef.current === undefined) {
+        const snapshot = consumeCollectionsListScroll(listQuery)
+        scrollRestoreRef.current = snapshot
+        if (snapshot) {
+          limit = Math.min(Math.max(snapshot.loadedCount, LAZY_LOAD_PAGE_SIZE), MAX_RESTORED_PAGE_SIZE)
+        }
+      }
+
       try {
         const service = createCollectionsService()
-        const { items, hasMore } = await service.listCollectionsPage(buildPageOptions(offset))
+        const { items, hasMore } = await service.listCollectionsPage(buildPageOptions(offset, limit))
         if (generation !== fetchGenerationRef.current) return
 
         if (isReset) {
           setCollections(items)
           setGridAnimateFromIndex(0)
+          if (scrollRestoreRef.current) {
+            setPendingScrollY(scrollRestoreRef.current.scrollY)
+          }
+          scrollRestoreRef.current = null
         } else {
           setGridAnimateFromIndex(collectionsRef.current.length)
           setCollections((prev) => {
@@ -335,8 +383,26 @@ export default function CollectionsPage() {
         }
       }
     },
-    [session, buildPageOptions]
+    [session, buildPageOptions, listQuery]
   )
+
+  React.useEffect(() => {
+    if (pendingScrollY === null || loadingCollections) return
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: pendingScrollY })
+      setPendingScrollY(null)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [pendingScrollY, loadingCollections])
+
+  /** Persist where the user was so returning from a collection restores the scroll position. */
+  const handleListNavigate = React.useCallback(() => {
+    saveCollectionsListScroll({
+      query: listQuery,
+      scrollY: window.scrollY,
+      loadedCount: collectionsRef.current.length,
+    })
+  }, [listQuery])
 
   // Fetch first page when session or filters change
   useEffect(() => {
@@ -449,44 +515,22 @@ export default function CollectionsPage() {
   }, [catalogRows, clientNamesByEntityId])
 
   // Handle filter changes (cascade: client → status → job reference → photographer)
-  const handleFilterChange = React.useCallback((filterId: string, value: string) => {
-    const v = value === "" ? null : value
-    setFilters((prev) => {
-      if (filterId === "client") {
-        return {
-          ...prev,
-          client: v,
-          status: null,
-          jobReference: null,
-          photographer: null,
-          collectionType: null,
-        }
-      }
-      if (filterId === "status") {
-        return {
-          ...prev,
-          status: v,
-          jobReference: null,
-          photographer: null,
-          collectionType: null,
-        }
-      }
-      if (filterId === "jobReference") {
-        return { ...prev, jobReference: v, photographer: null, collectionType: null }
-      }
-      if (filterId === "photographer") {
-        return { ...prev, photographer: v }
-      }
-      if (filterId === "collectionType") {
-        return { ...prev, collectionType: v as CollectionShootingType | null }
-      }
-      return prev
-    })
-  }, [])
+  const handleFilterChange = React.useCallback(
+    (filterId: string, value: string) => {
+      updateListState({
+        filters: applyCollectionListFilterChange(filters, filterId, value),
+        view: activeView,
+      })
+    },
+    [filters, activeView, updateListState]
+  )
 
-  // Handle sort changes
   const handleSortChange = (order: "asc" | "desc") => {
-    setFilters(prev => ({ ...prev, sortOrder: order }))
+    updateListState({ filters: { ...filters, sortOrder: order }, view: activeView })
+  }
+
+  const handleViewChange = (view: string) => {
+    updateListState({ filters, view: view === "List" ? "List" : "Gallery" })
   }
 
   const filteredCollections = React.useMemo(() => {
@@ -499,16 +543,11 @@ export default function CollectionsPage() {
     return result
   }, [collections, filters.sortOrder])
 
-  /** Navigate to collection: draft → setup flow, published → view flow */
-  const handleCollectionClick = React.useCallback(
-    (id: string, status: Collection["status"]) => {
-      if (status === "draft") {
-        router.push(`/collections/create/${id}`)
-      } else {
-        router.push(`/collections/${id}`)
-      }
-    },
-    [router]
+  /** "Edit collection" is reserved to noba* Admins; drafts already open the setup flow. */
+  const getEditHref = React.useCallback(
+    (id: string, status: string) =>
+      isNobaInternalAdmin && status !== "draft" ? `/collections/create/${id}` : undefined,
+    [isNobaInternalAdmin]
   )
 
   const gridItems: CollectionCardProps[] = React.useMemo(() => {
@@ -553,10 +592,18 @@ export default function CollectionsPage() {
           progress: c.completionPercentage ?? 0,
           stepHealthStatus: getActiveStepHealth(c),
         }),
-        onClick: () => handleCollectionClick(c.id, c.status),
+        href: getCollectionHref(c.id, c.status),
+        onNavigate: handleListNavigate,
+        actions: (
+          <CollectionActionsMenu
+            href={getCollectionHref(c.id, c.status)}
+            editHref={getEditHref(c.id, c.status)}
+            collectionName={c.config.name || undefined}
+          />
+        ),
       }
     })
-  }, [filteredCollections, clientNamesByEntityId, photographerOptions, photographerNamesByUserId, handleCollectionClick])
+  }, [filteredCollections, clientNamesByEntityId, photographerOptions, photographerNamesByUserId, handleListNavigate, getEditHref])
 
   const tableItems: TableCollection[] = React.useMemo(() => {
     return filteredCollections.map((c) => {
@@ -634,7 +681,7 @@ export default function CollectionsPage() {
           <FilterBar
             variant="collections"
             activeView={activeView}
-            onViewChange={setActiveView}
+            onViewChange={handleViewChange}
             onFilterChange={handleFilterChange}
             onSortChange={handleSortChange}
             showAction={false}
@@ -674,12 +721,17 @@ export default function CollectionsPage() {
                     variant="collections"
                     collectionsData={tableItems}
                     animateRowsFromIndex={gridAnimateFromIndex}
-                    onCollectionRowClick={(id, status) => {
-                      const isDraft = status === "draft"
-                      if (isDraft) router.push(`/collections/create/${id}`)
-                      else router.push(`/collections/${id}`)
-                    }}
-                    onSettings={(id) => console.log("Settings for collection:", id)}
+                    onCollectionRowClick={(id, status) => router.push(getCollectionHref(id, status))}
+                    getCollectionHref={getCollectionHref}
+                    onCollectionNavigate={handleListNavigate}
+                    renderCollectionActions={(row) => (
+                      <CollectionActionsMenu
+                        variant="table"
+                        href={getCollectionHref(row.id, row.status)}
+                        editHref={getEditHref(row.id, row.status)}
+                        collectionName={row.name !== "—" ? row.name : undefined}
+                      />
+                    )}
                   />
                   <LazyLoadSentinel
                     sentinelRef={infiniteScrollRef}

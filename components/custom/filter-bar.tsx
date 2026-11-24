@@ -439,6 +439,81 @@ function FilterButton({
   )
 }
 
+/**
+ * Compact "Filter by" control for viewports <940px.
+ * Shared by collections / members / entities: when any filter is active the button
+ * inverts (primary = black bg / white text), shows a count badge, and a clear (X) action.
+ */
+function MobileFilterByButton({
+  activeCount,
+  onOpen,
+  onClear,
+}: {
+  activeCount: number
+  onOpen: () => void
+  onClear: () => void
+}) {
+  const isActive = activeCount > 0
+  return (
+    <div
+      className={cn(
+        "flex h-10 items-stretch overflow-hidden rounded-[10px]",
+        isActive
+          ? "bg-primary text-primary-foreground"
+          : "bg-secondary text-secondary-foreground"
+      )}
+    >
+      <Button
+        type="button"
+        variant={isActive ? "default" : "secondary"}
+        onClick={onOpen}
+        aria-pressed={isActive}
+        aria-label={
+          isActive
+            ? `Filter by, ${activeCount} active filter${activeCount === 1 ? "" : "s"}`
+            : "Filter by"
+        }
+        className={cn(
+          "h-10 gap-2 rounded-none border-0 px-4 shadow-none",
+          isActive
+            ? "bg-primary text-primary-foreground hover:bg-primary/90 aria-expanded:bg-primary"
+            : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          isActive && "pr-2"
+        )}
+      >
+        <Settings2 className="size-4 shrink-0" />
+        <span>Filter by</span>
+        {isActive && (
+          <span
+            aria-hidden="true"
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-foreground text-[11px] font-semibold leading-none text-primary"
+          >
+            {activeCount > 99 ? "99+" : activeCount}
+          </span>
+        )}
+      </Button>
+      {isActive && (
+        <button
+          type="button"
+          aria-label="Clear all filters"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onClear()
+          }}
+          className={cn(
+            "flex h-full w-10 shrink-0 items-center justify-center border-l border-primary-foreground/20",
+            "text-primary-foreground transition-colors hover:bg-primary/80",
+            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          )}
+        >
+          <X className="size-4" />
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function FilterBar({
   variant = "default",
   onSearchChange,
@@ -641,12 +716,9 @@ export function FilterBar({
         setCollectionTypeInternal(null)
         setSortOrderInternal("desc")
       }
-      onFilterChange?.("client", "")
-      onFilterChange?.("status", "")
-      onFilterChange?.("jobReference", "")
-      onFilterChange?.("photographer", "")
-      onFilterChange?.("collectionType", "")
-      onSortChange?.("desc")
+      // Single atomic update. Do not also call onSortChange — that spreads the
+      // pre-clear filters snapshot and puts the selection right back in the URL.
+      onFilterChange?.("clearAll", "")
       setFilterModalOpen(false)
       return
     }
@@ -657,13 +729,8 @@ export function FilterBar({
     setSelectedRole(null)
     setSelectedType(null)
     setSortOrderInternal("desc")
-    onFilterChange?.("client", "")
-    onFilterChange?.("status", "")
-    onFilterChange?.("jobReference", "")
-    onFilterChange?.("photographer", "")
     onFilterChange?.("role", "")
     onFilterChange?.("type", "")
-    onSortChange?.("desc")
     setFilterModalOpen(false)
   }
 
@@ -691,6 +758,32 @@ export function FilterBar({
       ? collectionTypeOptionsResolved.find((option) => option.value === selectedCollectionType)
           ?.label ?? null
       : null
+
+  /** Dimensions with a concrete selection. Sort is always set, so it does not count. */
+  const activeFilterCount = React.useMemo(() => {
+    if (variant === "collections") {
+      return [
+        !hideClientFilter && selectedClient,
+        selectedStatus,
+        selectedJobReference,
+        selectedPhotographer,
+        selectedCollectionType,
+      ].filter(Boolean).length
+    }
+    if (variant === "members") return selectedRole ? 1 : 0
+    if (variant === "entities") return selectedType ? 1 : 0
+    return 0
+  }, [
+    variant,
+    hideClientFilter,
+    selectedClient,
+    selectedStatus,
+    selectedJobReference,
+    selectedPhotographer,
+    selectedCollectionType,
+    selectedRole,
+    selectedType,
+  ])
 
   const getRoleLabel = () => {
     if (selectedRole) {
@@ -1262,17 +1355,14 @@ export function FilterBar({
             {!filterModalOpen && renderFilters()}
           </div>
 
-          {/* Mobile: Filter by button (secondary variant, 10px rounded) - only when filters exist */}
+          {/* Mobile / tablet: Filter by — active state (count + clear) is shared across FilterBar variants */}
           {(variant === "collections" || variant === "members" || variant === "entities") && (
             <div className="flex min-[940px]:hidden">
-              <Button
-                variant="secondary"
-                onClick={() => setFilterModalOpen(true)}
-                className="h-10 px-4 rounded-[10px] gap-2"
-              >
-                <Settings2 className="size-4" />
-                Filter by
-              </Button>
+              <MobileFilterByButton
+                activeCount={activeFilterCount}
+                onOpen={() => setFilterModalOpen(true)}
+                onClear={handleClearAll}
+              />
             </div>
           )}
         </div>
@@ -1325,7 +1415,7 @@ export function FilterBar({
         subtitle="Apply filters to refine your results"
         showSubtitle={false}
         primaryLabel="See results"
-        secondaryLabel="Clean all"
+        secondaryLabel="Clear all"
         showPrimary={true}
         showSecondary={true}
         onPrimaryClick={handleFilterModalSave}
