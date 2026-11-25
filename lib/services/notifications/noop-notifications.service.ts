@@ -30,8 +30,27 @@ export class NoopNotificationsService implements INotificationsService {
     // No-op
   }
 
-  async processScheduledNotifications(): Promise<{ processed: number; errors: number }> {
-    return { processed: 0, errors: 0 }
+  async processScheduledNotifications(_options?: {
+    timeBudgetMs?: number
+    startedAt?: number
+    maxScheduled?: number
+    maxDeliveries?: number
+  }): Promise<{
+    processed: number
+    errors: number
+    scheduledProcessed: number
+    deliveriesProcessed: number
+    remainingScheduled: number
+    truncated: boolean
+  }> {
+    return {
+      processed: 0,
+      errors: 0,
+      scheduledProcessed: 0,
+      deliveriesProcessed: 0,
+      remainingScheduled: 0,
+      truncated: false,
+    }
   }
 
   async scheduleTimeBasedNotifications(_collectionId: string): Promise<void> {
@@ -61,8 +80,12 @@ export class NoopNotificationsService implements INotificationsService {
     return []
   }
 
-  async detectAndFireMissedDeadlines(): Promise<{ fired: number }> {
-    return { fired: 0 }
+  async detectAndFireMissedDeadlines(_options?: {
+    timeBudgetMs?: number
+    startedAt?: number
+    maxFires?: number
+  }): Promise<{ fired: number; truncated: boolean }> {
+    return { fired: 0, truncated: false }
   }
 
   async rescheduleForUpdatedCollections(): Promise<{ rescheduled: number }> {

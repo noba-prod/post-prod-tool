@@ -440,6 +440,29 @@ function isAdditionalMaterialsTemplateCode(templateCode: string): boolean {
   return templateCode.endsWith("_shared_additional_materials")
 }
 
+/** Keep each cron tick under cron-job.org's ~30s timeout (target <15s). */
+const CRON_DEFAULT_TIME_BUDGET_MS = 12_000
+const CRON_SCHEDULED_BATCH_LIMIT = 12
+const CRON_DELIVERY_BATCH_LIMIT = 15
+const CRON_MISSED_DEADLINE_FIRE_LIMIT = 5
+const CRON_LOCK_KEY = "notifications_cron"
+const CRON_LOCK_TTL_MS = 90_000
+
+type CronCollectionPreload = {
+  status: string
+  substatus: string | null
+  low_res_to_high_res_digital: boolean | null
+  low_res_to_high_res_hand_print: boolean | null
+  photographer_request_edition: boolean | null
+}
+
+type CronProcessOptions = {
+  timeBudgetMs?: number
+  startedAt?: number
+  maxScheduled?: number
+  maxDeliveries?: number
+}
+
 export class NotificationsService implements INotificationsService {
   constructor(private readonly supabase: SupabaseClient<Database>) {}
 
@@ -454,6 +477,70 @@ export class NotificationsService implements INotificationsService {
       code === "42703" &&
       /scheduled_notification_tracking\.(is_processing|processing_started_at|processing_by)/i.test(message)
     )
+  }
+
+  private static isTimeBudgetExceeded(startedAt: number, timeBudgetMs: number): boolean {
+    return Date.now() - startedAt >= timeBudgetMs
+  }
+
+  /**
+   * Exclusive lock for the notifications cron. Stale locks (TTL expired) can be stolen.
+   * Returns false when another healthy run still holds the lock.
+   */
+  async tryAcquireCronLock(runId: string, ttlMs = CRON_LOCK_TTL_MS): Promise<boolean> {
+    const now = new Date()
+    const nowIso = now.toISOString()
+    const expiresIso = new Date(now.getTime() + ttlMs).toISOString()
+    const payload = {
+      locked_by: runId,
+      locked_at: nowIso,
+      expires_at: expiresIso,
+    }
+
+    const freeClaim = await this.supabase
+      .from("cron_locks" as never)
+      .update(payload as never)
+      .eq("lock_key" as never, CRON_LOCK_KEY as never)
+      .is("locked_by" as never, null)
+      .select("lock_key" as never)
+      .limit(1)
+
+    if (!freeClaim.error && ((freeClaim.data as unknown[] | null) ?? []).length > 0) {
+      return true
+    }
+
+    const staleClaim = await this.supabase
+      .from("cron_locks" as never)
+      .update(payload as never)
+      .eq("lock_key" as never, CRON_LOCK_KEY as never)
+      .lt("expires_at" as never, nowIso as never)
+      .select("lock_key" as never)
+      .limit(1)
+
+    if (staleClaim.error) {
+      console.error("[NotificationsService] Failed to acquire cron lock:", staleClaim.error)
+      // Fail open only if the lock table is missing in an environment that has not migrated yet.
+      if ((staleClaim.error as { code?: string }).code === "42P01") return true
+      return false
+    }
+
+    return ((staleClaim.data as unknown[] | null) ?? []).length > 0
+  }
+
+  async releaseCronLock(runId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from("cron_locks" as never)
+      .update({
+        locked_by: null,
+        locked_at: null,
+        expires_at: null,
+      } as never)
+      .eq("lock_key" as never, CRON_LOCK_KEY as never)
+      .eq("locked_by" as never, runId as never)
+
+    if (error && (error as { code?: string }).code !== "42P01") {
+      console.error("[NotificationsService] Failed to release cron lock:", error)
+    }
   }
 
   private async markScheduledTrackingAsSent(id: string, nowIso: string): Promise<void> {
@@ -779,36 +866,104 @@ export class NotificationsService implements INotificationsService {
   }
 
   /**
-   * Process scheduled notifications (called by cron)
+   * Process a bounded batch of scheduled notifications + pending deliveries.
+   * Unprocessed due/pending rows remain for subsequent cron ticks.
    */
-  async processScheduledNotifications(): Promise<{ processed: number; errors: number }> {
+  async processScheduledNotifications(options: CronProcessOptions = {}): Promise<{
+    processed: number
+    errors: number
+    scheduledProcessed: number
+    deliveriesProcessed: number
+    remainingScheduled: number
+    truncated: boolean
+  }> {
+    const startedAt = options.startedAt ?? Date.now()
+    const timeBudgetMs = options.timeBudgetMs ?? CRON_DEFAULT_TIME_BUDGET_MS
+    const maxScheduled = options.maxScheduled ?? CRON_SCHEDULED_BATCH_LIMIT
+    const maxDeliveries = options.maxDeliveries ?? CRON_DELIVERY_BATCH_LIMIT
     const now = new Date().toISOString()
     const runId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const staleProcessingIso = new Date(Date.now() - 15 * 60_000).toISOString()
-    let processed = 0
+    let scheduledProcessed = 0
     let errors = 0
+    let truncated = false
 
-    // 1. Process pending scheduled tracking entries
     const { data: pendingScheduled, error: scheduledError } = await this.supabase
       .from("scheduled_notification_tracking")
       .select("*, notification_templates(*)")
       .eq("is_sent", false)
       .lte("scheduled_for", now)
-      .limit(100)
+      .order("scheduled_for", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(maxScheduled)
 
     if (scheduledError) {
       console.error("[NotificationsService] Failed to fetch pending scheduled:", scheduledError)
-      return { processed: 0, errors: 1 }
+      return {
+        processed: 0,
+        errors: 1,
+        scheduledProcessed: 0,
+        deliveriesProcessed: 0,
+        remainingScheduled: 0,
+        truncated: false,
+      }
     }
 
     const scheduledList = (pendingScheduled ?? []) as ScheduledWithTemplate[]
+
+    // Prefetch collection fields + events for the whole batch (avoids N+1).
+    const collectionIds = [...new Set(scheduledList.map((s) => s.collection_id))]
+    const collectionMap = new Map<string, CronCollectionPreload>()
+    const eventsByCollection = new Map<string, Set<string>>()
+    const contextCache = new Map<string, Awaited<ReturnType<typeof getCollectionContext>>>()
+
+    if (collectionIds.length > 0) {
+      const { data: cols } = await this.supabase
+        .from("collections")
+        .select(
+          "id, status, substatus, low_res_to_high_res_digital, low_res_to_high_res_hand_print, photographer_request_edition"
+        )
+        .in("id", collectionIds)
+      for (const row of (cols ?? []) as Array<CronCollectionPreload & { id: string }>) {
+        collectionMap.set(row.id, row)
+      }
+
+      const { data: eventRows } = await this.supabase
+        .from("collection_events")
+        .select("collection_id, event_type")
+        .in("collection_id", collectionIds)
+      for (const row of (eventRows ?? []) as Array<{ collection_id: string; event_type: string }>) {
+        let set = eventsByCollection.get(row.collection_id)
+        if (!set) {
+          set = new Set()
+          eventsByCollection.set(row.collection_id, set)
+        }
+        set.add(row.event_type)
+      }
+    }
+
+    // #region agent log
+    fetch('http://127.0.0.1:7416/ingest/ffb25ca4-9c3e-4858-8478-191a76929d4c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'639fba'},body:JSON.stringify({sessionId:'639fba',runId,hypothesisId:'A',location:'notifications.service.ts:processScheduledNotifications',message:'pending scheduled fetched',data:{runId,pendingCount:scheduledList.length,maxScheduled,timeBudgetMs,collectionCount:collectionIds.length,sample:(scheduledList.slice(0,8).map(s=>({id:s.id,collectionId:s.collection_id,code:s.notification_templates?.code,scheduledFor:s.scheduled_for,isProcessing:s.is_processing})))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
+    let claimFail = 0
+    let claimEmpty = 0
+    let claimOk = 0
+    let skippedCondition = 0
+    let skippedMilestone = 0
+
     for (const scheduled of scheduledList) {
+      if (NotificationsService.isTimeBudgetExceeded(startedAt, timeBudgetMs)) {
+        truncated = true
+        break
+      }
+
       try {
-        // Claim row to prevent concurrent cron workers from processing it twice.
-        const claimResult = await this.supabase
+        // Two-step claim (same pattern as notification deliveries) to avoid PostgREST OR issues.
+        const claimIdle = await this.supabase
           .from("scheduled_notification_tracking")
           .update({
             is_processing: true,
@@ -817,69 +972,109 @@ export class NotificationsService implements INotificationsService {
           } as never)
           .eq("id", scheduled.id)
           .eq("is_sent", false)
-          .or(`is_processing.eq.false,processing_started_at.lt."${staleProcessingIso}"`)
+          .eq("is_processing", false)
           .select("id")
           .limit(1)
-        if (claimResult.error && !NotificationsService.isMissingScheduledProcessingColumnsError(claimResult.error)) {
+
+        if (claimIdle.error && !NotificationsService.isMissingScheduledProcessingColumnsError(claimIdle.error)) {
+          claimFail++
+          // #region agent log
+          fetch('http://127.0.0.1:7416/ingest/ffb25ca4-9c3e-4858-8478-191a76929d4c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'639fba'},body:JSON.stringify({sessionId:'639fba',runId,hypothesisId:'B',location:'notifications.service.ts:claim',message:'claim failed',data:{scheduledId:scheduled.id,collectionId:scheduled.collection_id,code:scheduled.notification_templates?.code,claimError:claimIdle.error},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           console.error("[NotificationsService] Failed to claim scheduled tracking row:", {
             scheduledId: scheduled.id,
             runId,
-            claimError: claimResult.error,
+            claimError: claimIdle.error,
           })
           continue
         }
 
-        if (claimResult.error && NotificationsService.isMissingScheduledProcessingColumnsError(claimResult.error)) {
-          console.warn("[NotificationsService] Claim lock columns missing; falling back to no-lock scheduled processing.", {
-            scheduledId: scheduled.id,
-            runId,
-          })
+        let claimed =
+          claimIdle.error && NotificationsService.isMissingScheduledProcessingColumnsError(claimIdle.error)
+            ? [{ id: scheduled.id }]
+            : ((claimIdle.data as { id: string }[] | null) ?? [])
+
+        if (claimed.length === 0 && !claimIdle.error) {
+          const claimStale = await this.supabase
+            .from("scheduled_notification_tracking")
+            .update({
+              is_processing: true,
+              processing_started_at: now,
+              processing_by: runId,
+            } as never)
+            .eq("id", scheduled.id)
+            .eq("is_sent", false)
+            .eq("is_processing", true)
+            .lt("processing_started_at", staleProcessingIso)
+            .select("id")
+            .limit(1)
+          claimed = ((claimStale.data as { id: string }[] | null) ?? [])
         }
 
-        const claimed = claimResult.error
-          ? [{ id: scheduled.id }]
-          : ((claimResult.data as { id: string }[] | null) ?? [])
         if (claimed.length === 0) {
+          claimEmpty++
           continue
         }
+        claimOk++
 
         const template = scheduled.notification_templates
-        if (!template) continue
+        if (!template) {
+          await this.markScheduledTrackingAsSent(scheduled.id, now)
+          continue
+        }
 
-        // Fetch collection status once per scheduled entry
-        const { data: colStatusData } = await this.supabase
-          .from("collections")
-          .select("status, substatus")
-          .eq("id", scheduled.collection_id)
-          .single()
-        const collectionStatus = colStatusData as { status: string; substatus: string | null } | null
+        const preloaded = collectionMap.get(scheduled.collection_id) ?? null
+        const collectionStatus = preloaded
+          ? { status: preloaded.status, substatus: preloaded.substatus }
+          : null
+        const eventTypes = eventsByCollection.get(scheduled.collection_id) ?? new Set<string>()
 
-        // Check if condition is met (for 'if' triggers)
         if (template.trigger_condition) {
           const conditionMet = await this.checkCondition(
             scheduled.collection_id,
-            template.trigger_condition
+            template.trigger_condition,
+            {
+              eventTypes: [...eventTypes],
+              digital: !!preloaded?.low_res_to_high_res_digital,
+              handprint: !!preloaded?.low_res_to_high_res_hand_print,
+              edition: !!preloaded?.photographer_request_edition,
+              hasPreload: !!preloaded,
+            }
           )
           if (!conditionMet) {
-            // Mark as sent (skipped) to avoid re-checking
+            skippedCondition++
+            // #region agent log
+            fetch('http://127.0.0.1:7416/ingest/ffb25ca4-9c3e-4858-8478-191a76929d4c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'639fba'},body:JSON.stringify({sessionId:'639fba',runId,hypothesisId:'C',location:'notifications.service.ts:conditionSkip',message:'scheduled skipped by trigger_condition',data:{scheduledId:scheduled.id,collectionId:scheduled.collection_id,code:template.code,condition:template.trigger_condition},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             await this.markScheduledTrackingAsSent(scheduled.id, now)
             continue
           }
         }
 
-        // Skip if milestone already completed (e.g. client confirmed before deadline)
         const milestoneCompleted = await this.isMilestoneAlreadyCompleted(
           scheduled.collection_id,
           template,
-          collectionStatus
+          collectionStatus,
+          eventTypes
         )
         if (milestoneCompleted) {
+          skippedMilestone++
+          // #region agent log
+          fetch('http://127.0.0.1:7416/ingest/ffb25ca4-9c3e-4858-8478-191a76929d4c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'639fba'},body:JSON.stringify({sessionId:'639fba',runId,hypothesisId:'D',location:'notifications.service.ts:milestoneSkip',message:'scheduled skipped by milestone completed',data:{scheduledId:scheduled.id,collectionId:scheduled.collection_id,code:template.code,triggerEvent:template.trigger_event,substatus:collectionStatus?.substatus},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           await this.markScheduledTrackingAsSent(scheduled.id, now)
           continue
         }
 
-        const context = await getCollectionContext(this.supabase, scheduled.collection_id)
-        if (!context) continue
+        let context = contextCache.get(scheduled.collection_id)
+        if (context === undefined) {
+          context = await getCollectionContext(this.supabase, scheduled.collection_id)
+          contextCache.set(scheduled.collection_id, context)
+        }
+        if (!context) {
+          await this.clearScheduledTrackingProcessing(scheduled.id)
+          continue
+        }
 
         const scheduledMetadata: Record<string, unknown> = {}
         if (scheduled.deadline_value) {
@@ -902,10 +1097,8 @@ export class NotificationsService implements INotificationsService {
           `scheduled:${scheduled.id}`
         )
 
-        // Mark as sent
         await this.markScheduledTrackingAsSent(scheduled.id, now)
-
-        processed++
+        scheduledProcessed++
       } catch (err) {
         console.error("[NotificationsService] Error processing scheduled:", err)
         try {
@@ -920,9 +1113,36 @@ export class NotificationsService implements INotificationsService {
       }
     }
 
-    // 2. Process pending notification deliveries (emails, etc.)
-    const pendingResult = await this.processPendingNotificationDeliveries(runId, now, staleProcessingIso)
-    return { processed: processed + pendingResult.processed, errors: errors + pendingResult.errors }
+    const pendingResult = await this.processPendingNotificationDeliveries(
+      runId,
+      now,
+      staleProcessingIso,
+      {
+        startedAt,
+        timeBudgetMs,
+        maxDeliveries,
+      }
+    )
+    if (pendingResult.truncated) truncated = true
+
+    const { count: remainingScheduled } = await this.supabase
+      .from("scheduled_notification_tracking")
+      .select("*", { count: "exact", head: true })
+      .eq("is_sent", false)
+      .lte("scheduled_for", now)
+
+    // #region agent log
+    fetch('http://127.0.0.1:7416/ingest/ffb25ca4-9c3e-4858-8478-191a76929d4c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'639fba'},body:JSON.stringify({sessionId:'639fba',runId,hypothesisId:'B',location:'notifications.service.ts:processScheduledNotifications:summary',message:'scheduled processing summary',data:{runId,pendingCount:scheduledList.length,claimOk,claimFail,claimEmpty,skippedCondition,skippedMilestone,scheduledProcessed,deliveriesProcessed:pendingResult.processed,errors:errors+pendingResult.errors,remainingScheduled:remainingScheduled??0,truncated,elapsedMs:Date.now()-startedAt},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
+    return {
+      processed: scheduledProcessed + pendingResult.processed,
+      errors: errors + pendingResult.errors,
+      scheduledProcessed,
+      deliveriesProcessed: pendingResult.processed,
+      remainingScheduled: remainingScheduled ?? 0,
+      truncated,
+    }
   }
 
   /**
@@ -933,26 +1153,48 @@ export class NotificationsService implements INotificationsService {
   private async processPendingNotificationDeliveries(
     runId: string,
     now: string,
-    staleProcessingIso?: string
-  ): Promise<{ processed: number; errors: number }> {
+    staleProcessingIso?: string,
+    options?: { startedAt?: number; timeBudgetMs?: number; maxDeliveries?: number }
+  ): Promise<{ processed: number; errors: number; truncated: boolean }> {
     const stale = staleProcessingIso ?? new Date(Date.now() - 15 * 60_000).toISOString()
+    const startedAt = options?.startedAt ?? Date.now()
+    const timeBudgetMs = options?.timeBudgetMs ?? CRON_DEFAULT_TIME_BUDGET_MS
+    const maxDeliveries = options?.maxDeliveries ?? CRON_DELIVERY_BATCH_LIMIT
     let processed = 0
     let errors = 0
+    let truncated = false
 
     const { data: pendingNotifications, error: notifError } = await this.supabase
       .from("notifications")
       .select("*")
       .in("status", ["pending", "processing"])
       .or(`scheduled_for.is.null,scheduled_for.lte.${now}`)
-      .limit(100)
+      .order("created_at", { ascending: true })
+      .limit(maxDeliveries)
 
     if (notifError) {
       console.error("[NotificationsService] Failed to fetch pending notifications:", notifError)
-      return { processed: 0, errors: 1 }
+      return { processed: 0, errors: 1, truncated: false }
     }
 
     const notificationList = (pendingNotifications ?? []) as NotificationRow[]
+    const profileIds = [...new Set(notificationList.map((n) => n.user_id))]
+    const profileMap = new Map<string, { email: string; first_name: string | null }>()
+    if (profileIds.length > 0) {
+      const { data: profiles } = await this.supabase
+        .from("profiles")
+        .select("id, email, first_name")
+        .in("id", profileIds)
+      for (const p of (profiles ?? []) as Array<{ id: string; email: string; first_name: string | null }>) {
+        profileMap.set(p.id, { email: p.email, first_name: p.first_name })
+      }
+    }
+
     for (const notification of notificationList) {
+      if (NotificationsService.isTimeBudgetExceeded(startedAt, timeBudgetMs)) {
+        truncated = true
+        break
+      }
       try {
         // Claim in two steps instead of a complex OR filter to avoid PostgREST parser issues.
         const claimPendingResult = await this.supabase
@@ -1010,12 +1252,7 @@ export class NotificationsService implements INotificationsService {
         }
 
         if (notification.channel === "email") {
-          const { data: userData } = await this.supabase
-            .from("profiles")
-            .select("email, first_name")
-            .eq("id", notification.user_id)
-            .single()
-          const user = userData as { email: string; first_name: string | null } | null
+          const user = profileMap.get(notification.user_id) ?? null
 
           if (user?.email) {
             let emailPayload: Record<string, string | null> = {}
@@ -1096,7 +1333,7 @@ export class NotificationsService implements INotificationsService {
       }
     }
 
-    return { processed, errors }
+    return { processed, errors, truncated }
   }
 
   /**
@@ -1411,46 +1648,76 @@ export class NotificationsService implements INotificationsService {
   /**
    * Detect missed deadlines and fire the corresponding *_deadline_missed events.
    * Called by the cron job alongside processScheduledNotifications().
+   * Loads only deadline columns (not full collection rows) and stops early under a time budget.
    */
-  async detectAndFireMissedDeadlines(): Promise<{ fired: number }> {
+  async detectAndFireMissedDeadlines(options?: {
+    timeBudgetMs?: number
+    startedAt?: number
+    maxFires?: number
+  }): Promise<{ fired: number; truncated: boolean }> {
     let fired = 0
+    let truncated = false
+    const startedAt = options?.startedAt ?? Date.now()
+    const timeBudgetMs = options?.timeBudgetMs ?? CRON_DEFAULT_TIME_BUDGET_MS
+    const maxFires = options?.maxFires ?? CRON_MISSED_DEADLINE_FIRE_LIMIT
+
+    const deadlineColumns = [
+      "id",
+      "status",
+      "substatus",
+      ...DEADLINE_TO_MISSED_EVENT.flatMap(([dateField, timeField]) => [dateField, timeField]),
+    ]
+    const selectColumns = [...new Set(deadlineColumns)].join(", ")
 
     const { data: collections, error } = await this.supabase
       .from("collections")
-      .select("*")
+      .select(selectColumns)
       .eq("status", "in_progress")
 
     if (error || !collections) {
       console.error("[NotificationsService] Failed to fetch in-progress collections:", error)
-      return { fired: 0 }
+      return { fired: 0, truncated: false }
     }
 
     const now = new Date()
 
     for (const collection of collections as Array<Record<string, unknown> & { id: string }>) {
-      const col = collection as Record<string, unknown>
+      if (NotificationsService.isTimeBudgetExceeded(startedAt, timeBudgetMs) || fired >= maxFires) {
+        truncated = true
+        break
+      }
 
+      const col = collection as Record<string, unknown>
       const collSubstatus = col.substatus as string | null
       const collectionStatus = {
         status: String(col.status ?? "in_progress"),
         substatus: collSubstatus,
       }
-      const eventTypes = await this.getCollectionEventTypes(collection.id)
 
-      for (const [dateField, timeField, eventType] of DEADLINE_TO_MISSED_EVENT) {
+      // Cheap pre-pass: skip collections with no overdue deadline fields.
+      const overdueTypes: Array<(typeof DEADLINE_TO_MISSED_EVENT)[number]> = []
+      for (const mapping of DEADLINE_TO_MISSED_EVENT) {
+        const [dateField, timeField, eventType] = mapping
         const dateVal = col[dateField] as string | null
         if (!dateVal) continue
-
-        const timeVal = col[timeField] as string | null
-        const deadline = this.parseDeadline(dateVal, timeVal)
+        const deadline = this.parseDeadline(dateVal, col[timeField] as string | null)
         if (!deadline || deadline > now) continue
-
-        // Skip if the step is already completed — no need to fire a "missed" event
         const minSubstatus = MISSED_EVENT_MIN_SUBSTATUS[eventType]
         if (minSubstatus && collSubstatus) {
           const currentIdx = SUBSTATUS_ORDER.indexOf(collSubstatus as (typeof SUBSTATUS_ORDER)[number])
           const minIdx = SUBSTATUS_ORDER.indexOf(minSubstatus)
           if (currentIdx >= 0 && minIdx >= 0 && currentIdx >= minIdx) continue
+        }
+        overdueTypes.push(mapping)
+      }
+      if (overdueTypes.length === 0) continue
+
+      const eventTypes = await this.getCollectionEventTypes(collection.id)
+
+      for (const [, , eventType] of overdueTypes) {
+        if (NotificationsService.isTimeBudgetExceeded(startedAt, timeBudgetMs) || fired >= maxFires) {
+          truncated = true
+          break
         }
 
         if (eventTypes.has(eventType as CollectionEventType)) continue
@@ -1469,7 +1736,7 @@ export class NotificationsService implements INotificationsService {
       }
     }
 
-    return { fired }
+    return { fired, truncated }
   }
 
   /**
@@ -2501,7 +2768,8 @@ export class NotificationsService implements INotificationsService {
   private async isMilestoneAlreadyCompleted(
     collectionId: string,
     template: NotificationTemplate,
-    preloadedStatus?: { status: string; substatus: string | null } | null
+    preloadedStatus?: { status: string; substatus: string | null } | null,
+    preloadedEventTypes?: Set<string> | null
   ): Promise<boolean> {
     let statusInfo = preloadedStatus ?? null
     if (!statusInfo) {
@@ -2525,13 +2793,18 @@ export class NotificationsService implements INotificationsService {
     const criteria = TRIGGER_EVENT_TO_COMPLETION[template.trigger_event]
     if (!criteria) return false
 
-    const { data: events } = await this.supabase
-      .from("collection_events")
-      .select("event_type")
-      .eq("collection_id", collectionId)
-    const eventTypes = ((events || []) as Pick<CollectionEventRow, "event_type">[]).map(
-      (e) => e.event_type
-    )
+    let eventTypes: string[]
+    if (preloadedEventTypes) {
+      eventTypes = [...preloadedEventTypes]
+    } else {
+      const { data: events } = await this.supabase
+        .from("collection_events")
+        .select("event_type")
+        .eq("collection_id", collectionId)
+      eventTypes = ((events || []) as Pick<CollectionEventRow, "event_type">[]).map(
+        (e) => e.event_type
+      )
+    }
 
     if (
       criteria.completionEvent &&
@@ -2639,46 +2912,57 @@ export class NotificationsService implements INotificationsService {
    */
   private async checkCondition(
     collectionId: string,
-    condition: string
+    condition: string,
+    preload?: {
+      eventTypes?: string[]
+      digital?: boolean
+      handprint?: boolean
+      edition?: boolean
+      hasPreload?: boolean
+    }
   ): Promise<boolean> {
-    // Get collection and events
-    const { data: events } = await this.supabase
-      .from("collection_events")
-      .select("event_type")
-      .eq("collection_id", collectionId)
-
-    const eventTypes = ((events || []) as Pick<CollectionEventRow, "event_type">[]).map((e) => e.event_type)
+    let eventTypes = preload?.eventTypes
+    if (!eventTypes) {
+      const { data: events } = await this.supabase
+        .from("collection_events")
+        .select("event_type")
+        .eq("collection_id", collectionId)
+      eventTypes = ((events || []) as Pick<CollectionEventRow, "event_type">[]).map((e) => e.event_type)
+    }
 
     switch (condition) {
       case "has_handprint":
-        // Analog collections only (low_res_to_high_res_hand_print = true)
+        if (preload?.hasPreload) return !!preload.handprint
         return await this.checkCollectionType(collectionId, "has_handprint")
 
       case "is_digital":
-        // Digital collections only (low_res_to_high_res_digital = true)
+        if (preload?.hasPreload) return !!preload.digital
         return await this.checkCollectionType(collectionId, "is_digital")
 
       case "is_digital_and_edition":
-        // Digital + Retouch: low_res_to_high_res_digital = true AND photographer_request_edition = true
+        if (preload?.hasPreload) {
+          return !!(preload.digital && !preload.handprint && preload.edition)
+        }
         const { data: row } = await this.supabase
           .from("collections")
           .select("low_res_to_high_res_digital, low_res_to_high_res_hand_print, photographer_request_edition")
           .eq("id", collectionId)
           .single()
         if (!row) return false
-        const r = row as { low_res_to_high_res_digital?: boolean; low_res_to_high_res_hand_print?: boolean; photographer_request_edition?: boolean }
+        const r = row as {
+          low_res_to_high_res_digital?: boolean
+          low_res_to_high_res_hand_print?: boolean
+          photographer_request_edition?: boolean
+        }
         return !!(r.low_res_to_high_res_digital && !r.low_res_to_high_res_hand_print && r.photographer_request_edition)
 
       case "negatives_not_confirmed":
-        // Check if dropoff has NOT been confirmed
         return !eventTypes.includes("dropoff_confirmed")
 
       case "selection_not_completed":
-        // Check if client selection has NOT been confirmed
         return !eventTypes.includes("client_selection_confirmed")
 
       case "morning_reminder":
-        // Always true for first-time morning reminders (controlled by scheduling)
         return true
 
       case "client_not_confirmed_completion":

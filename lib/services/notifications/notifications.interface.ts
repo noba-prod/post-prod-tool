@@ -115,10 +115,24 @@ export interface INotificationsService {
   ): Promise<void>
 
   /**
-   * Process all pending scheduled notifications.
-   * Called by the cron job.
+   * Process a bounded batch of pending scheduled notifications + deliveries.
+   * Called by the cron job. Respects an optional time budget so each run can
+   * finish under the external scheduler timeout; remaining work is left for
+   * subsequent runs (rows stay unsent / pending).
    */
-  processScheduledNotifications(): Promise<{ processed: number; errors: number }>
+  processScheduledNotifications(options?: {
+    timeBudgetMs?: number
+    startedAt?: number
+    maxScheduled?: number
+    maxDeliveries?: number
+  }): Promise<{
+    processed: number
+    errors: number
+    scheduledProcessed: number
+    deliveriesProcessed: number
+    remainingScheduled: number
+    truncated: boolean
+  }>
 
   /**
    * Schedule time-based notifications for a collection.
@@ -158,7 +172,11 @@ export interface INotificationsService {
   /**
    * Detect missed deadlines in active collections and fire *_deadline_missed events.
    */
-  detectAndFireMissedDeadlines(): Promise<{ fired: number }>
+  detectAndFireMissedDeadlines(options?: {
+    timeBudgetMs?: number
+    startedAt?: number
+    maxFires?: number
+  }): Promise<{ fired: number; truncated: boolean }>
 
   /**
    * Re-schedule time-based notifications for recently updated collections.

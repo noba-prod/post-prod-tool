@@ -5,12 +5,17 @@
  * Called every minute by cron-job.org (free external cron service)
  * to process time-based notifications (deadline reminders, etc.)
  *
+ * Each run is time-budgeted (~12s) and batch-capped so the response stays under
+ * cron-job.org's 30s timeout. Remaining due work is left for subsequent ticks.
+ * A DB lock prevents overlapping runs when the previous tick is still active.
+ *
  * Setup instructions for cron-job.org:
  * 1. Go to https://cron-job.org and create a free account
  * 2. Create a new cron job with:
  *    - URL: https://your-domain.vercel.app/api/cron/notifications
  *    - Schedule: Every 1 minute
  *    - Request method: POST (preferred) or GET
+ *    - Request timeout: 30s (or higher if the plan allows)
  *    - Auth option A: Request header → Name: Authorization, Value: Bearer <CRON_SECRET>
  *    - Auth option B: Add ?secret=<CRON_SECRET> to the URL (only accepted when User-Agent is cron-job.org)
  * 3. Set CRON_SECRET in Vercel env vars (Production + Preview if using branch URLs)
@@ -26,6 +31,10 @@ import { NotificationsService } from "@/lib/services/notifications"
 // Prevent Vercel from caching 401 or any response (cache was serving stale 401)
 export const dynamic = "force-dynamic"
 export const revalidate = 0
+/** Allow a full minute on Vercel; we still return early under the external 30s timeout. */
+export const maxDuration = 60
+
+const CRON_TIME_BUDGET_MS = 12_000
 
 // Create a service role client for cron jobs (bypasses RLS)
 function createServiceClient() {
@@ -53,11 +62,12 @@ function unauthorized(body: object) {
 }
 
 export async function POST(request: NextRequest) {
+  const runId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
   try {
-    const runId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `cron-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const cronSecret = (process.env.CRON_SECRET ?? "").trim()
     const rawHeader = request.headers.get("authorization")
     const authHeader = rawHeader?.trim() ?? ""
@@ -82,7 +92,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (!authenticated) {
-      // Detailed debug logging to diagnose auth issues
       console.warn("[Cron] Unauthorized request details:", {
         cronSecretLength: cronSecret.length,
         cronSecretFirst3: cronSecret.slice(0, 3),
@@ -116,38 +125,84 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceClient()
     const notificationsService = new NotificationsService(supabase)
 
+    const acquired = await notificationsService.tryAcquireCronLock(runId)
+    if (!acquired) {
+      // #region agent log
+      fetch('http://127.0.0.1:7416/ingest/ffb25ca4-9c3e-4858-8478-191a76929d4c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'639fba'},body:JSON.stringify({sessionId:'639fba',runId,hypothesisId:'A',location:'cron/notifications/route.ts:lock-skip',message:'cron skipped — lock held',data:{runId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return NextResponse.json(
+        {
+          success: true,
+          skipped: true,
+          reason: "lock_held",
+          runId,
+          duration: 0,
+        },
+        { headers: NO_CACHE_HEADERS }
+      )
+    }
+
     const startTime = Date.now()
 
-    // 1. Re-schedule for collections updated in the last 5 minutes (catches deadline changes)
-    const rescheduleResult = await notificationsService.rescheduleForUpdatedCollections()
+    try {
+      // #region agent log
+      fetch('http://127.0.0.1:7416/ingest/ffb25ca4-9c3e-4858-8478-191a76929d4c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'639fba'},body:JSON.stringify({sessionId:'639fba',runId,hypothesisId:'A',location:'cron/notifications/route.ts:auth-ok',message:'cron authenticated, starting run',data:{runId,timeBudgetMs:CRON_TIME_BUDGET_MS},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
-    // 2. Detect missed deadlines and fire events
-    const missedResult = await notificationsService.detectAndFireMissedDeadlines()
+      // 1. Re-schedule for collections updated in the last 5 minutes (catches deadline changes)
+      const rescheduleResult = await notificationsService.rescheduleForUpdatedCollections()
 
-    // 3. Process scheduled notifications
-    const result = await notificationsService.processScheduledNotifications()
-    const duration = Date.now() - startTime
+      // 2. Detect missed deadlines and fire events (budget-aware)
+      const missedResult = await notificationsService.detectAndFireMissedDeadlines({
+        startedAt: startTime,
+        timeBudgetMs: CRON_TIME_BUDGET_MS,
+      })
 
-    console.log(
-      `[Cron:${runId}] Rescheduled ${rescheduleResult.rescheduled} collections, fired ${missedResult.fired} missed-deadline events, processed ${result.processed} notifications with ${result.errors} errors in ${duration}ms`
-    )
+      // 3. Process scheduled notifications + pending deliveries (budget-aware)
+      const result = await notificationsService.processScheduledNotifications({
+        startedAt: startTime,
+        timeBudgetMs: CRON_TIME_BUDGET_MS,
+      })
+      const duration = Date.now() - startTime
+      const truncated = missedResult.truncated || result.truncated
 
-    return NextResponse.json(
-      {
-        success: true,
-        rescheduled: rescheduleResult.rescheduled,
-        missedDeadlinesFired: missedResult.fired,
-        processed: result.processed,
-        errors: result.errors,
-        duration,
-        runId,
-      },
-      { headers: NO_CACHE_HEADERS }
-    )
+      // #region agent log
+      fetch('http://127.0.0.1:7416/ingest/ffb25ca4-9c3e-4858-8478-191a76929d4c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'639fba'},body:JSON.stringify({sessionId:'639fba',runId,hypothesisId:'A',location:'cron/notifications/route.ts:done',message:'cron finished',data:{runId,rescheduled:rescheduleResult.rescheduled,missedFired:missedResult.fired,missedTruncated:missedResult.truncated,processed:result.processed,scheduledProcessed:result.scheduledProcessed,deliveriesProcessed:result.deliveriesProcessed,remainingScheduled:result.remainingScheduled,truncated,errors:result.errors,duration},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
+      console.log(
+        `[Cron:${runId}] Rescheduled ${rescheduleResult.rescheduled}, missed=${missedResult.fired}` +
+          `${missedResult.truncated ? "(trunc)" : ""}, processed=${result.processed}` +
+          ` (sched=${result.scheduledProcessed}, del=${result.deliveriesProcessed},` +
+          ` remaining=${result.remainingScheduled}${truncated ? ", truncated" : ""})` +
+          ` errors=${result.errors} in ${duration}ms`
+      )
+
+      return NextResponse.json(
+        {
+          success: true,
+          skipped: false,
+          rescheduled: rescheduleResult.rescheduled,
+          missedDeadlinesFired: missedResult.fired,
+          missedDeadlinesTruncated: missedResult.truncated,
+          processed: result.processed,
+          scheduledProcessed: result.scheduledProcessed,
+          deliveriesProcessed: result.deliveriesProcessed,
+          remainingScheduled: result.remainingScheduled,
+          truncated,
+          errors: result.errors,
+          duration,
+          runId,
+        },
+        { headers: NO_CACHE_HEADERS }
+      )
+    } finally {
+      await notificationsService.releaseCronLock(runId)
+    }
   } catch (error) {
     console.error("[Cron] Error processing notifications:", error)
     return NextResponse.json(
-      { error: "Failed to process notifications" },
+      { error: "Failed to process notifications", runId },
       { status: 500, headers: NO_CACHE_HEADERS }
     )
   }
