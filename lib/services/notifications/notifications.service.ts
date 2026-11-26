@@ -24,6 +24,7 @@ import {
 } from "./comment-recipients"
 import { STEP_IDS, type StepId } from "@/lib/domain/collections"
 import type { RecipientType } from "./notification-templates"
+import { isPhotographerSelectionMissedPrerequisiteMet } from "./deadline-missed-guards"
 import {
   resolveRecipients,
   getCollectionContext,
@@ -145,6 +146,9 @@ const DEADLINE_MISSED_GUARDS: Partial<Record<CollectionEventType, DeadlineMissed
     requiresAnyEvents: ["dropoff_confirmed"],
     blocksIfAnyEvents: ["scanning_completed"],
   },
+  // Analog prerequisite is scanning_completed. Digital has no scanning step —
+  // requiresAnyEvents for Digital is resolved in shouldTriggerDeadlineMissedEvent
+  // (shooting_completed_confirmed only). Do not OR both prerequisites here.
   photographer_selection_deadline_missed: {
     requiresAnyEvents: ["scanning_completed"],
     blocksIfAnyEvents: ["photographer_selection_uploaded"],
@@ -2871,6 +2875,18 @@ export class NotificationsService implements INotificationsService {
     }
 
     const eventTypes = preloadedEventTypes ?? (await this.getCollectionEventTypes(collectionId))
+
+    // Digital vs Analog prerequisite for photographer selection delayed.
+    // Analog: scanning_completed (unchanged). Digital: shooting_completed_confirmed.
+    // Explicit branch — never a global OR that would loosen Analog.
+    if (eventType === "photographer_selection_deadline_missed") {
+      const isDigital = await this.checkCollectionType(collectionId, "is_digital")
+      return isPhotographerSelectionMissedPrerequisiteMet(
+        isDigital ? "digital" : "analog",
+        eventTypes
+      )
+    }
+
     const guard = DEADLINE_MISSED_GUARDS[eventType]
     if (!guard) return true
 
